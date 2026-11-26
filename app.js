@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } fro
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.9.4';
+const APP_VERSION = '1.9.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -266,7 +266,6 @@ function tAtt(){
   return header('출결 관리',fmtD(curDay())+(isT?' · 오늘':''))+'<div class="body">'+
   '<div class="card"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>'+
   '<div class="card"><h3>출결 규칙</h3><p class="sub" style="margin:0">학생이 앱에서 [등원하기]를 누르면 원장님께 승인 요청이 와요. 승인해야 등원이 기록되고, 하원은 그날 학습 정리를 올린 뒤에만 열려요. 시각 수정·삭제는 PC 관리자 [출결]에서 할 수 있어요.</p></div>'+wifiCard()+
-  '<div class="card"><label class="f"><span>날짜</span><input type="date" id="attDate" value="'+curDay()+'"></label>'+(isOwnerMe()?'<div class="sw" style="margin:0"><span>등·하원 시 학부모님께 알림 자동 발송</span><input type="checkbox" id="autoN" '+(D.autoNotify?'checked':'')+'></div>':'')+'</div>'+
   (()=>{const P=dayPlan(curDay());return '<div class="card"><h3>학생별 등·하원</h3>'+dayNav(curDay())+P.order.map(s=>{const g=P.rk(s);
     const r=a[s.id];const lg=loggedOn(s.id,curDay());
     const ab=absOf(s.id,curDay());const line=!r&&ab?'결석 통보 · '+ab.reason+(ab.ok?'':' (확인 전)'):!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+lateLabel(r.out):lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
