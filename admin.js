@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.9.3';
+const ADMIN_VERSION = '1.9.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -16,12 +16,16 @@ const MAIL = '@themilchak-math.app';
 /* ---------- 도우미 ---------- */
 const pad = n => String(n).padStart(2, '0');
 const ds = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-const off = k => { const d = new Date(); d.setDate(d.getDate() + k); return ds(d); };
+// 하루의 경계 = 새벽 3시 (새벽 3시 전 하원은 전날 등원에 대한 하원)
+const DAY_CUT = 3;
+const off = k => { const d = new Date(Date.now() - DAY_CUT * 36e5); d.setDate(d.getDate() + k); return ds(d); };
+const lateLabel = t => t && t < '0' + DAY_CUT + ':00' ? '새벽 ' + t : t;
+const tMin = t => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return (h < DAY_CUT ? h + 24 : h) * 60 + m; };
 const TODAY = off(0);
 const WD = '일월화수목금토';
 const fmtD = s => { const d = new Date(s + 'T00:00'); return (d.getMonth() + 1) + '/' + d.getDate() + ' (' + WD[d.getDay()] + ')'; };
 const hm = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
-const stamp = () => TODAY + ' ' + hm();
+const stamp = () => ds(new Date()) + ' ' + hm();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const digits = x => String(x || '').replace(/\D/g, '');
 const fmtP = d => d && d.length === 11 ? d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7) : (d || '');
@@ -71,7 +75,7 @@ const thOf = (sid, rel) => sid + '|' + (rel === 'student' ? 'student' : 'parent'
 /* ---------- 화면 조각 ---------- */
 const chip = (t, c) => '<span class="chip ' + (c || '') + '">' + esc(t) + '</span>';
 const isIn = r => !!r && r.st !== '결석';
-const attChip = a => !a ? chip('미등원') : a.st === '결석' ? chip('결석', 'bad') : chip('등원' + (a.at ? ' ' + a.at : ''), 'ok') + (a.out ? ' ' + chip('하원 ' + a.out, 'pri') : '');
+const attChip = a => !a ? chip('미등원') : a.st === '결석' ? chip('결석', 'bad') : chip('등원' + (a.at ? ' ' + a.at : ''), 'ok') + (a.out ? ' ' + chip('하원 ' + lateLabel(a.out), 'pri') : '');
 const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입');
 const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 'done' ? chip('제출함', 'pri') : h.due < TODAY ? chip('기한 지남', 'bad') : chip('진행 중', 'warn');
 
@@ -138,7 +142,7 @@ function pAtt() {
     const cells = days.map(d => {
       const r = (D.att[d] || {})[s.id]; if (r) c[isIn(r) ? 0 : 1]++;
       const k = !r ? '' : !isIn(r) ? 'bad' : (r.out || d === TODAY ? 'ok' : 'warn');
-      const t = r ? (isIn(r) ? '등원 ' + (r.at || '') + (r.out ? ' / 하원 ' + r.out : ' / 하원 기록 없음') : '결석') + ' · 눌러서 수정' : '눌러서 등·하원 입력';
+      const t = r ? (isIn(r) ? '등원 ' + (r.at || '') + (r.out ? ' / 하원 ' + lateLabel(r.out) : ' / 하원 기록 없음') : '결석') + ' · 눌러서 수정' : '눌러서 등·하원 입력';
       return '<td class="c ' + k + (d === TODAY ? ' tdy' : '') + '" title="' + esc(t) + '" data-a="attEdit" data-id="' + s.id + '" data-v="' + d + '">' + (r ? (isIn(r) ? '●' : '결') : '') + '</td>';
     }).join('');
     return '<tr><th class="nm">' + esc(s.name) + '</th>' + cells + '<td class="sum">' + c[0] + '</td><td class="sum">' + c[1] + '</td></tr>';
@@ -182,7 +186,7 @@ function attModal() {
     '<label>상태<select id="atSt">' + opt('in', st, '등원') + opt('abs', st, '결석') + '</select></label>' +
     '<div class="row2"><label>등원 시각<input type="time" id="atIn" value="' + esc(r && r.at ? r.at : (s.time || '')) + '"></label><label>하원 시각<input type="time" id="atOut" value="' + esc(r && r.out ? r.out : '') + '"></label></div>' +
     '<label class="sw" style="justify-content:flex-start;gap:8px;margin:4px 0 8px"><input type="checkbox" id="atNoti"' + (d === TODAY ? ' checked' : '') + '> 학부모님께 알림 보내기</label>' +
-    '<p class="sub">하원 시각을 비우면 하원 전 상태로 남아요. 알림을 끄고 저장하면 기록만 조용히 고쳐져요.</p>' +
+    '<p class="sub">하원이 자정을 넘기면 그대로 01:30처럼 넣으세요 (새벽 3시까지는 이 날 하원으로 기록). 하원 시각을 비우면 하원 전 상태로 남아요. 알림을 끄고 저장하면 기록만 조용히 고쳐져요.</p>' +
     '<div class="mf">' + (r ? '<button type="button" class="btn ghost danger" data-a="attDel">기록 삭제</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit">저장</button></div></form></div>';
 }
 
@@ -819,7 +823,7 @@ app.addEventListener('submit', async e => {
     if (f === 'ntF') { if (!g('nT').trim()) return toast('제목을 입력해 주세요'); await addDoc(collection(db, 'notices'), { title: g('nT').trim(), body: g('nB').trim(), at: TODAY, pin: document.getElementById('nP').checked, reads: [], ts: now() }); push(active().flatMap(x => [x.id + '|student', x.id + '|parent']), g('nT').trim(), { title: '새 공지', tag: 'notice' }); document.getElementById('nT').value = ''; document.getElementById('nB').value = ''; return toast('공지를 올렸어요'); }
     if (f === 'attF') {
       const sid = V.attSid, d = V.attDate, isAbs = g('atSt') === 'abs', at = g('atIn'), out = g('atOut');
-      if (!isAbs && !at) return toast('등원 시각을 넣어 주세요'); if (!isAbs && out && out < at) return toast('하원 시각이 등원보다 빨라요');
+      if (!isAbs && !at) return toast('등원 시각을 넣어 주세요'); if (!isAbs && out && tMin(out) < tMin(at)) return toast('하원 시각이 등원보다 빨라요 (새벽 3시 전까지는 다음 날 새벽으로 봐요)');
       const rec = isAbs ? { sid, date: d, st: '결석', at: '', by: 'admin' } : { sid, date: d, st: '출석', at, by: 'admin', logged: D.logs.some(l => l.sid === sid && l.date === d) };
       if (!isAbs && out) rec.out = out;
       await setDoc(doc(db, 'att', d + '_' + sid), rec);
@@ -898,7 +902,7 @@ app.addEventListener('submit', async e => {
   } catch (err) { fail(err); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && V.modal) { V.modal = null; V.editId = null; render(); } });
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ds(new Date()) !== TODAY) return location.reload(); if (document.visibilityState === 'visible' && V.chat && V.page === 'msg') markRead(V.chat); if (document.visibilityState === 'visible') wifiAutoSync(false); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && off(0) !== TODAY) return location.reload(); if (document.visibilityState === 'visible' && V.chat && V.page === 'msg') markRead(V.chat); if (document.visibilityState === 'visible') wifiAutoSync(false); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => { });
 render();
 

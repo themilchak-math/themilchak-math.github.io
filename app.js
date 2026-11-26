@@ -7,19 +7,22 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel } from './subjects.j
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.8.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
 const MAIL = '@themilchak-math.app';
 const pad=n=>String(n).padStart(2,'0');
 const ds=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-const off=k=>{const d=new Date();d.setDate(d.getDate()+k);return ds(d)};
+// 하루의 경계 = 새벽 3시 (새벽 3시 전 하원은 전날 등원에 대한 하원)
+const DAY_CUT=3;
+const off=k=>{const d=new Date(Date.now()-DAY_CUT*36e5);d.setDate(d.getDate()+k);return ds(d)};
+const lateLabel=t=>t&&t<'0'+DAY_CUT+':00'?'새벽 '+t:t;
 const TODAY=off(0);
 const WD='일월화수목금토';
 const fmtD=s=>{const d=new Date(s+'T00:00');return (d.getMonth()+1)+'/'+d.getDate()+' ('+WD[d.getDay()]+')'};
 const hm=()=>{const d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes())};
-const stamp=()=>TODAY+' '+hm();
+const stamp=()=>ds(new Date())+' '+hm();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>Math.random().toString(36).slice(2,9);
 const ST=['출석','지각','결석'];
@@ -56,7 +59,7 @@ function tabsFor(){
 
 const hwChip=h=>h.st==='checked'?'<span class="chip c-ok">확인 완료</span>':h.st==='done'?'<span class="chip c-pri">제출함</span>':(h.due<TODAY?'<span class="chip c-bad">기한 지남</span>':'<span class="chip c-warn">진행 중</span>');
 const isIn=r=>!!r&&r.st!=='결석';
-const attChip=a=>!a?'<span class="chip">미등원</span>':a.st==='결석'?'<span class="chip c-bad">결석</span>':'<span style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end"><span class="chip c-ok">등원'+(a.at?' '+a.at:'')+'</span>'+(a.out?'<span class="chip c-pri">하원 '+a.out+'</span>':'')+'</span>';
+const attChip=a=>!a?'<span class="chip">미등원</span>':a.st==='결석'?'<span class="chip c-bad">결석</span>':'<span style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end"><span class="chip c-ok">등원'+(a.at?' '+a.at:'')+'</span>'+(a.out?'<span class="chip c-pri">하원 '+lateLabel(a.out)+'</span>':'')+'</span>';
 const qrCode=(t=Date.now())=>String((Math.floor(t/30000)*7919+13)%900000+100000);
 const qrLeft=()=>30-Math.floor(Date.now()/1000)%30;
 function qrSvg(code){let z=+code||1;const r=()=>(z=z*16807%2147483647)/2147483647;const N=25;let d='';
@@ -204,7 +207,7 @@ function calCard(sid,teacher){
   const dd=U.calD;let det='';
   if(dd.slice(0,7)===U.calM){
     const day=D.att[dd]||{};
-    const line=x=>{const r=day[x.id];const lg=D.logs.filter(l=>l.sid===x.id&&l.date===dd&&(teacher||l.sh)).pop();return '<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(x.name)+'</div><div class="sub">'+(r?(r.st==='결석'?'결석':'등원 '+esc(r.at)+(r.out?' · 하원 '+esc(r.out):dd===TODAY?' · 수업 중':' · 하원 기록 없음')):(dd>TODAY?'예정':'기록 없음'))+(lg?'<br>수업: '+esc(lg.course+' '+lg.unit)+' · 개념 '+lg.c+'% · 문제 '+lg.p+'%':'')+'</div></div>'+attChip(r)+'</div>'};
+    const line=x=>{const r=day[x.id];const lg=D.logs.filter(l=>l.sid===x.id&&l.date===dd&&(teacher||l.sh)).pop();return '<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(x.name)+'</div><div class="sub">'+(r?(r.st==='결석'?'결석':'등원 '+esc(r.at)+(r.out?' · 하원 '+esc(lateLabel(r.out)):dd===TODAY?' · 수업 중':' · 하원 기록 없음')):(dd>TODAY?'예정':'기록 없음'))+(lg?'<br>수업: '+esc(lg.course+' '+lg.unit)+' · 개념 '+lg.c+'% · 문제 '+lg.p+'%':'')+'</div></div>'+attChip(r)+'</div>'};
     det='<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><b>'+fmtD(dd)+'</b>'+(sid==='all'?D.students.map(line).join(''):line(stu(sid)))+'</div>';
   }
   return '<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><button class="btn sm ghost" data-act="calM" data-v="-1" aria-label="이전 달">‹</button><h3 style="margin:0">'+y+'년 '+m+'월 출결</h3><button class="btn sm ghost" data-act="calM" data-v="1" aria-label="다음 달">›</button></div>'+
@@ -220,7 +223,7 @@ function tAtt(){
   '<div class="card"><label class="f"><span>날짜</span><input type="date" id="attDate" value="'+U.attDate+'"></label>'+(isOwnerMe()?'<div class="sw" style="margin:0"><span>등·하원 시 학부모님께 알림 자동 발송</span><input type="checkbox" id="autoN" '+(D.autoNotify?'checked':'')+'></div>':'')+'</div>'+
   '<div class="card"><h3>학생별 등·하원</h3>'+D.students.map(s=>{
     const r=a[s.id];const lg=loggedOn(s.id,U.attDate);
-    const line=!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+r.out:lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
+    const line=!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+lateLabel(r.out):lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
     let act='';
     if(r&&r.st!=='결석'&&!r.out&&!lg&&isT)act='<button class="btn sm" data-act="logFor" data-id="'+s.id+'">오늘 학습 정리 올리기</button>';
     else if(!r)act='<button class="btn sm" data-act="forceIn" data-id="'+s.id+'">등원 처리</button><button class="btn sm ghost" data-act="absent" data-id="'+s.id+'">결석 처리</button>';
@@ -751,7 +754,7 @@ app.addEventListener('click',async e=>{
   if(a==='checkout'){
     const s=stu(U.me);const r=(D.att[TODAY]||{})[s.id];if(!r||!r.logged)return toast('아직 하원할 수 없어요');
     const out=hm();await updateDoc(doc(db,'att',TODAY+'_'+s.id),{out});const lg=D.logs.filter(l=>l.sid===s.id&&l.date===TODAY).pop();
-    await notifyParent(s.id,'[하원 알림] '+s.name+' 학생이 '+out+'에 하원했습니다.'+(lg?' 오늘 수업: '+lg.course+' '+lg.unit:''));
+    await notifyParent(s.id,'[하원 알림] '+s.name+' 학생이 '+lateLabel(out)+'에 하원했습니다.'+(lg?' 오늘 수업: '+lg.course+' '+lg.unit:''));
     return toast('하원 완료! 수고했어요');
   }
   if(a==='absent'){const s=stu(id);await setDoc(doc(db,'att',U.attDate+'_'+id),{sid:id,date:U.attDate,st:'결석',at:'',by:'teacher'});if(U.attDate===TODAY)await notifyParent(id,'[출결 알림] '+s.name+' 학생이 오늘 결석으로 처리되었습니다.');return toast('결석 처리했어요')}
@@ -893,6 +896,6 @@ if('serviceWorker' in navigator){
 try{U.noInstall=localStorage.getItem('tmm-noinst')==='1'}catch(e){}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();U.bip=e;render()});
 window.addEventListener('appinstalled',()=>{U.bip=null;toast('설치됐어요! 홈 화면에서 열어 주세요')});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)return location.reload();if(document.visibilityState==='visible'){U.fresh=Date.now();U.wifiState=null;setTimeout(autoCheckin,500);if(U.reg)U.reg.update().catch(()=>{});if(U.chat)markRead(U.chat);autoPush();if(isOwnerMe())announceUpdate(db,auth)}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&off(0)!==TODAY)return location.reload();if(document.visibilityState==='visible'){U.fresh=Date.now();U.wifiState=null;setTimeout(autoCheckin,500);if(U.reg)U.reg.update().catch(()=>{});if(U.chat)markRead(U.chat);autoPush();if(isOwnerMe())announceUpdate(db,auth)}});
 window.addEventListener('focus',()=>{if(U.chat)markRead(U.chat)});
 render();
