@@ -1,0 +1,86 @@
+rules_version = '2';
+// 더밀착수학 앱 보안 규칙
+// - 원장님(config/main.owner)은 모든 데이터를 읽고 쓸 수 있어요.
+// - 학부모·학생은 원장님이 승인해 연결한 아이(users/{uid}.sids)의 데이터만 볼 수 있어요.
+// - 학생은 자기 숙제 '완료', 오늘 '하원'(학습 정리 후), 등원 요청(유효한 QR 코드)만 할 수 있어요.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function cfgPath() { return /databases/$(database)/documents/config/main; }
+    function isOwner() { return signedIn() && exists(cfgPath()) && get(cfgPath()).data.owner == request.auth.uid; }
+    function mePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(mePath()); }
+    function me() { return get(mePath()).data; }
+    function linked(sid) { return hasProfile() && sid in me().sids; }
+    function isStudentOf(sid) { return linked(sid) && me().rels[sid] == 'student'; }
+    function myThread(th) { return hasProfile() && th in me().ths; }
+    function myPhone() { return request.auth.token.email.split('@')[0]; }
+    function onlyKeys(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function qr() { return get(/databases/$(database)/documents/config/qr).data; }
+
+    match /config/main {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.owner == request.auth.uid;
+      allow update: if isOwner() && request.resource.data.owner == resource.data.owner;
+      allow delete: if false;
+    }
+    match /config/qr {
+      allow read, write: if isOwner();
+    }
+    match /users/{uid} {
+      allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
+      allow write: if isOwner();
+    }
+    match /members/{id} {
+      allow read: if isOwner() || (signedIn() && resource.data.phone == myPhone());
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (signedIn() && resource.data.phone == myPhone()
+        && resource.data.st == 'none' && request.resource.data.st == 'pending'
+        && request.resource.data.uid == request.auth.uid && onlyKeys(['st', 'uid', 'at']));
+    }
+    match /students/{sid} {
+      allow read: if isOwner() || linked(sid);
+      allow write: if isOwner();
+    }
+    match /att/{id} {
+      allow read: if isOwner() || linked(resource.data.sid);
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (isStudentOf(resource.data.sid) && resource.data.logged == true
+        && resource.data.st != '결석' && !('out' in resource.data) && onlyKeys(['out']));
+    }
+    match /reqs/{id} {
+      allow read: if isOwner() || linked(resource.data.sid);
+      allow create: if isStudentOf(request.resource.data.sid) && request.resource.data.uid == request.auth.uid
+        && request.resource.data.st == 'pending' && qr().code != ''
+        && request.resource.data.code == qr().code && request.time.toMillis() < qr().exp;
+      allow update: if isOwner();
+      allow delete: if isOwner() || (isStudentOf(resource.data.sid) && resource.data.uid == request.auth.uid && resource.data.st == 'pending');
+    }
+    match /hw/{id} {
+      allow read: if isOwner() || linked(resource.data.sid);
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (isStudentOf(resource.data.sid) && resource.data.st == 'todo'
+        && request.resource.data.st == 'done' && onlyKeys(['st', 'note']));
+    }
+    match /logs/{id} {
+      allow read: if isOwner() || (linked(resource.data.sid) && resource.data.sh == true);
+      allow write: if isOwner();
+    }
+    match /notices/{id} {
+      allow read: if isOwner() || hasProfile();
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (hasProfile() && onlyKeys(['reads'])
+        && request.resource.data.reads.toSet().difference(resource.data.reads.toSet()) == [request.auth.uid].toSet());
+    }
+    match /msgs/{id} {
+      allow read: if isOwner() || myThread(resource.data.th);
+      allow create: if isOwner()
+        || (myThread(request.resource.data.th) && request.resource.data.f == 'o')
+        || (hasProfile() && request.resource.data.f == 's' && request.resource.data.sid in me().sids
+            && request.resource.data.th == request.resource.data.sid + '|parent');
+      allow update: if (isOwner() && onlyKeys(['r']))
+        || (myThread(resource.data.th) && resource.data.f != 'o' && onlyKeys(['r']));
+      allow delete: if isOwner();
+    }
+  }
+}
