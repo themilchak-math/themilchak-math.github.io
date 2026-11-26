@@ -49,12 +49,12 @@ export async function enablePush(db, uid, targets) {
 // 알림 켜기 실패 이유를 사람이 읽을 문장으로
 export function pushErrorText(e) {
   const m = String((e && e.message) || e || '');
-  if (m === 'denied') return '알림이 차단돼 있어요. 휴대폰 설정 또는 크롬 주소창 왼쪽 자물쇠 → 권한 → 알림을 허용으로 바꿔 주세요.';
+  if (m === 'denied') return '알림이 차단돼 있어요. 삼성 인터넷은 메뉴(≡) → 설정 → 사이트 및 다운로드 → 사이트 알림, 크롬은 주소창 자물쇠 → 권한 → 알림에서 허용으로 바꿔 주세요.';
   if (m === 'dismissed') return '알림 허용 창이 닫혔어요. 다시 누르고 [허용]을 눌러 주세요.';
-  if (m === 'timeout:permission') return '허용 창이 뜨지 않았어요. 크롬 주소창 왼쪽 자물쇠(또는 종 모양) 아이콘 → 알림 허용 후 다시 눌러 주세요.';
+  if (m === 'timeout:permission') return '허용 창이 뜨지 않았어요. 아래 안내대로 알림을 허용한 뒤 다시 눌러 주세요.';
   if (m.startsWith('timeout:sw') || m.startsWith('timeout:ready') || m.startsWith('sw:')) return '앱을 완전히 닫았다가 다시 열고 눌러 주세요. (' + m + ')';
   if (m.startsWith('timeout:server') || m.startsWith('server:')) return '알림 서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요. (' + m + ')';
-  if (m.startsWith('timeout:subscribe') || m.startsWith('subscribe:')) return '이 브라우저에서 알림 등록이 안 돼요. 크롬을 최신으로 업데이트하거나, 삼성 인터넷이면 크롬으로 열어 주세요. (' + m + ')';
+  if (m.startsWith('timeout:subscribe') || m.startsWith('subscribe:')) return '이 브라우저에서 알림 등록이 안 돼요. 삼성 인터넷(또는 크롬)을 최신으로 업데이트한 뒤 다시 해 주세요. (' + m + ')';
   if (m.startsWith('save:')) return '알림 정보를 저장하지 못했어요. (' + m + ')';
   return '알림을 켜지 못했어요. (' + m + ')';
 }

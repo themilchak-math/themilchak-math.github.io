@@ -5,7 +5,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { pushState, enablePush, sendPush, pushErrorText } from './push.js';
 
-const ADMIN_VERSION = '1.2.0';
+const ADMIN_VERSION = '1.2.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -69,7 +69,7 @@ function inviteText(m) {
   const who = m.rel === 'student' ? nm + ' 학생' : nm + ' ' + REL[m.rel];
   const tn = (D.cfg && D.cfg.teacher) || '';
   return '[더밀착수학] 안녕하세요, ' + who + '. ' + (tn ? tn + ' 선생님' : '더밀착수학') + '입니다.\n' + (m.rel === 'student' ? '출결·숙제·수업 기록' : '출결·수업 기록·숙제·공지') + '을 확인하는 교습소 앱 안내드려요.\n\n'
-    + '1) 아래 주소 열기 (아이폰은 사파리, 안드로이드는 크롬)\n' + APP_URL + '\n'
+    + '1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 삼성 인터넷)\n' + APP_URL + '\n'
     + '2) [처음이에요 · 가입하기] → 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호 입력\n'
     + '3) 선생님 승인 후 이용 가능\n'
     + '4) 홈 화면에 추가(설치) → 앱에서 [알림 받기] 누르기' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');
@@ -314,7 +314,7 @@ const push = (targets, text, opts) => { sendPush(db, auth, targets, text, Object
 const notifyParent = (sid, t) => { if (D.cfg && D.cfg.autoNotify === false) return Promise.resolve(); push([sid + '|parent'], t); return msg(sid + '|parent', sid, 's', t).catch(e => console.warn(e)); };
 function pushCard() {
   const st = pushState(auth.currentUser && auth.currentUser.uid); if (st === 'off' || st === 'on' || V.pushHide) return '';
-  const inner = st === 'denied' ? '<p class="sub">이 PC 크롬에서 알림이 차단돼 있어요. 주소창 왼쪽 자물쇠 → 사이트 설정 → 알림 → 허용으로 바꿔 주세요.</p>' : st === 'unsupported' ? '<p class="sub">이 브라우저는 알림을 지원하지 않아요. 크롬에서 열어 주세요.</p>' : '<p class="sub">등원·가입 요청, 숙제 완료, 학생·학부모 메시지가 오면 이 PC에도 알림이 떠요. (폰 앱에서도 따로 켜 주세요)</p><button class="btn" data-a="pushOn">이 PC에서 알림 받기</button>';
+  const inner = st === 'denied' ? '<p class="sub">이 PC 브라우저에서 알림이 차단돼 있어요. 주소창 왼쪽 자물쇠 → 사이트 설정 → 알림 → 허용으로 바꿔 주세요.</p>' : st === 'unsupported' ? '<p class="sub">이 브라우저는 알림을 지원하지 않아요. 크롬이나 엣지에서 열어 주세요.</p>' : '<p class="sub">등원·가입 요청, 숙제 완료, 학생·학부모 메시지가 오면 이 PC에도 알림이 떠요. (폰 앱에서도 따로 켜 주세요)</p><button class="btn" data-a="pushOn">이 PC에서 알림 받기</button>';
   return '<section class="card hl"><h2>알림 받기 <button class="btn xs ghost" data-a="pushHide">나중에</button></h2>' + inner + '</section>';
 }
 function markRead(k) { const l = thread(k).filter(m => m.f === 'o' && !m.r); if (!l.length) return; const b = writeBatch(db); l.forEach(m => { m.r = true; b.update(doc(db, 'msgs', m.id), { r: true }); }); b.commit().catch(e => console.warn(e)); }

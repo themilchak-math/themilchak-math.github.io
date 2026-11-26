@@ -1,5 +1,5 @@
 // 더밀착수학 앱 서비스워커 - 앱을 고칠 때마다 VERSION 숫자를 올리면 가족 폰에 "새 버전" 알림이 떠요
-const VERSION = '1.2.2';
+const VERSION = '1.2.3';
 const CACHE = 'tmm-' + VERSION;
 const SHELL = ['./', './index.html', './app.js', './push.js', './firebase-config.js', './manifest.json', './icon-192.png', './apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {})); });
