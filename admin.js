@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.0.5';
+const ADMIN_VERSION = '2.0.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -122,7 +122,7 @@ function pDash() {
   const exp = exp0 ? exp0.filter(id => !absT.has(id) || a[id]) : null; const expSet = new Set(exp || []); const absN = exp0 ? exp0.filter(id => absT.has(id) && !a[id]).length : 0;
   const isIn = s => a[s.id] && a[s.id].st !== '결석';
   const present = st.filter(isIn).length; const expIn = exp ? st.filter(s => expSet.has(s.id) && isIn(s)).length : 0;
-  const notYet = exp ? st.filter(s => expSet.has(s.id) && !a[s.id]) : [];
+  const notYet = exp ? [...st.filter(s => expSet.has(s.id) && !exSet.has(s.id) && !a[s.id]), ...ex.map(id => stu(id)).filter(s => s && expSet.has(s.id) && !a[s.id])] : [];
   const toCheck = D.hw.filter(h => h.st === 'done');
   const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>' + dayLbl + ' 등원 (' + WD[new Date(day + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (ex.length ? ' · 보충 ' + ex.length + '명 포함' : '') + (absN ? ' · 결석 통보 ' + absN + '명 제외' : '') + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>' + dayLbl + ' 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
   const rk = x => expSet.has(x.id) ? 2 : absT.has(x.id) ? 1 : 0; const order = exp ? [...st].sort((x, y) => (rk(y) - rk(x)) || x.name.localeCompare(y.name, 'ko')) : st;
