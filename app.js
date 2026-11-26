@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } fro
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.9.1';
+const APP_VERSION = '1.9.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -233,8 +233,8 @@ function tHome(){
   '<div class="stats"><div><b>'+(P.plan?expIn+'/'+P.exp.length:present+'/'+D.students.length)+'</b><span>'+(P.plan?'예정 등원'+(P.ex.length?' (보충 '+P.ex.length+')':''):'등원')+'</span></div><div><b>'+toCheck.length+'</b><span>확인할 숙제</span></div><div><b>'+unreadTeacher()+'</b><span>새 메시지</span></div></div>'+
   (P.ev.length?'<div class="card"'+(P.ev.some(e=>evKind(e)==='off')?' style="border-color:var(--acc)"':'')+'><h3>일정</h3>'+P.ev.map(e=>examRow(e,false)).join('')+'</div>':'')+
   '<div class="card"><h3>출결</h3>'+dayNav(day)+
-  (P.plan||P.ex.length?'<div style="margin:0 0 10px;padding:10px;border-radius:12px;background:var(--bg2,#f4f5fb)"><div class="sub" style="font-weight:700;margin-bottom:4px">아직 안 온 학생</div>'+(notYet.length?rg.map(x=>'<b>'+esc(x.name)+'</b>').join(' · ')+(sp.length?(rg.length?' &nbsp; ':'')+'<span class="chip c-pri">보충</span> '+sp.map(x=>'<b>'+esc(x.name)+'</b> <button class="btn sm ghost" style="padding:2px 8px" data-act="exDel" data-id="'+x.id+'">×</button>').join(' · '):''):'<span class="sub">'+(P.reg&&!P.reg.length&&P.ev.some(e=>evKind(e)==='off')?'교습소 휴무일이에요':'예정된 학생이 모두 왔어요')+'</span>')+'</div>':'')+
-  (cand.length?'<div style="display:flex;gap:6px;margin-bottom:10px"><select id="exSel" style="flex:1"><option value="">보충 올 학생 선택</option>'+cand.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')+'</select><button class="btn sm" data-act="exAdd">+ 보충</button></div>':'')+
+  (P.plan||P.ex.length?'<div style="margin:0 0 10px;padding:10px;border-radius:12px;background:var(--soft);border:1px solid var(--line)"><div class="sub" style="font-weight:700;margin-bottom:4px">아직 안 온 학생</div>'+(notYet.length?rg.map(x=>'<b>'+esc(x.name)+'</b>').join(' · ')+(sp.length?(rg.length?' &nbsp; ':'')+'<span class="chip c-pri">보충</span> '+sp.map(x=>'<b>'+esc(x.name)+'</b> <button class="btn sm ghost" style="padding:2px 8px" data-act="exDel" data-id="'+x.id+'">×</button>').join(' · '):''):'<span class="sub">'+(P.reg&&!P.reg.length&&P.ev.some(e=>evKind(e)==='off')?'교습소 휴무일이에요':'예정된 학생이 모두 왔어요')+'</span>')+'</div>':'')+
+  (cand.length?'<div style="display:flex;gap:6px;margin-bottom:10px"><select id="exSel" style="flex:1;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--soft);color:var(--ink);min-height:40px"><option value="">보충 올 학생 선택</option>'+cand.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')+'</select><button class="btn sm" data-act="exAdd">+ 보충</button></div>':'')+
   P.order.map(s=>{const g=P.rk(s);return '<div class="row"'+(P.plan&&g===0&&!a[s.id]?' style="opacity:.5"':'')+'><div class="av">'+esc(s.name.slice(-2))+'</div><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(s.grade)+' · '+esc(curUnit(s))+'</div></div>'+(P.plan?P.tag(s)+' ':'')+attChip(a[s.id])+'</div>'}).join('')+'</div>'+
   '<div class="card"><h3>확인할 숙제</h3>'+hwList(toCheck,'teacher')+'</div>'+
   '<div class="card"><h3>최근 공지 <button class="btn sm ghost" data-act="go" data-tab="comm" data-comm="notice">전체</button></h3>'+noticeList(1)+'</div></div>';
