@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.9.0';
+const ADMIN_VERSION = '1.9.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -157,12 +157,23 @@ async function myIp() {
   try { const r = await t('https://ipv4.icanhazip.com', 5000); return (await r.text()).trim(); } catch (e) { }
   return '';
 }
+const isAcademyPc = () => { try { return localStorage.getItem('tmm-academy-pc') === '1'; } catch (e) { return false; } };
+let wifiSyncAt = 0;
+async function wifiAutoSync(force) {
+  if (!isOwnerMe() || !isAcademyPc() || !D.cfg || D.cfg.wifiAuto === false && (D.cfg.wifiIps || []).length) return;
+  if (!force && Date.now() - wifiSyncAt < 10 * 60 * 1000) return; wifiSyncAt = Date.now();
+  const ip = await myIp(); if (!ip) return; const cur = D.cfg.wifiIps || []; if (cur.includes(ip) && D.cfg.wifiAuto) return;
+  const l = cur.filter(x => x !== ip).concat(ip).slice(-6);
+  try { await updateDoc(doc(db, 'config', 'main'), { wifiIps: l, wifiAuto: true }); toast('교습소 인터넷 주소를 자동으로 갱신했어요 (' + ip + ')'); } catch (e) { console.warn('wifiAutoSync', e); }
+}
+setInterval(() => wifiAutoSync(false), 15 * 60 * 1000);
 function wifiSection() {
   if (!isOwnerMe()) return ''; const c = D.cfg || {}; const ips = c.wifiIps || []; const on = !!(c.wifiAuto && ips.length);
   return '<section class="card"><h2>와이파이 자동 등원 ' + (on ? chip('켜짐', 'ok') : chip('꺼짐')) + '</h2><p class="sub">학생이 교습소 와이파이에 연결된 상태로 앱을 열면 승인 없이 바로 등원돼요 (원장님께 알림). 와이파이가 아니면 지금처럼 [등원하기] → 승인. 하원은 기존 방식 그대로예요.</p>' +
     (ips.length ? '<p>등록된 교습소 인터넷 주소: <b>' + ips.map(esc).join(', ') + '</b></p>' : '') +
     '<div class="bar"><button class="btn sm" data-a="wifiReg">이 PC가 연결된 인터넷을 교습소로 등록</button>' + (ips.length ? '<button class="btn sm ghost" data-a="wifiTog">' + (c.wifiAuto ? '끄기' : '켜기') + '</button><button class="btn sm ghost" data-a="wifiClr">등록 지우기</button>' : '') + '</div>' +
-    '<p class="sub">교습소 와이파이(같은 공유기)에 연결된 PC에서 누르세요. 학생 폰과 PC가 같은 공유기를 쓰면 주소가 같아요. 인터넷 회사 사정으로 주소가 바뀌면 다시 한 번 누르면 돼요.</p></section>';
+    '<label class="sw" style="justify-content:flex-start;gap:8px;margin-top:6px"><input type="checkbox" id="wifiPc"' + (isAcademyPc() ? ' checked' : '') + '> <b>이 PC는 교습소 PC</b> — 관리자 페이지를 열어 두면 교습소 인터넷 주소를 자동으로 갱신해요</label>' +
+    '<p class="sub">교습소 PC마다 한 번씩 체크해 두세요 (여러 대 가능, 1층·2층 인터넷이 달라도 모두 등록돼요). 집 PC에서는 체크하지 마세요. 최근 주소 6개까지 기억해요.</p></section>';
 }
 function attModal() {
   const s = stu(V.attSid) || {}; const d = V.attDate; const r = (D.att[d] || {})[V.attSid];
@@ -609,7 +620,7 @@ onAuthStateChanged(auth, user => {
       try { const sd = await getDoc(doc(db, 'staff', ph)); const x = sd.exists() ? sd.data() : null; if (!x || x.st !== 'ok' || x.uid !== user.uid) throw 0; V.staff = x; }
       catch (e) { V.msg = '원장님·승인된 부원장만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); return; }
     }
-    D.cfg = d.data(); V.screen = 'app'; V.msg = ''; subscribe(); render();
+    D.cfg = d.data(); V.screen = 'app'; V.msg = ''; subscribe(); render(); setTimeout(() => wifiAutoSync(true), 1500);
     if (!V.staff) announceUpdate(db, auth);
     try { if ('Notification' in window && Notification.permission === 'granted') enablePush(db, user.uid, ['teacher']).catch(e => console.warn('autoPush', e)); } catch (e) { }
   }, () => { V.msg = '원장님 계정만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); });
@@ -751,6 +762,7 @@ app.addEventListener('click', async e => {
 });
 
 app.addEventListener('change', async e => {
+  if (e.target.id === 'wifiPc') { try { localStorage.setItem('tmm-academy-pc', e.target.checked ? '1' : '0'); } catch (x) { } if (e.target.checked) { await wifiAutoSync(true); toast('이 PC를 교습소 PC로 지정했어요'); } else toast('교습소 PC 지정을 해제했어요'); return render(); }
   if (e.target.id === 'xlIn' && e.target.files && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; return importXlsx(f); }
   if (e.target.dataset && e.target.dataset.fi !== undefined) { finField(e.target); return render(); }
   if (e.target.id === 'schAllCk') { document.querySelectorAll('input[name=schCk]').forEach(x => x.checked = e.target.checked); return; }
@@ -869,7 +881,7 @@ app.addEventListener('submit', async e => {
   } catch (err) { fail(err); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && V.modal) { V.modal = null; V.editId = null; render(); } });
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ds(new Date()) !== TODAY) return location.reload(); if (document.visibilityState === 'visible' && V.chat && V.page === 'msg') markRead(V.chat); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ds(new Date()) !== TODAY) return location.reload(); if (document.visibilityState === 'visible' && V.chat && V.page === 'msg') markRead(V.chat); if (document.visibilityState === 'visible') wifiAutoSync(false); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => { });
 render();
 
