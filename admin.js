@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.0.0';
+const ADMIN_VERSION = '2.0.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -224,7 +224,9 @@ const realSid = k => String(k).split('-')[0];
 const logKeys = sid => Array.from({ length: (V.logN && V.logN[sid]) || 1 }, (_, k) => k ? sid + '-' + k : sid);
 function pLog() {
   const a = D.att[TODAY] || {};
-  const rows = active().map(s => {
+  const inT = s => (a[s.id] && a[s.id].st !== '결석') || D.logs.some(l => l.sid === s.id && l.date === TODAY);
+  const shown = active().filter(s => V.logAll || inT(s)); const hidden = active().length - active().filter(inT).length;
+  const rows = shown.map(s => {
     const done = D.logs.filter(l => l.sid === s.id && l.date === TODAY); const came = a[s.id] && a[s.id].st !== '결석'; const keys = logKeys(s.id);
     const nK = keys.length, wb = Math.floor(100 / nK / 10) * 10;
     return keys.map((key, k) => {
@@ -245,9 +247,9 @@ function pLog() {
         '<td class="r">' + (first ? '<button class="btn xs" data-a="saveLog" data-id="' + s.id + '">저장</button>' : '') + '</td></tr>';
     }).join('');
   }).join('');
-  return '<h1>수업 기록 <span class="sub">' + fmtD(TODAY) + ' · 등원한 학생은 미리 체크돼 있어요 · 두 단원·과목 이상 했으면 [+ 단원·과목] · 개념 비중을 고르면 문제풀이는 자동(합 100%)</span></h1>' +
-    '<div class="bar"><button class="btn" data-a="saveChecked">체크한 학생 한꺼번에 저장</button><span class="sub">저장하면 그 학생의 하원 버튼이 열리고, 공유를 켜 둔 기록은 학부모님께 알림이 가요</span></div>' +
-    '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>항목 비중</th><th>오늘 개념 비중</th><th>문제풀이 비중</th><th>특별 메모</th><th>공유</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="12" class="empty">학생이 없어요</td></tr>') + '</tbody></table></section>' +
+  return '<h1>수업 기록 <span class="sub">' + fmtD(TODAY) + ' · 오늘 등원한 학생만 보여요 · 두 단원·과목 이상 했으면 [+ 단원·과목] · 개념 비중을 고르면 문제풀이는 자동(합 100%)</span></h1>' +
+    '<div class="bar"><button class="btn" data-a="saveChecked">체크한 학생 한꺼번에 저장</button><span class="sub">저장하면 그 학생의 하원 버튼이 열리고, 공유를 켜 둔 기록은 학부모님께 알림이 가요</span>' + (hidden ? '<button class="btn sm ghost" style="margin-left:auto" data-a="logAll">' + (V.logAll ? '오늘 등원한 학생만 보기' : '등원 안 한 학생도 보기 (' + hidden + '명)') + '</button>' : '') + '</div>' +
+    '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>항목 비중</th><th>오늘 개념 비중</th><th>문제풀이 비중</th><th>특별 메모</th><th>공유</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="12" class="empty">아직 오늘 등원한 학생이 없어요</td></tr>') + '</tbody></table></section>' +
     '<section class="card"><h2>최근 기록</h2>' + recentLogs() + '</section>';
 }
 function recentLogs() {
@@ -764,6 +766,7 @@ app.addEventListener('click', async e => {
       await b.commit(); V.modal = null; V.editId = null; V.confirmLeave = null; return toast(s.name + ' 퇴원 처리했어요. 가족 계정의 이 학생 연결도 끊었어요.');
     }
     if (a === 'rejoin') { await updateDoc(doc(db, 'students', id), { left: false }); return toast('복귀 처리했어요. 가족 연결은 학생 관리에서 차단 해제해 주세요.'); }
+    if (a === 'logAll') { V.logAll = !V.logAll; return render(); }
     if (a === 'absOk') { const x = D.abs.find(y => y.id === id); if (!x) return; const s = stu(x.sid) || { name: '' }; await updateDoc(doc(db, 'abs', id), { ok: true, okBy: TNAME() }); const tx = '[결석 확인] ' + s.name + ' 학생 ' + fmtD(x.date) + ' 결석 통보를 확인했어요.'; push([x.sid + '|parent'], tx, { tag: 'abs' }); await msg(x.sid + '|parent', x.sid, 's', tx).catch(() => { }); return toast(s.name + ' 결석 확인 · 학부모님께 알렸어요'); }
     if (a === 'ok' || a === 'rej') {
       const q = D.req.find(x => x.id === id); if (!q) return; const s = stu(q.sid);
