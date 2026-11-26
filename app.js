@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.4.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -49,6 +49,7 @@ const IC={
   log:'<path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/>',
   comm:'<path d="M4 5h16v11H9l-5 4z"/>',
   note:'<path d="M5 4h14v16H5zM9 9h6M9 13h6"/>',
+  exam:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4M9 15l2 2 4-4"/>',
   users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.5a3.5 3.5 0 010 7M18 14c2.2.6 3.5 2.6 3.5 6"/>'
 };
 const ic=n=>'<svg viewBox="0 0 24 24">'+IC[n]+'</svg>';
@@ -86,11 +87,37 @@ function mReqRows(){const l=mPending();if(!l.length)return '<div class="empty">�
 function inviteText(m){const s=stu(m.sid);const nm=s?s.name:(m.name||'');const who=m.rel==='student'?nm+' 학생':nm+' '+REL[m.rel];const tn=(D.cfg&&D.cfg.teacher)||'';
   return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?tn+' 선생님':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호 입력\n3) 선생님 승인 후 이용 가능\n4) 홈 화면에 추가(설치) → 앱에서 [알림 받기] 누르기'+(m.rel==='student'&&m.grade==='중1'?'\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.':'')}
 const smsHref=m=>'sms:'+m.phone+(pushIOS()?'&':'?')+'body='+encodeURIComponent(inviteText(m));
+/* ===== 학교별 시험기간 ===== */
+const EXAM_T=['1학기 중간고사','1학기 기말고사','2학기 중간고사','2학기 기말고사'];
+const schools=()=>[...new Set(D.students.map(s=>(s.school||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+const examsFor=sc=>(D.exams||[]).filter(e=>e.school===sc&&(e.end||e.start)>=TODAY).sort((a,b)=>a.start<b.start?-1:1);
+const dday=e=>{if(e.start<=TODAY)return '시험 중';const n=Math.round((new Date(e.start+'T00:00')-new Date(TODAY+'T00:00'))/864e5);return 'D-'+n};
+const examRow=(e,del)=>'<div class="row"><div class="grow"><div class="nm">'+(del?esc(e.school)+' · ':'')+esc(e.title)+'</div><div class="sub">'+fmtD(e.start)+(e.end&&e.end!==e.start?' ~ '+fmtD(e.end):'')+(e.memo?' · '+esc(e.memo):'')+'</div></div>'+((e.end||e.start)>=TODAY?'<span class="chip c-warn">'+dday(e)+'</span>':'<span class="chip">끝남</span>')+(del?'<button class="btn sm ghost" data-act="exDel" data-id="'+e.id+'">삭제</button>':'')+'</div>';
+function examCard(s){if(!s||!s.school)return '';const l=examsFor(s.school);if(!l.length)return '';return '<div class="card" style="border-color:var(--warn)"><h3>시험 일정 <small>'+esc(s.school)+'</small></h3>'+l.map(e=>examRow(e,false)).join('')+'</div>'}
+function examView(){
+  const sc=schools();const noSc=D.students.filter(s=>!s.school).length;
+  const all=[...(D.exams||[])].sort((a,b)=>((b.end||b.start)>=TODAY)-((a.end||a.start)>=TODAY)||(a.start<b.start?-1:1));
+  return header('학교별 시험기간','등록하면 그 학교 학생·학부모 앱에 바로 보여요',true)+'<div class="body">'+
+  '<form class="card" id="examF"><h3>시험기간 등록</h3><label class="f"><span>학교</span><input id="exS" list="exSL" placeholder="예: 동탄중" autocomplete="off"><datalist id="exSL">'+sc.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>'+
+  '<label class="f"><span>시험</span><input id="exT" list="exTL" placeholder="예: 2학기 기말고사" autocomplete="off"><datalist id="exTL">'+EXAM_T.map(x=>'<option value="'+x+'">').join('')+'</datalist></label>'+
+  '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>시작일</span><input type="date" id="exA"></label><label class="f"><span>끝나는 날</span><input type="date" id="exB"></label></div>'+
+  '<label class="f"><span>메모 (선택)</span><input id="exM" placeholder="예: 수학 12/3(수) 2교시"></label><button class="btn" style="width:100%" type="submit">등록하고 알림 보내기</button>'+
+  (noSc?'<p class="sub" style="margin:10px 0 0">학교가 입력되지 않은 학생이 '+noSc+'명 있어요. 학생 관리에서 학교를 넣어 주세요.</p>':'')+'</form>'+
+  '<div class="card"><h3>등록된 시험 <small>'+all.length+'건</small></h3>'+(all.length?all.map(e=>examRow(e,true)).join(''):'<div class="empty">아직 등록된 시험이 없어요</div>')+'</div></div>';
+}
+/* ===== 부원장 ===== */
+const isOwnerMe=()=>!!(D.cfg&&D.cfg.owner===ME.uid);
+const stPending=()=>(D.staff||[]).filter(x=>x.st==='pending');
+const staffInvite=x=>'[더밀착수학] '+(x.name||'')+' 선생님, 더밀착수학 관리 앱 부원장 계정 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호('+fmtP(x.phone)+')와 원하는 비밀번호 입력\n3) 원장님 승인 후 이용 가능 (PC는 https://themilchak-math.github.io/admin.html)';
+const staffChip=x=>x.st==='ok'?'<span class="chip c-ok">사용 중</span>':x.st==='pending'?'<span class="chip c-warn">승인 대기</span>':'<span class="chip">미가입</span>';
+function staffRows(){const l=D.staff||[];if(!l.length)return '<div class="empty">등록된 부원장이 없어요</div>';return l.map(x=>'<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(x.name||'')+' 부원장</div><div class="sub">'+esc(fmtP(x.phone))+'</div></div>'+staffChip(x)+(x.st==='pending'?'<button class="btn sm ghost" data-act="stRej" data-id="'+x.id+'">거절</button><button class="btn sm" data-act="stOk" data-id="'+x.id+'">승인</button>':x.st==='none'?'<a class="btn sm" style="display:inline-flex;align-items:center;text-decoration:none" href="'+esc('sms:'+x.phone+(pushIOS()?'&':'?')+'body='+encodeURIComponent(staffInvite(x)))+'">안내 문자</a>':'')+'<button class="btn sm ghost" data-act="stDel" data-id="'+x.id+'">삭제</button></div>').join('')}
+function staffWaitView(){const x=U.staffDoc||{};return authHeader('부원장 가입 확인','원장님이 승인하면 바로 이용할 수 있어요')+'<div class="body"><div class="card"><h3>'+esc(fmtP(ME.phone))+'</h3><div class="row"><div class="grow nm">'+esc(x.name||'')+' 부원장</div><span class="chip c-warn">원장님 승인 대기</span></div></div><div class="card"><p class="sub" style="margin:0">이 화면을 닫아도 괜찮아요. 승인되면 다음에 열 때 바로 들어가져요.</p></div>'+installTip()+'<button class="btn ghost" style="width:100%" data-act="logout">로그아웃</button></div>'}
 function mngView(){
   return header('학생·학부모 관리','등록한 번호로만 가입할 수 있어요',true)+'<div class="body">'+
   '<div class="card"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>'+
+  (isOwnerMe()?'<div class="card"><h3>부원장 <button class="btn sm" data-act="sheet" data-s="staff">+ 등록</button></h3>'+staffRows()+'</div>':'')+
   '<button class="btn" style="width:100%;margin-bottom:12px" data-act="sheet" data-s="stu">+ 학생 등록</button>'+
-  D.students.map(s=>'<div class="card"><h3>'+esc(s.name)+' <small>'+esc(s.grade)+' · 수업 '+esc(s.time)+'</small></h3>'+['student','father','mother'].map(rel=>{const m=(D.members||[]).find(x=>x.sid===s.id&&x.rel===rel);return '<div class="row"><div class="grow"><div class="nm" style="font-weight:500">'+REL[rel]+'</div><div class="sub">'+(m?esc(fmtP(m.phone)):'번호 미등록')+'</div></div>'+(m?mChip(m):'<span class="chip">없음</span>')+(m&&m.st==='ok'?'<button class="btn sm ghost" data-act="mReset" data-id="'+m.id+'">비번 분실</button><button class="btn sm ghost" data-act="mBlock" data-id="'+m.id+'">차단</button>':m&&m.st==='block'?'<button class="btn sm ghost" data-act="mUnblock" data-id="'+m.id+'">해제</button>':m&&m.st==='pending'?'<button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button>':m&&m.st==='none'?'<a class="btn sm" style="display:inline-flex;align-items:center;text-decoration:none" href="'+esc(smsHref(m))+'">안내 문자</a>':'')+'</div>'}).join('')+'</div>').join('')+'</div>';
+  D.students.map(s=>'<div class="card"><h3>'+esc(s.name)+' <small>'+esc(s.grade)+' · '+(s.school?esc(s.school):'학교 미입력')+' · 수업 '+esc(s.time)+' <button class="btn sm ghost" data-act="schEdit" data-id="'+s.id+'">학교</button></small></h3>'+['student','father','mother'].map(rel=>{const m=(D.members||[]).find(x=>x.sid===s.id&&x.rel===rel);return '<div class="row"><div class="grow"><div class="nm" style="font-weight:500">'+REL[rel]+'</div><div class="sub">'+(m?esc(fmtP(m.phone)):'번호 미등록')+'</div></div>'+(m?mChip(m):'<span class="chip">없음</span>')+(m&&m.st==='ok'?'<button class="btn sm ghost" data-act="mReset" data-id="'+m.id+'">비번 분실</button><button class="btn sm ghost" data-act="mBlock" data-id="'+m.id+'">차단</button>':m&&m.st==='block'?'<button class="btn sm ghost" data-act="mUnblock" data-id="'+m.id+'">해제</button>':m&&m.st==='pending'?'<button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button>':m&&m.st==='none'?'<a class="btn sm" style="display:inline-flex;align-items:center;text-decoration:none" href="'+esc(smsHref(m))+'">안내 문자</a>':'')+'</div>'}).join('')+'</div>').join('')+'</div>';
 }
 const pending=()=>(D.req||[]).filter(q=>q.st==='pending');
 const myReq=sid=>pending().find(q=>q.sid===sid);
@@ -154,7 +181,8 @@ function tHome(){
   const present=D.students.filter(s=>a[s.id]&&a[s.id].st!=='결석').length;
   const toCheck=D.hw.filter(h=>h.st==='done');
   return header(TNAME(),'오늘 '+fmtD(TODAY))+'<div class="body">'+pushCard()+
-  '<div class="quick"><button data-act="sheet" data-s="qr">'+ic('att')+'등원 QR</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button><button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button><button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button></div>'+
+  '<div class="quick"><button data-act="sheet" data-s="qr">'+ic('att')+'등원 QR</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button><button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button><button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'시험기간</button></div>'+
+  (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
   (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+
   '<div class="stats"><div><b>'+present+'/'+D.students.length+'</b><span>오늘 등원</span></div><div><b>'+toCheck.length+'</b><span>확인할 숙제</span></div><div><b>'+unreadTeacher()+'</b><span>새 메시지</span></div></div>'+
@@ -190,7 +218,7 @@ function tAtt(){
   '<button class="btn" style="width:100%;min-height:56px;font-size:17px;margin-bottom:12px" data-act="sheet" data-s="qr">등원 QR 띄우기</button>'+
   '<div class="card"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>'+
   '<div class="card"><h3>출결 규칙</h3><p class="sub" style="margin:0">학생이 선생님 폰의 등원 QR(30초마다 바뀜)을 찍으면 선생님께 승인 요청이 가요. 승인해야 등원이 기록되고, 요청 시각이 수업 시작 이후면 지각이에요. 하원은 그날 학습 정리를 올린 뒤에만 열려요.</p></div>'+
-  '<div class="card"><label class="f"><span>날짜</span><input type="date" id="attDate" value="'+U.attDate+'"></label><div class="sw" style="margin:0"><span>등·하원 시 학부모님께 알림 자동 발송</span><input type="checkbox" id="autoN" '+(D.autoNotify?'checked':'')+'></div></div>'+
+  '<div class="card"><label class="f"><span>날짜</span><input type="date" id="attDate" value="'+U.attDate+'"></label>'+(isOwnerMe()?'<div class="sw" style="margin:0"><span>등·하원 시 학부모님께 알림 자동 발송</span><input type="checkbox" id="autoN" '+(D.autoNotify?'checked':'')+'></div>':'')+'</div>'+
   '<div class="card"><h3>학생별 등·하원</h3>'+D.students.map(s=>{
     const r=a[s.id];const lg=loggedOn(s.id,U.attDate);
     const line=!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+r.out:lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
@@ -259,7 +287,7 @@ function sHome(){
   const s=stu(U.me);
   const todo=D.hw.filter(h=>h.sid===s.id&&h.st==='todo');
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
-  return header(s.name+' 학생',s.grade+' · '+s.course)+'<div class="body">'+pushCard()+checkCard(s)+
+  return header(s.name+' 학생',s.grade+' · '+s.course)+'<div class="body">'+pushCard()+checkCard(s)+examCard(s)+
   '<div class="stats"><div><b>'+todo.length+'</b><span>남은 숙제</span></div><div><b>'+coursePct(s.id,s.course)+'%</b><span>진도율</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   '<div class="card"><h3>해야 할 숙제</h3>'+hwList(todo,'student')+'</div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
@@ -271,7 +299,7 @@ function pHome(){
   const s=stu(U.me);const a=(D.att[TODAY]||{})[s.id];
   const hs=D.hw.filter(h=>h.sid===s.id);const doneRate=hs.length?Math.round(hs.filter(h=>h.st!=='todo').length/hs.length*100):0;
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
-  return header(s.name+' 학부모님',s.grade+' · '+s.course)+'<div class="body">'+pushCard()+
+  return header(s.name+' 학부모님',s.grade+' · '+s.course)+'<div class="body">'+pushCard()+examCard(s)+
   '<div class="card"><h3>오늘 출결 <small>'+fmtD(TODAY)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+attChip(a)+'</div></div>'+
   '<div class="stats"><div><b>'+coursePct(s.id,s.course)+'%</b><span>진도율</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
@@ -291,7 +319,9 @@ function sheetHtml(){
   const opts=D.students.map(s=>'<option value="'+s.id+'"'+(s.id===U.logS?' selected':'')+'>'+esc(s.name)+' ('+esc(s.grade)+')</option>').join('');
   let h='';
   if(t==='hw')h='<h3>숙제 내기</h3><div class="f"><span>받을 학생</span><div class="ck">'+D.students.map(s=>'<label><input type="checkbox" name="hwS" value="'+s.id+'"'+((U.hwF===s.id)?' checked':'')+'>'+esc(s.name)+'</label>').join('')+'</div></div><label class="f"><span>숙제 제목</span><input id="hwT" placeholder="예: 쎈 B단계 유형 3"></label><label class="f"><span>범위</span><input id="hwR" placeholder="예: p.40~45 짝수"></label><label class="f"><span>마감일</span><input type="date" id="hwD" value="'+off(2)+'"></label>';
-  if(t==='stu')h='<h3>학생 등록</h3><label class="f"><span>학생 이름</span><input id="stN" autocomplete="off"></label><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>학년</span><select id="stG">'+['중1','중2','중3','고1','고2','고3'].map(g=>'<option>'+g+'</option>').join('')+'</select></label><label class="f"><span>수업 시작</span><input type="time" id="stT" value="16:00"></label></div><label class="f"><span>학생 휴대폰</span><input id="pS" inputmode="numeric" placeholder="010-0000-0000"></label><label class="f"><span>아버님 휴대폰</span><input id="pF" inputmode="numeric" placeholder="없으면 비워두세요"></label><label class="f"><span>어머님 휴대폰</span><input id="pM" inputmode="numeric" placeholder="없으면 비워두세요"></label><p class="sub" style="margin:0 0 10px">가족이 이 번호로 가입하면 원장님께 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 한 번 가입으로 함께 연결돼요.</p>';
+  if(t==='stu')h='<h3>학생 등록</h3><label class="f"><span>학생 이름</span><input id="stN" autocomplete="off"></label><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>학년</span><select id="stG">'+['중1','중2','중3','고1','고2','고3'].map(g=>'<option>'+g+'</option>').join('')+'</select></label><label class="f"><span>수업 시작</span><input type="time" id="stT" value="16:00"></label></div><label class="f"><span>학교 (선택)</span><input id="stSc" list="stScL" placeholder="예: 동탄중" autocomplete="off"><datalist id="stScL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label><label class="f"><span>학생 휴대폰</span><input id="pS" inputmode="numeric" placeholder="010-0000-0000"></label><label class="f"><span>아버님 휴대폰</span><input id="pF" inputmode="numeric" placeholder="없으면 비워두세요"></label><label class="f"><span>어머님 휴대폰</span><input id="pM" inputmode="numeric" placeholder="없으면 비워두세요"></label><p class="sub" style="margin:0 0 10px">가족이 이 번호로 가입하면 원장님께 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 한 번 가입으로 함께 연결돼요.</p>';
+  if(t==='staff')h='<h3>부원장 등록</h3><label class="f"><span>이름</span><input id="sfN" autocomplete="off" placeholder="예: 홍길동"></label><label class="f"><span>휴대폰 (로그인 아이디)</span><input id="sfP" inputmode="numeric" placeholder="010-0000-0000"></label><p class="sub" style="margin:0 0 10px">부원장님이 이 번호로 가입하면 원장님께 승인 요청이 와요. 승인하면 학생 관리·출결·숙제·기록·메시지를 원장님과 똑같이 쓸 수 있어요. (부원장 등록·앱 설정은 원장님만)</p>';
+  if(t==='school'){const s=stu(U.schSid)||{};h='<h3>'+esc(s.name||'')+' 학교</h3><label class="f"><span>학교</span><input id="scIn" list="scInL" value="'+esc(s.school||'')+'" placeholder="예: 동탄중" autocomplete="off"><datalist id="scInL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>'}
   if(t==='notice')h='<h3>공지 쓰기</h3><label class="f"><span>제목</span><input id="nT"></label><label class="f"><span>내용</span><textarea id="nB"></textarea></label><label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="nP">상단 고정</label>';
   if(t==='log'){
     const f=U.lf;const s=stu(f.sid);const us=unitsOf(f.sid,f.course);
@@ -311,12 +341,12 @@ function sheetHtml(){
 
 const app=document.getElementById('app');
 /* ================= 상태 ================= */
-const D={students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],autoNotify:true,cfg:null};
+const D={students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],autoNotify:true,cfg:null};
 const ME={uid:null,phone:'',sids:[],rels:{},ths:[]};
 const U={screen:'loading',authMsg:'',authTab:'login',busy:false,wait:[],update:null,
   calM:TODAY.slice(0,7),calS:'all',calD:TODAY,page:null,pc:{},lf:null,pushX:{},
   role:'teacher',me:null,tab:'home',chat:null,sheet:null,comm:'msg',hwF:'all',logS:null,attDate:TODAY,toast:''};
-const TNAME=()=>((D.cfg&&D.cfg.teacher)||'원장')+' 선생님';
+const TNAME=()=>(U.isStaff&&U.staffDoc&&U.staffDoc.name?U.staffDoc.name:((D.cfg&&D.cfg.teacher)||'원장'))+' 선생님';
 const docs=s=>s.docs.map(d=>({id:d.id,...d.data()}));
 const now=()=>Date.now();
 const phoneOf=u=>(u&&u.email||'').split('@')[0];
@@ -393,6 +423,7 @@ function appView(){
   if(U.role!=='teacher'&&!stu(U.me))return header('불러오는 중','')+'<div class="body"><div class="empty">잠시만요...</div></div>';
   if(U.chat)return chatView();
   if(U.page==='mng')return mngView();
+  if(U.page==='exam')return examView();
   const map={teacher:{home:tHome,att:tAtt,hw:tHw,log:tLog,comm:tComm},student:{home:sHome,hw:sHw,log:myLog,comm:oComm},parent:{home:pHome,att:pAtt,log:myLog,comm:oComm}}[U.role];
   return (map[U.tab]||map.home)()+'<nav class="tabs">'+tabsFor()+'</nav>';
 }
@@ -411,6 +442,7 @@ function render(){
     if(U.screen==='loading')html=authHeader('더밀착수학','불러오는 중...')+'<div class="body"><div class="empty">잠시만요...</div></div>';
     else if(U.screen==='auth')html=authView();
     else if(U.screen==='wait')html=waitView();
+    else if(U.screen==='staffWait')html=staffWaitView();
     else{
       html=appView();
       if(U.role==='teacher'&&!U.sheet)html+=pushBanner();
@@ -471,7 +503,7 @@ const L=(q,fn)=>dataUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',
 const B=(q,fn)=>baseUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',e.code)));
 const sortMsgs=l=>l.sort((a,b)=>(a.ts||0)-(b.ts||0));
 const sortStu=()=>D.students.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
-function resetD(){Object.assign(D,{students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[]})}
+function resetD(){Object.assign(D,{students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[]})}
 
 function subTeacher(){
   resetD();
@@ -483,6 +515,8 @@ function subTeacher(){
   L(collection(db,'notices'),s=>{D.notices=docs(s);sr()});
   L(query(collection(db,'reqs'),where('st','==','pending')),s=>{D.req=docs(s).filter(q=>q.date===TODAY);sr()});
   L(collection(db,'members'),s=>{D.members=docs(s);sr()});
+  L(collection(db,'exams'),s=>{D.exams=docs(s);sr()});
+  L(collection(db,'staff'),s=>{D.staff=docs(s);sr()});
 }
 function subFamily(){
   resetD();const attBy={};
@@ -496,22 +530,36 @@ function subFamily(){
   });
   ME.ths.forEach(th=>L(query(collection(db,'msgs'),where('th','==',th)),s=>{D.threads[th]=sortMsgs(docs(s));if(U.chat===th)markRead(th);sr()}));
   L(collection(db,'notices'),s=>{D.notices=docs(s);sr()});
+  L(collection(db,'exams'),s=>{D.exams=docs(s);sr()});
 }
 function famRole(){U.role=ME.rels[U.me]==='student'?'student':'parent'}
 
 /* ================= 로그인 흐름 ================= */
 onAuthStateChanged(auth,user=>{
-  stopAll();U.famStarted=false;U.famSig=null;U.claimed=false;U.comm='msg';U.hwF='all';U.calS='all';U.pushX={};U.me=null;U.logS=null;U.ret=null;U.lf=null;qrStop();ME.uid=null;U.sheet=null;U.chat=null;U.page=null;U.tab='home';
+  stopAll();U.staffSub=false;U.isStaff=false;U.staffDoc=null;U.famStarted=false;U.famSig=null;U.claimed=false;U.comm='msg';U.hwF='all';U.calS='all';U.pushX={};U.me=null;U.logS=null;U.ret=null;U.lf=null;qrStop();ME.uid=null;U.sheet=null;U.chat=null;U.page=null;U.tab='home';
   if(!user){U.screen='auth';render();return}
   ME.uid=user.uid;ME.phone=phoneOf(user);U.screen='loading';render();
   B(doc(db,'config','main'),d=>{
     D.cfg=d.exists()?d.data():null;D.autoNotify=D.cfg?D.cfg.autoNotify!==false:true;
     if(!D.cfg){if(U.pendingSetup)return;U.screen='auth';U.authMsg='아직 원장님 설정이 안 된 앱이에요.';render();return}
     if(D.cfg.owner===ME.uid){if(U.role!=='teacher'||U.screen!=='app'){U.role='teacher';U.screen='app';stopData();subTeacher();autoPush();announceUpdate(db,auth)}sr();return}
-    if(!U.famStarted){U.famStarted=true;startFamily()}
+    checkStaff();
     sr();
   });
 });
+function checkStaff(){
+  if(U.staffSub)return;U.staffSub=true;
+  const goFam=()=>{if(!U.famStarted){U.famStarted=true;startFamily()}};
+  baseUnsubs.push(onSnapshot(doc(db,'staff',ME.phone),async d=>{
+    const sd=d.exists()?d.data():null;U.staffDoc=sd;
+    if(sd&&sd.st==='ok'&&sd.uid===ME.uid){U.isStaff=true;if(U.role!=='teacher'||U.screen!=='app'){U.role='teacher';U.screen='app';stopData();subTeacher();autoPush()}sr();return}
+    if(U.isStaff){U.isStaff=false;U.authMsg='부원장 권한이 해제됐어요. 원장님께 문의해 주세요.';U.authTab='login';await signOut(auth);return}
+    if(sd&&(sd.st==='none'||(sd.st==='pending'&&sd.uid===ME.uid))){
+      if(sd.st==='none'){try{await updateDoc(doc(db,'staff',ME.phone),{st:'pending',uid:ME.uid,at:stamp()});push(['teacher'],'[부원장 가입 요청] '+(sd.name||'')+' 부원장님 가입을 승인해 주세요.',{tag:'join'})}catch(e){console.warn(e)}}
+      U.screen='staffWait';sr();return}
+    goFam();sr();
+  },e=>{console.warn('staff',e.code);goFam();sr()}));
+}
 function startFamily(){
   B(doc(db,'users',ME.uid),d=>{
     const p=d.exists()?d.data():{};const sids=p.sids||[];
@@ -541,7 +589,7 @@ async function claim(ms){
 
 /* ================= 쓰기 도우미 ================= */
 const msg=(th,sid,f,t)=>addDoc(collection(db,'msgs'),{th,sid,f,t,at:stamp(),ts:now(),r:false});
-const isTeacher=()=>U.role==='teacher'&&D.cfg&&D.cfg.owner===ME.uid;
+const isTeacher=()=>U.role==='teacher'&&(isOwnerMe()||U.isStaff);
 const push=(targets,text,opts)=>{sendPush(db,auth,targets,text,Object.assign({prune:isTeacher()},opts||{}))};
 const famName=()=>{const s=stu(U.me);return (s?s.name:'')+(U.role==='student'?' 학생':' 학부모님')};
 function notifyParent(sid,text){if(!D.autoNotify)return Promise.resolve();push([sid+'|parent'],text);return msg(sid+'|parent',sid,'s',text).catch(e=>console.warn(e))}
@@ -627,6 +675,12 @@ app.addEventListener('click',async e=>{
   if(a==='lfCm'){U.lf.showCm=true;return render()}
   if(a==='logFor'){U.logS=id;U.sheet='log';U.ret='att';initLf(id);return render()}
 
+  // 부원장·학교·시험
+  if(a==='stOk'){await updateDoc(doc(db,'staff',id),{st:'ok'});return toast('부원장 승인 완료')}
+  if(a==='stRej'){await updateDoc(doc(db,'staff',id),{st:'none',uid:deleteField()});return toast('거절했어요')}
+  if(a==='stDel'){const x=(D.staff||[]).find(y=>y.id===id);if(!x)return;if(!U.stDelArm||U.stDelArm!==id){U.stDelArm=id;return toast('한 번 더 누르면 '+(x.name||'')+' 부원장을 삭제해요')}U.stDelArm=null;await deleteDoc(doc(db,'staff',id));return toast('삭제했어요. 그 번호로는 더 이상 관리 기능을 쓸 수 없어요')}
+  if(a==='schEdit'){U.schSid=id;U.sheet='school';return render()}
+  if(a==='exDel'){if(U.exDelArm!==id){U.exDelArm=id;return toast('한 번 더 누르면 삭제해요')}U.exDelArm=null;await deleteDoc(doc(db,'exams',id));return toast('시험 일정을 삭제했어요')}
   // 가입 승인·관리
   if(a==='mOk'){const m=D.members.find(x=>x.id===id);if(!m||!m.uid)return;const all=D.members.filter(x=>x.uid===m.uid&&x.st==='pending');const b=writeBatch(db);all.forEach(x=>linkUser(b,x));await b.commit();
     for(const x of all){if(x.rel!=='student')await msg(thOf(x.sid,x.rel),x.sid,'s','[가입 승인] '+mLabel(x)+'으로 연결되었어요. 환영합니다!')}
@@ -711,6 +765,24 @@ app.addEventListener('submit',async e=>{
     U.busy=false;return render()}
   if(fid==='codeF'){const c=digits(g('codeIn'));if(c.length!==6)return toast('숫자 6자리를 입력해 주세요');stopScan();return sendCode(c)}
   if(fid==='sendF'){const t=g('msgIn').trim();if(!t)return;const [sid]=U.chat.split('|');document.getElementById('msgIn').value='';await msg(U.chat,sid,U.role==='teacher'?'t':'o',t);if(U.role==='teacher')push([U.chat],t,{title:TNAME()+' 메시지',tag:'m'+U.chat});else push(['teacher'],t,{title:famName()+' 메시지',tag:'m'+U.chat});return}
+  if(fid==='examF'){
+    const school=g('exS').trim(),title=g('exT').trim(),start=g('exA'),end=g('exB')||g('exA'),memo=g('exM').trim();
+    if(!school||!title||!start)return toast('학교·시험·시작일을 입력해 주세요');
+    if(end<start)return toast('끝나는 날이 시작일보다 빨라요');
+    await addDoc(collection(db,'exams'),{school,title,start,end,memo,ts:now()});
+    const kids=D.students.filter(x=>(x.school||'').trim()===school);
+    if(kids.length)push(kids.flatMap(x=>[x.id+'|student',x.id+'|parent']),school+' '+title+' · '+fmtD(start)+(end!==start?' ~ '+fmtD(end):'')+(memo?' · '+memo:''),{title:'시험 일정 등록',tag:'exam'});
+    ['exS','exT','exA','exB','exM'].forEach(i=>{const el=document.getElementById(i);if(el)el.value=''});
+    return toast(school+' '+title+' 등록'+(kids.length?' · '+kids.length+'명 가족에게 알림':' (이 학교 학생이 아직 없어요)'));
+  }
+  if(U.sheet==='staff'){
+    const name=g('sfN').trim(),ph=digits(g('sfP'));
+    if(!name)return toast('이름을 입력해 주세요');if(ph.length<10||ph.length>11)return toast('휴대폰번호를 확인해 주세요');
+    if(ph===digits(D.cfg&&D.cfg.phone))return toast('원장님 번호예요');
+    if((D.staff||[]).some(x=>x.id===ph))return toast('이미 등록된 번호예요');
+    await setDoc(doc(db,'staff',ph),{name,phone:ph,st:'none',ts:now()});U.sheet=null;return toast(name+' 부원장 등록 · [안내 문자]로 가입 안내를 보내세요');
+  }
+  if(U.sheet==='school'){const sc=g('scIn').trim();await updateDoc(doc(db,'students',U.schSid),{school:sc});U.sheet=null;return toast('학교를 저장했어요')}
   if(U.sheet==='hw'){
     const ids=[...document.querySelectorAll('input[name=hwS]:checked')].map(x=>x.value);const title=g('hwT').trim();
     if(!ids.length||!title)return toast('학생과 제목을 입력해 주세요');
@@ -745,7 +817,7 @@ app.addEventListener('submit',async e=>{
     if(!Object.values(ph).some(x=>x))return toast('번호를 하나 이상 등록해 주세요');
     const grade=g('stG');const course={중1:'중1-2',중2:'중2-2',중3:'중3-2',고1:'공통수학2',고2:'대수',고3:'미적분Ⅰ'}[grade];
     const b=writeBatch(db);const sref=doc(collection(db,'students'));const sid=sref.id;
-    b.set(sref,{name,grade,time:g('stT')||'16:00',course,ts:now()});
+    b.set(sref,{name,grade,school:g('stSc').trim(),time:g('stT')||'16:00',course,ts:now()});
     const autoLinked=[];
     Object.entries(ph).forEach(([rel,p])=>{if(!p)return;const ex=rel!=='student'&&D.members.find(m=>m.phone===p&&m.st==='ok'&&m.uid);const mref=doc(collection(db,'members'));
       const m={sid,rel,phone:p,st:ex?'ok':'none',name,grade,guardianOk:false};if(ex){m.uid=ex.uid;autoLinked.push(ex)}b.set(mref,m);
@@ -772,6 +844,6 @@ if('serviceWorker' in navigator){
 try{U.noInstall=localStorage.getItem('tmm-noinst')==='1'}catch(e){}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();U.bip=e;render()});
 window.addEventListener('appinstalled',()=>{U.bip=null;toast('설치됐어요! 홈 화면에서 열어 주세요')});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)return location.reload();if(document.visibilityState==='visible'){U.fresh=Date.now();if(U.reg)U.reg.update().catch(()=>{});if(U.chat)markRead(U.chat);autoPush();if(isTeacher())announceUpdate(db,auth)}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)return location.reload();if(document.visibilityState==='visible'){U.fresh=Date.now();if(U.reg)U.reg.update().catch(()=>{});if(U.chat)markRead(U.chat);autoPush();if(isOwnerMe())announceUpdate(db,auth)}});
 window.addEventListener('focus',()=>{if(U.chat)markRead(U.chat)});
 render();

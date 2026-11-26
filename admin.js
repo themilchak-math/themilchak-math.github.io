@@ -1,11 +1,11 @@
 // 더밀착수학 PC 관리자 페이지 (원장님 전용) - 폰 앱(app.js)과 같은 Firebase 데이터를 씀
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 
-const ADMIN_VERSION = '1.3.1';
+const ADMIN_VERSION = '1.4.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -45,7 +45,7 @@ const COURSES = Object.keys(CUR);
 const PCT = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 /* ---------- 상태 ---------- */
-const D = { students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], cfg: null };
+const D = { students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], cfg: null };
 const V = { screen: 'loading', page: 'dash', msg: '', busy: false, calM: TODAY.slice(0, 7), chat: null, hwF: 'all', modal: null, bulk: null, qr: null, toast: '' };
 const app = document.getElementById('app');
 const docs = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -61,7 +61,8 @@ const lastOf = (sid, course, unit) => sortLogs(D.logs.filter(l => l.sid === sid 
 const latest = sid => sortLogs(D.logs.filter(l => l.sid === sid)).pop();
 const unitsOf = (sid, course) => { const base = CUR[course] || []; const extra = [...new Set(D.logs.filter(l => l.sid === sid && l.course === course && !base.includes(l.unit)).map(l => l.unit))]; return base.concat(extra); };
 const unreadAll = () => Object.values(D.threads).reduce((a, t) => a + t.filter(m => m.f === 'o' && !m.r).length, 0);
-const TNAME = () => ((D.cfg && D.cfg.teacher) || '원장') + ' 선생님';
+const TNAME = () => (V.staff && V.staff.name ? V.staff.name : ((D.cfg && D.cfg.teacher) || '원장')) + ' 선생님';
+const isOwnerMe = () => !!(D.cfg && auth.currentUser && D.cfg.owner === auth.currentUser.uid);
 const APP_URL = 'https://themilchak-math.github.io';
 const isIOSdev = () => /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 function inviteText(m) {
@@ -83,9 +84,10 @@ const attChip = a => !a ? chip('미등원') : chip(a.st + (a.at ? ' ' + a.at : '
 const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입');
 const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 'done' ? chip('제출함', 'pri') : h.due < TODAY ? chip('기한 지남', 'bad') : chip('진행 중', 'warn');
 
-const NAV = [['dash', '대시보드'], ['qr', '등원 QR'], ['students', '학생·학부모'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['notice', '공지'], ['msg', '메시지']];
+const NAV0 = [['dash', '대시보드'], ['qr', '등원 QR'], ['students', '학생·학부모'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['exam', '시험기간'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
+const navList = () => NAV0.filter(([k]) => k !== 'staff' || isOwnerMe());
 function navBadge(k) {
-  const n = k === 'dash' ? mPending().length + pending().length : k === 'qr' ? pending().length : k === 'students' ? mPending().length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : 0;
+  const n = k === 'dash' ? mPending().length + pending().length : k === 'qr' ? pending().length : k === 'students' ? mPending().length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : k === 'staff' ? D.staff.filter(x => x.st === 'pending').length : 0;
   return n ? '<span class="badge">' + n + '</span>' : '';
 }
 
@@ -104,6 +106,7 @@ function pDash() {
   const toCheck = D.hw.filter(h => h.st === 'done');
   return '<h1>' + esc(TNAME()) + ' <span class="sub">오늘 ' + fmtD(TODAY) + '</span></h1>' +
     pushCard() + '<div class="kpis"><div><b>' + present + '/' + st.length + '</b><span>오늘 등원</span></div><div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
+    (isOwnerMe() && D.staff.some(x => x.st === 'pending') ? '<section class="card hl"><h2>부원장 가입 승인</h2><table><tbody>' + D.staff.filter(x => x.st === 'pending').map(x => '<tr><td><b>' + esc(x.name || '') + ' 부원장</b></td><td>' + esc(fmtP(x.phone)) + '</td><td class="r"><button class="btn sm ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn sm" data-a="stOk" data-id="' + x.id + '">승인</button></td></tr>').join('') + '</tbody></table></section>' : '') +
     '<div class="grid2"><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section><section class="card"><h2>가입 승인 대기</h2>' + joinRows() + '</section></div>' +
     '<section class="card"><h2>오늘 출결 <span class="sub">' + fmtD(TODAY) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th><th>수업</th><th>상태</th><th>오늘 기록</th></tr></thead><tbody>' +
     st.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === TODAY).pop(); return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + esc(s.time) + '</td><td>' + attChip(a[s.id]) + '</td><td>' + (lg ? esc(lg.unit) + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
@@ -129,8 +132,8 @@ function pStudents() {
   return '<h1>학생·학부모 관리 <span class="sub">등록한 번호로만 가입할 수 있어요</span></h1>' +
     '<div class="bar"><button class="btn" data-a="modal" data-v="stu">+ 학생 한 명 등록</button><button class="btn ghost" data-a="modal" data-v="bulk">엑셀에서 여러 명 붙여넣기</button></div>' +
     (mPending().length ? '<section class="card hl"><h2>가입 승인 대기</h2>' + joinRows() + '</section>' : '') +
-    '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>수업</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
-    (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + esc(s.time) + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && m.st === 'none') ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="8" class="empty">아직 등록된 학생이 없어요</td></tr>') +
+    '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>학교</th><th>수업</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
+    (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.time) + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && m.st === 'none') ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
     '</tbody></table></section>' +
     (left.length ? '<details class="card"><summary>퇴원한 학생 ' + left.length + '명</summary><table><tbody>' + left.map(s => '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.grade) + '</td><td class="r"><button class="btn xs ghost" data-a="rejoin" data-id="' + s.id + '">복귀</button></td></tr>').join('') + '</tbody></table></details>' : '');
 }
@@ -150,7 +153,7 @@ function pAtt() {
     return '<tr><th class="nm">' + esc(s.name) + '</th>' + cells + '<td class="sum">' + c[0] + '</td><td class="sum">' + c[1] + '</td><td class="sum">' + c[2] + '</td></tr>';
   }).join('');
   return '<h1>출결 <span class="sub">칸에 마우스를 올리면 시각이 보여요 · 빈 칸을 누르면 결석 처리, 결석 칸을 누르면 취소</span></h1>' +
-    '<div class="bar"><button class="btn sm ghost" data-a="calM" data-v="-1">‹ 이전 달</button><b class="mon">' + y + '년 ' + m + '월</b><button class="btn sm ghost" data-a="calM" data-v="1">다음 달 ›</button><label class="sw"><input type="checkbox" id="autoN" ' + (D.cfg && D.cfg.autoNotify !== false ? 'checked' : '') + '> 등·하원 시 학부모님께 알림 자동 발송</label></div>' +
+    '<div class="bar"><button class="btn sm ghost" data-a="calM" data-v="-1">‹ 이전 달</button><b class="mon">' + y + '년 ' + m + '월</b><button class="btn sm ghost" data-a="calM" data-v="1">다음 달 ›</button>' + (isOwnerMe() ? '<label class="sw"><input type="checkbox" id="autoN" ' + (D.cfg && D.cfg.autoNotify !== false ? 'checked' : '') + '> 등·하원 시 학부모님께 알림 자동 발송</label>' : '') + '</div>' +
     '<section class="card scroll"><table class="att"><thead><tr><th class="nm">학생</th>' + head + '<th>출</th><th>지</th><th>결</th></tr></thead><tbody>' + (rows || '<tr><td class="empty">학생이 없어요</td></tr>') + '</tbody></table><p class="sub legend">' + chip('출 출석', 'ok') + ' ' + chip('지 지각', 'warn') + ' ' + chip('결 결석', 'bad') + ' 출석·지각은 학생이 등원 QR을 찍고 원장님이 승인해야 기록돼요.</p></section>';
 }
 
@@ -199,6 +202,31 @@ function pHw() {
     '<section class="card"><div class="bar"><b>숙제 목록</b><select id="hwFilter">' + opt('all', f, '전체 학생') + active().map(s => opt(s.id, f, s.name)).join('') + '</select></div>' + hwTable(list) + '</section>';
 }
 
+/* ---------- 학교별 시험기간 ---------- */
+const EXAM_T = ['1학기 중간고사', '1학기 기말고사', '2학기 중간고사', '2학기 기말고사'];
+const schools = () => [...new Set(D.students.filter(s => !s.left).map(s => (s.school || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+const examLive = e => (e.end || e.start) >= TODAY;
+const dday = e => { if (e.start <= TODAY) return '시험 중'; return 'D-' + Math.round((new Date(e.start + 'T00:00') - new Date(TODAY + 'T00:00')) / 864e5); };
+function pExam() {
+  const sc = schools(); const noSc = active().filter(s => !s.school);
+  const all = [...D.exams].sort((a, b) => (examLive(b) - examLive(a)) || (a.start < b.start ? -1 : 1));
+  const bySchool = sc.map(x => [x, active().filter(s => (s.school || '').trim() === x)]);
+  return '<h1>학교별 시험기간 <span class="sub">등록하면 그 학교 학생·학부모 앱 홈에 D-day로 보여요</span></h1><div class="grid2"><section class="card"><h2>시험기간 등록</h2><form id="examF" class="form">' +
+    '<label>학교<input id="exS" list="exSL" placeholder="예: 동탄중" autocomplete="off"><datalist id="exSL">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></label>' +
+    '<label>시험<input id="exT" list="exTL" placeholder="예: 2학기 기말고사" autocomplete="off"><datalist id="exTL">' + EXAM_T.map(x => '<option value="' + x + '">').join('') + '</datalist></label>' +
+    '<div class="row2"><label>시작일<input type="date" id="exA"></label><label>끝나는 날<input type="date" id="exB"></label></div><label>메모 (선택)<input id="exM" placeholder="예: 수학 12/3(수) 2교시"></label><button class="btn" type="submit">등록하고 알림 보내기</button></form>' +
+    (noSc.length ? '<p class="sub">학교 미입력: ' + noSc.map(s => esc(s.name)).join(', ') + ' → 학생·학부모 메뉴의 [수정]에서 학교를 넣어 주세요.</p>' : '') + '</section>' +
+    '<section class="card"><h2>학교별 학생</h2>' + (bySchool.length ? '<table><tbody>' + bySchool.map(([x, l]) => { const nx = D.exams.filter(e => e.school === x && examLive(e)).sort((a, b) => a.start < b.start ? -1 : 1)[0]; return '<tr><td><b>' + esc(x) + '</b></td><td>' + l.map(s => esc(s.name)).join(', ') + '</td><td class="r">' + (nx ? chip(esc(nx.title) + ' ' + dday(nx), 'warn') : '<span class="sub">일정 없음</span>') + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">학교가 입력된 학생이 없어요</p>') + '</section></div>' +
+    '<section class="card"><h2>등록된 시험 <span class="sub">' + all.length + '건</span></h2>' + (all.length ? '<table><thead><tr><th>학교</th><th>시험</th><th>기간</th><th>메모</th><th>상태</th><th></th></tr></thead><tbody>' + all.map(e => '<tr><td><b>' + esc(e.school) + '</b></td><td>' + esc(e.title) + '</td><td>' + fmtD(e.start) + (e.end && e.end !== e.start ? ' ~ ' + fmtD(e.end) : '') + '</td><td>' + esc(e.memo || '') + '</td><td>' + (examLive(e) ? chip(dday(e), 'warn') : chip('끝남')) + '</td><td class="r"><button class="btn xs ghost" data-a="exDel" data-id="' + e.id + '">삭제</button></td></tr>').join('') + '</tbody></table>' : '<p class="empty">아직 등록된 시험이 없어요</p>') + '</section>';
+}
+/* ---------- 부원장 (원장님만) ---------- */
+const staffInvite = x => '[더밀착수학] ' + (x.name || '') + ' 선생님, 더밀착수학 관리 앱 부원장 계정 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호(' + fmtP(x.phone) + ')와 원하는 비밀번호 입력\n3) 원장님 승인 후 이용 가능\nPC 관리자 페이지: https://themilchak-math.github.io/admin.html';
+function pStaff() {
+  if (!isOwnerMe()) return '<h1>부원장</h1><section class="card"><p class="empty">원장님만 볼 수 있어요</p></section>';
+  const l = D.staff;
+  return '<h1>부원장 관리 <span class="sub">승인된 부원장은 학생 관리·출결·숙제·기록·시험기간·공지·메시지를 원장님과 똑같이 써요 (부원장 등록·앱 설정은 원장님만)</span></h1><div class="grid2"><section class="card"><h2>부원장 등록</h2><form id="staffF" class="form"><label>이름<input id="sfN" placeholder="예: 홍길동" autocomplete="off"></label><label>휴대폰 (로그인 아이디)<input id="sfP" inputmode="numeric" placeholder="010-0000-0000"></label><button class="btn" type="submit">등록</button></form><p class="sub">등록 → [문자 앱 열기]로 안내 → 부원장님이 이 번호로 가입 → 여기서 [승인]</p></section>' +
+    '<section class="card"><h2>부원장 목록</h2>' + (l.length ? '<table><tbody>' + l.map(x => '<tr><td><b>' + esc(x.name || '') + '</b><div class="sub">' + esc(fmtP(x.phone)) + '</div></td><td>' + (x.st === 'ok' ? chip('사용 중', 'ok') : x.st === 'pending' ? chip('승인 대기', 'warn') : chip('미가입')) + '</td><td class="r">' + (x.st === 'pending' ? '<button class="btn xs ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn xs" data-a="stOk" data-id="' + x.id + '">승인</button> ' : '') + (x.st === 'none' ? '<a class="btn xs" href="' + esc('sms:' + x.phone + (isIOSdev() ? '&' : '?') + 'body=' + encodeURIComponent(staffInvite(x))) + '">문자 앱 열기</a> <button class="btn xs ghost" data-a="stCopy" data-id="' + x.id + '">문구 복사</button> ' : '') + '<button class="btn xs ghost danger" data-a="stDel" data-id="' + x.id + '">삭제</button></td></tr>').join('') + '</tbody></table>' : '<p class="empty">등록된 부원장이 없어요</p>') + '</section></div>';
+}
 function pNotice() {
   const list = [...D.notices].sort((a, b) => (b.pin - a.pin) || ((b.ts || 0) - (a.ts || 0)));
   return '<h1>공지</h1><div class="grid2"><section class="card"><h2>공지 쓰기</h2><form id="ntF" class="form"><input id="nT" placeholder="제목"><textarea id="nB" rows="8" placeholder="내용"></textarea><label class="sw"><input type="checkbox" id="nP"> 상단 고정</label><button class="btn" type="submit">올리기</button></form></section>' +
@@ -221,7 +249,7 @@ function modalHtml() {
   if (V.modal === 'stu') {
     const s = V.editId ? stu(V.editId) : null;
     const ph = rel => { const m = s && memberOf(s.id, rel); const lock = m && m.st !== 'none'; return '<label>' + REL[rel] + ' 휴대폰' + (lock ? ' <span class="sub">(' + (m.st === 'ok' ? '연결됨' : m.st === 'pending' ? '승인 대기' : '차단') + ' · 바꾸려면 차단 후 새로 등록)</span>' : '') + '<input id="p_' + rel + '" inputmode="numeric" placeholder="없으면 비워두세요" value="' + esc(m ? fmtP(m.phone) : '') + '"' + (lock ? ' disabled' : '') + '></label>'; };
-    return '<div class="mbg" data-a="close"><form class="modal" id="stuF"><h2>' + (s ? esc(s.name) + ' 정보 수정' : '학생 등록') + '</h2><label>학생 이름<input id="sN" value="' + esc(s ? s.name : '') + '"></label><div class="row2"><label>학년<select id="sG">' + GRADES.map(g => opt(g, s ? s.grade : '중2')).join('') + '</select></label><label>수업 시작<input type="time" id="sT" value="' + esc(s ? s.time : '16:00') + '"></label></div>' + (s ? '<label>현재 과정<select id="sC">' + COURSES.map(c => opt(c, s.course)).join('') + '</select></label>' : '') + ph('student') + ph('father') + ph('mother') +
+    return '<div class="mbg" data-a="close"><form class="modal" id="stuF"><h2>' + (s ? esc(s.name) + ' 정보 수정' : '학생 등록') + '</h2><label>학생 이름<input id="sN" value="' + esc(s ? s.name : '') + '"></label><div class="row2"><label>학년<select id="sG">' + GRADES.map(g => opt(g, s ? s.grade : '중2')).join('') + '</select></label><label>수업 시작<input type="time" id="sT" value="' + esc(s ? s.time : '16:00') + '"></label></div><label>학교 (선택)<input id="sSc" list="sScL" value="' + esc(s ? (s.school || '') : '') + '" placeholder="예: 동탄중" autocomplete="off"><datalist id="sScL">' + schools().map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></label>' + (s ? '<label>현재 과정<select id="sC">' + COURSES.map(c => opt(c, s.course)).join('') + '</select></label>' : '') + ph('student') + ph('father') + ph('mother') +
       '<p class="sub">가족이 이 번호로 가입하면 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 이미 가입한 부모님 계정에 자동 연결돼요.</p><div class="mf">' + (s ? '<button type="button" class="btn ghost danger" data-a="leave" data-id="' + s.id + '">퇴원 처리</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit">저장</button></div></form></div>';
   }
   if (V.modal === 'invite') {
@@ -232,8 +260,8 @@ function modalHtml() {
   }
   if (V.modal === 'bulk') {
     const b = V.bulk;
-    return '<div class="mbg" data-a="close"><form class="modal wide" id="bulkF"><h2>엑셀에서 여러 명 붙여넣기</h2><p class="sub">엑셀에서 아래 순서로 열을 맞춰 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣기(Ctrl+V) 하세요. 첫 줄이 제목이면 자동으로 건너뛰어요.<br><b>이름 · 학년(중1~고3) · 수업 시작(16:00) · 학생 번호 · 아버님 번호 · 어머님 번호</b></p><textarea id="bulkIn" rows="7" placeholder="홍길동	중2	16:00	010-1111-2222	010-3333-4444	010-5555-6666"></textarea><button type="button" class="btn ghost" data-a="bulkCheck">미리보기</button>' +
-      (b ? '<table><thead><tr><th>이름</th><th>학년</th><th>수업</th><th>학생</th><th>아버님</th><th>어머님</th><th>확인</th></tr></thead><tbody>' + b.map(r => '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.grade) + '</td><td>' + esc(r.time) + '</td><td>' + esc(fmtP(r.student)) + '</td><td>' + esc(fmtP(r.father)) + '</td><td>' + esc(fmtP(r.mother)) + '</td><td>' + (r.err ? chip(r.err, 'bad') : chip('등록 가능', 'ok')) + '</td></tr>').join('') + '</tbody></table>' : '') +
+    return '<div class="mbg" data-a="close"><form class="modal wide" id="bulkF"><h2>엑셀에서 여러 명 붙여넣기</h2><p class="sub">엑셀에서 아래 순서로 열을 맞춰 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣기(Ctrl+V) 하세요. 첫 줄이 제목이면 자동으로 건너뛰어요.<br><b>이름 · 학년(중1~고3) · 수업 시작(16:00) · 학생 번호 · 아버님 번호 · 어머님 번호 · 학교(선택)</b></p><textarea id="bulkIn" rows="7" placeholder="홍길동	중2	16:00	010-1111-2222	010-3333-4444	010-5555-6666"></textarea><button type="button" class="btn ghost" data-a="bulkCheck">미리보기</button>' +
+      (b ? '<table><thead><tr><th>이름</th><th>학년</th><th>수업</th><th>학생</th><th>아버님</th><th>어머님</th><th>학교</th><th>확인</th></tr></thead><tbody>' + b.map(r => '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.grade) + '</td><td>' + esc(r.time) + '</td><td>' + esc(fmtP(r.student)) + '</td><td>' + esc(fmtP(r.father)) + '</td><td>' + esc(fmtP(r.mother)) + '</td><td>' + esc(r.school || '') + '</td><td>' + (r.err ? chip(r.err, 'bad') : chip('등록 가능', 'ok')) + '</td></tr>').join('') + '</tbody></table>' : '') +
       '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit"' + (b && b.some(r => !r.err) ? '' : ' disabled') + '>' + (b ? b.filter(r => !r.err).length + '명 등록' : '등록') + '</button></div></form></div>';
   }
   return '';
@@ -255,9 +283,10 @@ function render() {
   else if (V.screen === 'login') html = loginView();
   else {
     let page = '';
-    try { page = ({ dash: pDash, qr: pQR, students: pStudents, att: pAtt, log: pLog, hw: pHw, notice: pNotice, msg: pMsg }[V.page] || pDash)(); }
+    if (V.page === 'staff' && !isOwnerMe()) V.page = 'dash';
+    try { page = ({ dash: pDash, qr: pQR, students: pStudents, att: pAtt, log: pLog, hw: pHw, exam: pExam, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
     catch (e) { console.error(e); page = '<section class="card"><p class="err">화면 오류: ' + esc(e.message) + '</p></section>'; }
-    html = '<aside><div class="brand">더밀착수학<small>관리자</small></div><nav>' + NAV.map(([k, l]) => '<button data-a="go" data-v="' + k + '" class="' + (V.page === k ? 'on' : '') + '">' + l + navBadge(k) + '</button>').join('') + '</nav><div class="foot"><a href="./" target="_blank">폰 앱 열기</a><button data-a="logout">로그아웃</button><small>v' + ADMIN_VERSION + '</small></div></aside><main>' + page + '</main>' + modalHtml();
+    html = '<aside><div class="brand">더밀착수학<small>관리자</small></div><nav>' + navList().map(([k, l]) => '<button data-a="go" data-v="' + k + '" class="' + (V.page === k ? 'on' : '') + '">' + l + navBadge(k) + '</button>').join('') + '</nav><div class="foot"><a href="./" target="_blank">폰 앱 열기</a><button data-a="logout">로그아웃</button><small>v' + ADMIN_VERSION + '</small></div></aside><main>' + page + '</main>' + modalHtml();
   }
   if (V.toast) html += '<div class="toast">' + esc(V.toast) + '</div>';
   const same = app.dataset.p === V.page + V.screen;
@@ -296,16 +325,24 @@ function subscribe() {
   L(collection(db, 'notices'), s => { D.notices = docs(s); sr(); });
   L(query(collection(db, 'reqs'), where('st', '==', 'pending')), s => { D.req = docs(s); sr(); });
   L(collection(db, 'members'), s => { D.members = docs(s); sr(); });
+  L(collection(db, 'exams'), s => { D.exams = docs(s); sr(); });
+  L(collection(db, 'staff'), s => { D.staff = docs(s); sr(); });
 }
 onAuthStateChanged(auth, user => {
   unsubs.forEach(f => f()); unsubs = []; qrStop();
   if (!user) { V.screen = 'login'; render(); return; }
   V.screen = 'loading'; render();
-  const u = onSnapshot(doc(db, 'config', 'main'), d => {
+  const u = onSnapshot(doc(db, 'config', 'main'), async d => {
     u();
-    if (!d.exists() || d.data().owner !== user.uid) { V.msg = '원장님 계정만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); return; }
+    if (!d.exists()) { V.msg = '원장님 계정만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); return; }
+    V.staff = null;
+    if (d.data().owner !== user.uid) {
+      const ph = (user.email || '').split('@')[0];
+      try { const sd = await getDoc(doc(db, 'staff', ph)); const x = sd.exists() ? sd.data() : null; if (!x || x.st !== 'ok' || x.uid !== user.uid) throw 0; V.staff = x; }
+      catch (e) { V.msg = '원장님·승인된 부원장만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); return; }
+    }
     V.screen = 'app'; V.msg = ''; subscribe(); if (V.page === 'qr') qrStart(); render();
-    announceUpdate(db, auth);
+    if (!V.staff) announceUpdate(db, auth);
     try { if ('Notification' in window && Notification.permission === 'granted') enablePush(db, user.uid, ['teacher']).catch(e => console.warn('autoPush', e)); } catch (e) { }
   }, () => { V.msg = '원장님 계정만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); });
 });
@@ -351,7 +388,7 @@ function parseBulk(txt) {
   if (rows.length && !GRADES.includes(rows[0][1]) && /이름|학생/.test(rows[0][0])) rows.shift();
   const seen = new Set(active().map(s => s.name));
   return rows.map(r => {
-    const o = { name: r[0] || '', grade: r[1] || '', time: (r[2] || '16:00').replace(/^(\d):/, '0$1:'), student: digits(r[3]), father: digits(r[4]), mother: digits(r[5]) };
+    const o = { name: r[0] || '', grade: r[1] || '', time: (r[2] || '16:00').replace(/^(\d):/, '0$1:'), student: digits(r[3]), father: digits(r[4]), mother: digits(r[5]), school: (r[6] || '').trim() };
     o.err = !o.name ? '이름 없음' : !GRADES.includes(o.grade) ? '학년은 중1~고3' : !/^\d\d:\d\d$/.test(o.time) ? '시간 형식(16:00)' : [o.student, o.father, o.mother].some(p => p && (p.length < 10 || p.length > 11)) ? '번호 확인' : ![o.student, o.father, o.mother].some(p => p) ? '번호 없음' : seen.has(o.name) ? '이미 있는 이름' : '';
     seen.add(o.name); return o;
   });
@@ -367,6 +404,11 @@ app.addEventListener('click', async e => {
     if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(pushErrorText(e)); } return render(); }
     if (a === 'pushHide') { V.pushHide = true; return render(); }
     if (a === 'logout') { qrStop(); await signOut(auth); return; }
+    if (a === 'stOk') { await updateDoc(doc(db, 'staff', id), { st: 'ok' }); return toast('부원장 승인 완료'); }
+    if (a === 'stRej') { await updateDoc(doc(db, 'staff', id), { st: 'none', uid: deleteField() }); return toast('거절했어요'); }
+    if (a === 'stDel') { const x = D.staff.find(y => y.id === id); if (!x || !confirm((x.name || '') + ' 부원장을 삭제할까요? 그 번호로는 더 이상 관리 기능을 쓸 수 없어요.')) return; await deleteDoc(doc(db, 'staff', id)); return toast('삭제했어요'); }
+    if (a === 'stCopy') { const x = D.staff.find(y => y.id === id); try { await navigator.clipboard.writeText(staffInvite(x)); toast('문구를 복사했어요'); } catch (e) { toast('복사하지 못했어요'); } return; }
+    if (a === 'exDel') { if (!confirm('이 시험 일정을 삭제할까요?')) return; await deleteDoc(doc(db, 'exams', id)); return toast('시험 일정을 삭제했어요'); }
     if (a === 'modal') { V.modal = v; V.editId = id || null; V.bulk = null; return render(); }
     if (a === 'invite') { V.modal = 'invite'; V.inviteSids = [id]; V.invQR = null; return render(); }
     if (a === 'invQR') { V.invQR = V.invQR === id ? null : id; return render(); }
@@ -448,13 +490,30 @@ app.addEventListener('submit', async e => {
       return toast(ids.length + '명에게 숙제를 냈어요');
     }
     if (f === 'ntF') { if (!g('nT').trim()) return toast('제목을 입력해 주세요'); await addDoc(collection(db, 'notices'), { title: g('nT').trim(), body: g('nB').trim(), at: TODAY, pin: document.getElementById('nP').checked, reads: [], ts: now() }); push(active().flatMap(x => [x.id + '|student', x.id + '|parent']), g('nT').trim(), { title: '새 공지', tag: 'notice' }); document.getElementById('nT').value = ''; document.getElementById('nB').value = ''; return toast('공지를 올렸어요'); }
+    if (f === 'examF') {
+      const school = g('exS').trim(), title = g('exT').trim(), start = g('exA'), end = g('exB') || g('exA'), memo = g('exM').trim();
+      if (!school || !title || !start) return toast('학교·시험·시작일을 입력해 주세요');
+      if (end < start) return toast('끝나는 날이 시작일보다 빨라요');
+      await addDoc(collection(db, 'exams'), { school, title, start, end, memo, ts: now() });
+      const kids = active().filter(x => (x.school || '').trim() === school);
+      if (kids.length) push(kids.flatMap(x => [x.id + '|student', x.id + '|parent']), school + ' ' + title + ' · ' + fmtD(start) + (end !== start ? ' ~ ' + fmtD(end) : '') + (memo ? ' · ' + memo : ''), { title: '시험 일정 등록', tag: 'exam' });
+      ['exS', 'exT', 'exA', 'exB', 'exM'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
+      return toast(school + ' ' + title + ' 등록' + (kids.length ? ' · ' + kids.length + '명 가족에게 알림' : ' (이 학교 학생이 아직 없어요)'));
+    }
+    if (f === 'staffF') {
+      const name = g('sfN').trim(), ph = digits(g('sfP'));
+      if (!name) return toast('이름을 입력해 주세요'); if (ph.length < 10 || ph.length > 11) return toast('휴대폰번호를 확인해 주세요');
+      if (D.cfg && ph === D.cfg.phone) return toast('원장님 번호예요'); if (D.staff.some(x => x.id === ph)) return toast('이미 등록된 번호예요');
+      await setDoc(doc(db, 'staff', ph), { name, phone: ph, st: 'none', ts: now() }); ['sfN', 'sfP'].forEach(i => document.getElementById(i).value = '');
+      return toast(name + ' 부원장 등록 · [문자 앱 열기]로 가입 안내를 보내세요');
+    }
     if (f === 'stuF') {
       const name = g('sN').trim(); if (!name) return toast('이름을 입력해 주세요');
       const grade = g('sG'), time = g('sT') || '16:00'; const ph = { student: digits(g('p_student')), father: digits(g('p_father')), mother: digits(g('p_mother')) };
       if (Object.values(ph).some(x => x && (x.length < 10 || x.length > 11))) return toast('휴대폰번호를 확인해 주세요');
       const b = writeBatch(db); let auto = false; let newSid = null;
       if (V.editId) {
-        const sid = V.editId; b.update(doc(db, 'students', sid), { name, grade, time, course: g('sC') || stu(sid).course });
+        const sid = V.editId; b.update(doc(db, 'students', sid), { name, grade, time, school: g('sSc').trim(), course: g('sC') || stu(sid).course });
         for (const rel of ['student', 'father', 'mother']) {
           const m = memberOf(sid, rel); const p = ph[rel];
           if (m && m.st !== 'none') continue;
@@ -465,7 +524,7 @@ app.addEventListener('submit', async e => {
         }
       } else {
         if (!Object.values(ph).some(x => x)) return toast('번호를 하나 이상 등록해 주세요');
-        const ref = doc(collection(db, 'students')); newSid = ref.id; b.set(ref, { name, grade, time, course: DEF_COURSE[grade], ts: now() });
+        const ref = doc(collection(db, 'students')); newSid = ref.id; b.set(ref, { name, grade, time, school: g('sSc').trim(), course: DEF_COURSE[grade], ts: now() });
         Object.entries(ph).forEach(([rel, p]) => { if (p) auto = addMember(b, ref.id, rel, p, name, grade) || auto; });
       }
       await b.commit(); V.modal = null; const ed = V.editId; V.editId = null;
@@ -475,7 +534,7 @@ app.addEventListener('submit', async e => {
     if (f === 'bulkF') {
       const ok = (V.bulk || []).filter(r => !r.err); if (!ok.length) return;
       const b = writeBatch(db);
-      const sids = []; ok.forEach(r => { const ref = doc(collection(db, 'students')); sids.push(ref.id); b.set(ref, { name: r.name, grade: r.grade, time: r.time, course: DEF_COURSE[r.grade], ts: now() }); ['student', 'father', 'mother'].forEach(rel => { if (r[rel]) addMember(b, ref.id, rel, r[rel], r.name, r.grade); }); });
+      const sids = []; ok.forEach(r => { const ref = doc(collection(db, 'students')); sids.push(ref.id); b.set(ref, { name: r.name, grade: r.grade, time: r.time, school: r.school || '', course: DEF_COURSE[r.grade], ts: now() }); ['student', 'father', 'mother'].forEach(rel => { if (r[rel]) addMember(b, ref.id, rel, r[rel], r.name, r.grade); }); });
       await b.commit(); V.bulk = null; V.modal = 'invite'; V.inviteSids = sids; V.invQR = null; return toast(ok.length + '명 등록 완료 · 가입 안내 문자를 보내 주세요');
     }
   } catch (err) { fail(err); }
