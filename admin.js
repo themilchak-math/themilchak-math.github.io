@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.8.0';
+const ADMIN_VERSION = '1.8.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -169,23 +169,29 @@ function defaultsFor(s, sj) {
   return { subj: sj, course, unit, c, pp: 100 - c };
 }
 const opt = (v, cur, label) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label ?? v) + '</option>';
+const realSid = k => String(k).split('-')[0];
+const logKeys = sid => Array.from({ length: (V.logN && V.logN[sid]) || 1 }, (_, k) => k ? sid + '-' + k : sid);
 function pLog() {
   const a = D.att[TODAY] || {};
   const rows = active().map(s => {
-    const kj = V.keep && V.keep['lj_' + s.id] && V.keep['lj_' + s.id].v; const d = defaultsFor(s, SUBJS.includes(kj) ? kj : null); const kc = V.keep && V.keep['lc_' + s.id] && V.keep['lc_' + s.id].v; if (kc && CUR[kc] !== undefined && kc !== d.course && Object.keys(BY_SUBJ[d.subj]).includes(kc)) { d.course = kc; d.unit = null; } const done = D.logs.filter(l => l.sid === s.id && l.date === TODAY);
-    const came = a[s.id] && a[s.id].st !== '결석';
-    return '<tr class="' + (came ? 'came' : '') + '"><td><input type="checkbox" id="lk_' + s.id + '" ' + (came && !done.length ? 'checked' : '') + '></td><td><b>' + esc(s.name) + '</b><div class="sub">' + esc(s.grade) + ' · ' + (a[s.id] ? esc(a[s.id].st) : '미등원') + '</div></td>' +
-      '<td><select id="lj_' + s.id + '" data-sid="' + s.id + '" class="lj" style="min-width:78px">' + SUBJS.map(x => opt(x, d.subj)).join('') + '</select></td>' +
-      '<td><select id="lc_' + s.id + '" data-sid="' + s.id + '" class="lc">' + courseOpts(d.subj, d.course) + '</select></td>' +
-      '<td><select id="lu_' + s.id + '" data-sid="' + s.id + '" class="lu">' + unitsOf(s.id, d.course).map(u => { const x = lastOf(s.id, d.course, u); return opt(u, d.unit, (x ? '• ' : '') + u); }).join('') + '</select></td>' +
-      '<td><select id="lpc_' + s.id + '">' + PCT.map(v => opt(String(v), String(d.c), v + '%')).join('') + '</select></td>' +
-      '<td><select id="lpp_' + s.id + '">' + PCT.map(v => opt(String(v), String(d.pp), v + '%')).join('') + '</select></td>' +
-      '<td><input id="lm_' + s.id + '" placeholder="특별한 일만"></td>' +
-      '<td class="cen"><input type="checkbox" id="ls_' + s.id + '" checked></td>' +
-      '<td>' + (done.length ? chip('오늘 ' + done.length + '건 저장됨', 'ok') : '') + '</td>' +
-      '<td class="r"><button class="btn xs" data-a="saveLog" data-id="' + s.id + '">저장</button></td></tr>';
+    const done = D.logs.filter(l => l.sid === s.id && l.date === TODAY); const came = a[s.id] && a[s.id].st !== '결석'; const keys = logKeys(s.id);
+    return keys.map((key, k) => {
+      const kv = id => V.keep && V.keep[id + key] && V.keep[id + key].v;
+      const kj = kv('lj_'); const d = defaultsFor(s, SUBJS.includes(kj) ? kj : null); const kc = kv('lc_'); if (kc && CUR[kc] !== undefined && kc !== d.course && Object.keys(BY_SUBJ[d.subj]).includes(kc)) { d.course = kc; d.unit = null; }
+      const first = k === 0;
+      return '<tr class="' + (came ? 'came' : '') + (first ? '' : ' sub2') + '"><td>' + (first ? '<input type="checkbox" id="lk_' + s.id + '" ' + (came && !done.length ? 'checked' : '') + '>' : '') + '</td><td>' + (first ? '<b>' + esc(s.name) + '</b><div class="sub">' + esc(s.grade) + ' · ' + (a[s.id] ? (a[s.id].st === '결석' ? '결석' : '등원') : '미등원') + '</div><button class="btn xs ghost" style="margin-top:4px" data-a="logAdd" data-id="' + s.id + '">+ 단원·과목</button>' : '<span class="sub">↳ ' + (k + 1) + '번째</span>' + (k === keys.length - 1 ? ' <button class="btn xs ghost" data-a="logDelRow" data-id="' + s.id + '" title="이 줄 빼기">✕</button>' : '')) + '</td>' +
+        '<td><select id="lj_' + key + '" data-sid="' + key + '" class="lj" style="min-width:78px">' + SUBJS.map(x => opt(x, d.subj)).join('') + '</select></td>' +
+        '<td><select id="lc_' + key + '" data-sid="' + key + '" class="lc">' + courseOpts(d.subj, d.course) + '</select></td>' +
+        '<td><select id="lu_' + key + '" data-sid="' + key + '" class="lu">' + unitsOf(s.id, d.course).map(u => { const x = lastOf(s.id, d.course, u); return opt(u, d.unit, (x ? '• ' : '') + u); }).join('') + '</select></td>' +
+        '<td><select id="lpc_' + key + '">' + PCT.map(v => opt(String(v), String(d.c), v + '%')).join('') + '</select></td>' +
+        '<td><select id="lpp_' + key + '">' + PCT.map(v => opt(String(v), String(d.pp), v + '%')).join('') + '</select></td>' +
+        '<td>' + (first ? '<input id="lm_' + s.id + '" placeholder="특별한 일만">' : '') + '</td>' +
+        '<td class="cen">' + (first ? '<input type="checkbox" id="ls_' + s.id + '" checked>' : '') + '</td>' +
+        '<td>' + (first && done.length ? chip('오늘 ' + done.length + '건 저장됨', 'ok') : '') + '</td>' +
+        '<td class="r">' + (first ? '<button class="btn xs" data-a="saveLog" data-id="' + s.id + '">저장</button>' : '') + '</td></tr>';
+    }).join('');
   }).join('');
-  return '<h1>수업 기록 <span class="sub">' + fmtD(TODAY) + ' · 등원한 학생은 미리 체크돼 있어요 · 오늘 다른 과목을 했으면 과목만 바꾸세요 · 개념 비중을 고르면 문제풀이는 자동(합 100%)</span></h1>' +
+  return '<h1>수업 기록 <span class="sub">' + fmtD(TODAY) + ' · 등원한 학생은 미리 체크돼 있어요 · 두 단원·과목 이상 했으면 [+ 단원·과목] · 개념 비중을 고르면 문제풀이는 자동(합 100%)</span></h1>' +
     '<div class="bar"><button class="btn" data-a="saveChecked">체크한 학생 한꺼번에 저장</button><span class="sub">저장하면 그 학생의 하원 버튼이 열리고, 공유를 켜 둔 기록은 학부모님께 알림이 가요</span></div>' +
     '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>오늘 개념 비중</th><th>문제풀이 비중</th><th>특별 메모</th><th>공유</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="11" class="empty">학생이 없어요</td></tr>') + '</tbody></table></section>' +
     '<section class="card"><h2>최근 기록</h2>' + recentLogs() + '</section>';
@@ -618,16 +624,18 @@ function addMember(b, sid, rel, phone, name, grade) {
 }
 async function saveLogFor(sid, b) {
   const s = stu(sid); const g = id => (document.getElementById(id) || {}).value || '';
-  const subj = g('lj_' + sid) || '수학', course = g('lc_' + sid), unit = g('lu_' + sid), c = +g('lpc_' + sid), p = +g('lpp_' + sid), cm = g('lm_' + sid).trim(), sh = !!(document.getElementById('ls_' + sid) || {}).checked;
-  if (!unit) throw new Error(s.name + ': 단원을 골라 주세요');
-  const r = (D.att[TODAY] || {})[sid]; const open = r && r.st !== '결석' && !r.out;
-  b.set(doc(collection(db, 'logs')), { sid, date: TODAY, subj, course, unit, c, p, cm, sh, ts: now() });
-  if (subj === '수학' && s.course !== course) b.update(doc(db, 'students', sid), { course });
+  const cm = g('lm_' + sid).trim(), sh = !!(document.getElementById('ls_' + sid) || {}).checked; const items = [];
+  logKeys(sid).forEach(key => { const subj = g('lj_' + key) || '수학', course = g('lc_' + key), unit = g('lu_' + key), c = +g('lpc_' + key), p = +g('lpp_' + key); if (!unit) throw new Error(s.name + ': 단원을 골라 주세요'); items.push({ subj, course, unit, c, p }); });
+  const r = (D.att[TODAY] || {})[sid]; const open = r && r.st !== '결석' && !r.out; const ts = now();
+  items.forEach((it, k) => b.set(doc(collection(db, 'logs')), { sid, date: TODAY, subj: it.subj, course: it.course, unit: it.unit, c: it.c, p: it.p, cm: k ? '' : cm, sh, ts: ts + k }));
+  const math = items.filter(it => it.subj === '수학').pop(); if (math && s.course !== math.course) b.update(doc(db, 'students', sid), { course: math.course });
   if (r) b.update(doc(db, 'att', TODAY + '_' + sid), { logged: true });
   if (open) b.set(doc(collection(db, 'msgs')), { th: sid + '|student', sid, f: 's', t: '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.', at: stamp(), ts: now(), r: false });
-  if (sh && !(D.cfg && D.cfg.autoNotify === false)) b.set(doc(collection(db, 'msgs')), { th: sid + '|parent', sid, f: 's', t: '[수업 기록] ' + fmtD(TODAY) + ' ' + courseLabel(course, subj) + ' ' + unit + ' · 개념 ' + c + '% / 문제풀이 ' + p + '%', at: stamp(), ts: now(), r: false });
-  pendingPush.push(() => { if (open) push([sid + '|student'], '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.'); if (sh && !(D.cfg && D.cfg.autoNotify === false)) push([sid + '|parent'], '[수업 기록] ' + fmtD(TODAY) + ' ' + courseLabel(course, subj) + ' ' + unit + ' · 개념 ' + c + '% / 문제풀이 ' + p + '%'); });
-  return s.name;
+  const txt = '[수업 기록] ' + fmtD(TODAY) + ' ' + items.map(it => courseLabel(it.course, it.subj) + ' ' + it.unit + ' (개념 ' + it.c + '% / 문제풀이 ' + it.p + '%)').join(', ');
+  if (sh && !(D.cfg && D.cfg.autoNotify === false)) b.set(doc(collection(db, 'msgs')), { th: sid + '|parent', sid, f: 's', t: txt, at: stamp(), ts: now(), r: false });
+  pendingPush.push(() => { if (open) push([sid + '|student'], '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.'); if (sh && !(D.cfg && D.cfg.autoNotify === false)) push([sid + '|parent'], txt); });
+  if (V.logN) delete V.logN[sid];
+  return s.name + (items.length > 1 ? '(' + items.length + ')' : '');
 }
 let pendingPush = [];
 const flushPush = () => { const l = pendingPush; pendingPush = []; l.forEach(f => f()); };
@@ -708,6 +716,8 @@ app.addEventListener('click', async e => {
       if (v === TODAY) await notifyParent(id, '[출결 알림] ' + s.name + ' 학생이 오늘 결석으로 처리되었습니다.');
       return toast(s.name + ' ' + fmtD(v) + ' 결석 처리');
     }
+    if (a === 'logAdd') { V.logN = V.logN || {}; V.logN[id] = ((V.logN[id]) || 1) + 1; const ck = document.getElementById('lk_' + id); if (ck) ck.checked = true; return render(); }
+    if (a === 'logDelRow') { V.logN = V.logN || {}; V.logN[id] = Math.max(1, ((V.logN[id]) || 1) - 1); return render(); }
     if (a === 'saveLog') { const b = writeBatch(db); pendingPush = []; const n = await saveLogFor(id, b); await b.commit(); flushPush(); return toast(n + ' 수업 기록 저장'); }
     if (a === 'saveChecked') {
       const ids = active().filter(s => (document.getElementById('lk_' + s.id) || {}).checked).map(s => s.id);
@@ -732,17 +742,17 @@ app.addEventListener('change', async e => {
     if (t.id === 'autoN') { await updateDoc(doc(db, 'config', 'main'), { autoNotify: t.checked }); return toast(t.checked ? '자동 알림 켬' : '자동 알림 끔'); }
     if (t.id === 'hwFilter') { V.hwF = t.value; return render(); }
     if (t.classList.contains('lj')) {
-      const sid = t.dataset.sid; const d = defaultsFor(stu(sid), t.value); const lc = document.getElementById('lc_' + sid);
+      const sid = t.dataset.sid; const d = defaultsFor(stu(realSid(sid)), t.value); const lc = document.getElementById('lc_' + sid);
       lc.innerHTML = courseOpts(t.value, d.course); lc.value = d.course; lc.dispatchEvent(new Event('change', { bubbles: true })); return;
     }
     if (t.classList.contains('lc')) {
-      const sid = t.dataset.sid; const us = unitsOf(sid, t.value); const sel = document.getElementById('lu_' + sid);
-      sel.innerHTML = us.map(u => opt(u, '', u)).join(''); const lt = sortLogs(D.logs.filter(l => l.sid === sid && l.course === t.value)).pop(); const nx = lt ? lt.unit : us[0]; if (nx) sel.value = nx;
-      const ck = document.getElementById('lk_' + sid); if (ck) ck.checked = true; return;
+      const sid = t.dataset.sid, rs = realSid(sid); const us = unitsOf(rs, t.value); const sel = document.getElementById('lu_' + sid);
+      sel.innerHTML = us.map(u => opt(u, '', u)).join(''); const lt = sortLogs(D.logs.filter(l => l.sid === rs && l.course === t.value)).pop(); const nx = lt ? lt.unit : us[0]; if (nx) sel.value = nx;
+      const ck = document.getElementById('lk_' + rs); if (ck) ck.checked = true; return;
     }
-    if (t.classList.contains('lu')) { const sid = t.dataset.sid; const ck = document.getElementById('lk_' + sid); if (ck) ck.checked = true; return; }
+    if (t.classList.contains('lu')) { const sid = realSid(t.dataset.sid); const ck = document.getElementById('lk_' + sid); if (ck) ck.checked = true; return; }
     if (/^l(pc|pp)_/.test(t.id)) { const sid = t.id.split('_')[1]; const other = document.getElementById((t.id.startsWith('lpc') ? 'lpp_' : 'lpc_') + sid); if (other) other.value = String(100 - +t.value); }
-    if (/^l(pc|pp|m)_/.test(t.id)) { const ck = document.getElementById('lk_' + t.id.split('_')[1]); if (ck) ck.checked = true; }
+    if (/^l(pc|pp|m)_/.test(t.id)) { const ck = document.getElementById('lk_' + realSid(t.id.split('_')[1])); if (ck) ck.checked = true; }
   } catch (err) { fail(err); }
 });
 function setPrev(sid, course, unit) { const x = lastOf(sid, course, unit); document.getElementById('lpc_' + sid).value = String(x ? x.c : 0); document.getElementById('lpp_' + sid).value = String(x ? x.p : 0); }
