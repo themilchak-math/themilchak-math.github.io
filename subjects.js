@@ -52,3 +52,17 @@ const DEF = {
 export const defCourse = (grade, subj) => (DEF[subj] || DEF.수학)[grade] || Object.keys(BY_SUBJ[subj] || MATH)[0];
 // 화면 표시용: 과정 이름에 과목이 안 들어 있으면 앞에 붙여요 (예: 수학 · 중2-2)
 export const courseLabel = (c, sj) => { sj = sj || subjOfCourse(c); return String(c).includes(sj) ? c : sj + ' · ' + c; };
+
+// 하원 알림용: 그날 공유된 수업 기록을 학부모님이 읽기 쉬운 문장으로
+const focusOf = c => c >= 70 ? '개념 설명을 중심으로' : c <= 30 ? '문제풀이를 중심으로' : '개념 정리와 문제풀이를 함께';
+const unitOf = l => (l.unit ? "'" + l.unit + "' 단원" : '수업');
+const nameOf = l => { const sj = subjOf(l); const c = String(l.course || ''); return c && c !== sj ? (c.includes(sj) ? c : sj + ' ' + c) : sj; };
+export function lessonSummary(logs) {
+  const ls = (logs || []).filter(l => l && l.sh !== false).sort((a, b) => (a.ts || 0) - (b.ts || 0)); if (!ls.length) return '';
+  const pc = l => (l.c == null ? 50 : +l.c);
+  let t;
+  if (ls.length === 1) { const l = ls[0]; t = '오늘은 ' + nameOf(l) + ' ' + unitOf(l) + '을 학습했습니다. ' + focusOf(pc(l)) + ' 진행했어요 (개념 ' + pc(l) + '% · 문제풀이 ' + (100 - pc(l)) + '%).'; }
+  else t = '오늘은 ' + ls.length + '가지를 학습했습니다.\n' + ls.map(l => '· ' + nameOf(l) + ' ' + unitOf(l) + (l.w ? ' (수업의 ' + l.w + '%)' : '') + ' — ' + focusOf(pc(l)).replace(/[을를] 중심으로$/, ' 위주').replace('개념 정리와 문제풀이를 함께', '개념·문제풀이 고르게')).join('\n');
+  const cm = ls.map(l => (l.cm || '').trim()).filter(Boolean).join(' / ');
+  return t + (cm ? '\n선생님 메모: ' + cm : '');
+}

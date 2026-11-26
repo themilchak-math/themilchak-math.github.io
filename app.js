@@ -3,11 +3,11 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel } from './subjects.js';
+import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } from './subjects.js';
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.8.5';
+const APP_VERSION = '1.8.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -772,8 +772,8 @@ app.addEventListener('click',async e=>{
   if(a==='cancelReq'){await deleteDoc(doc(db,'reqs',id));return toast('요청을 취소했어요')}
   if(a==='checkout'){
     const s=stu(U.me);const r=(D.att[TODAY]||{})[s.id];if(!r||!r.logged)return toast('아직 하원할 수 없어요');
-    const out=hm();await updateDoc(doc(db,'att',TODAY+'_'+s.id),{out});const lg=D.logs.filter(l=>l.sid===s.id&&l.date===TODAY).pop();
-    await notifyParent(s.id,'[하원 알림] '+s.name+' 학생이 '+lateLabel(out)+'에 하원했습니다.'+(lg?' 오늘 수업: '+lg.course+' '+lg.unit:''));
+    const out=hm();await updateDoc(doc(db,'att',TODAY+'_'+s.id),{out});const sm=lessonSummary(D.logs.filter(l=>l.sid===s.id&&l.date===TODAY&&l.sh));
+    await notifyParent(s.id,'[하원 알림] '+s.name+' 학생이 '+lateLabel(out)+'에 하원했습니다.'+(sm?'\n'+sm:''));
     return toast('하원 완료! 수고했어요');
   }
   if(a==='absent'){const s=stu(id);await setDoc(doc(db,'att',U.attDate+'_'+id),{sid:id,date:U.attDate,st:'결석',at:'',by:'teacher'});if(U.attDate===TODAY)await notifyParent(id,'[출결 알림] '+s.name+' 학생이 오늘 결석으로 처리되었습니다.');return toast('결석 처리했어요')}

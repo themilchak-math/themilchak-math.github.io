@@ -3,11 +3,11 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
-import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './subjects.js';
+import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } from './subjects.js';
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.0.1';
+const ADMIN_VERSION = '2.0.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -856,7 +856,7 @@ app.addEventListener('submit', async e => {
       await setDoc(doc(db, 'att', d + '_' + sid), rec);
       const q = D.req.find(x => x.sid === sid && x.st === 'pending' && x.date === d); if (q && !isAbs) await updateDoc(doc(db, 'reqs', q.id), { st: 'ok' });
       const noti = !!(document.getElementById('atNoti') || {}).checked; const nm = (stu(sid) || {}).name || '';
-      if (noti) { const t = isAbs ? '[출결 알림] ' + nm + ' 학생이 ' + fmtD(d) + ' 결석으로 처리되었습니다.' : '[등·하원 알림] ' + nm + ' 학생 ' + fmtD(d) + ' 등원 ' + at + (out ? ' · 하원 ' + out : ''); push([sid + '|parent'], t); await msg(sid + '|parent', sid, 's', t).catch(e => console.warn(e)); }
+      if (noti) { const t = isAbs ? '[출결 알림] ' + nm + ' 학생이 ' + fmtD(d) + ' 결석으로 처리되었습니다.' : '[등·하원 알림] ' + nm + ' 학생 ' + fmtD(d) + ' 등원 ' + at + (out ? ' · 하원 ' + out : '') + (out ? (sm => sm ? '\n' + sm : '')(lessonSummary(D.logs.filter(l => l.sid === sid && l.date === d && l.sh))) : ''); push([sid + '|parent'], t); await msg(sid + '|parent', sid, 's', t).catch(e => console.warn(e)); }
       V.modal = null; return toast(nm + ' ' + fmtD(d) + ' 출결을 저장했어요' + (noti ? ' · 학부모 알림 발송' : ''));
     }
     if (f === 'finSetF') { const meal = +digits(g('fsMeal')), cap1 = +digits(g('fsCap1')), cap2 = +digits(g('fsCap2')); if (!meal || !cap1) return toast('숫자를 확인해 주세요'); await setDoc(doc(db, 'fin', 'settings'), { meal, cap1, cap2: cap2 || 0 }); return toast('설정을 저장했어요'); }
