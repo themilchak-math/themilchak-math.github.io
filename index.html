@@ -19,6 +19,14 @@
     setTimeout(function(){window.__inapp='kakao';var o=document.getElementById('inapp');if(o)o.hidden=false},1500);
     return;
   }
+  /* 갤럭시 삼성 인터넷으로 열면 알림이 안 되므로 크롬으로 바로 넘김 (크롬이 없으면 그대로 여기서 열림) */
+  var standalone=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+  if(isAndroid&&/SamsungBrowser/i.test(ua)&&!standalone&&!/[?&]stay=1/.test(url)){
+    var stay=url+(url.indexOf('?')<0?'?':'&')+'stay=1';
+    try{if(sessionStorage.getItem('tmm-tochrome'))return;sessionStorage.setItem('tmm-tochrome','1')}catch(e){}
+    location.href='intent://'+url.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(stay)+';end';
+    return;
+  }
   var inapp=/NAVER\(inapp|Instagram|FBAN|FBAV|FB_IAB|Line\/|DaumApps|BAND\/|everytimeApp|whale\/.*inapp/i.test(ua);
   if(!inapp)return;
   if(isAndroid){location.href='intent://'+url.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end';}
