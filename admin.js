@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.0.3';
+const ADMIN_VERSION = '2.0.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -99,8 +99,9 @@ function reqRows() {
 }
 
 // 정산 메뉴의 등원 요일(이번 달)로 오늘 올 학생 계산. 정산 자료가 없으면 null
-function expectedToday() {
-  const w = new Date(TODAY + 'T00:00').getDay(); const m = (D.fin || {})[ymOf(TODAY)]; if (!m || !(m.rows || []).length) return null;
+function expectedToday(day) {
+  day = day || TODAY;
+  const w = new Date(day + 'T00:00').getDay(); const m = (D.fin || {})[ymOf(day)]; if (!m || !(m.rows || []).length) return null;
   if (w === 0) return [];
   return active().filter(s => (m.rows || []).some(r => (r.sid === s.id || (!r.sid && r.name === s.name)) && (r.d || [])[w - 1])).map(s => s.id);
 }
@@ -109,23 +110,31 @@ function absSection() {
   const n = l.filter(x => !x.ok).length;
   return '<section class="card' + (n ? ' hl' : '') + '"><h2>결석 통보 <span class="sub">학부모님이 미리 알린 결석' + (n ? ' · 확인 안 한 ' + n + '건' : '') + '</span></h2><table><tbody>' + l.map(x => { const s = stu(x.sid) || { name: '?' }; return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + fmtD(x.date) + (x.date === TODAY ? ' ' + chip('오늘', 'bad') : '') + '</td><td>' + esc(x.reason) + '</td><td class="sub">' + esc(x.who || '') + '</td><td class="r">' + (x.ok ? chip('확인함', 'ok') : '<button class="btn sm" data-a="absOk" data-id="' + x.id + '">확인</button>') + '</td></tr>'; }).join('') + '</tbody></table></section>';
 }
+// 대시보드 기본 날짜: 영업일(새벽 3시 기준). 단, 자정이 지났고 그날 등원한 학생이 모두 하원했으면 달력상 오늘로
+function dashDefault() {
+  const biz = off(0), cal = ds(new Date()); if (cal === biz) return biz;
+  const rs = Object.values(D.att[biz] || {}).filter(r => r.st !== '결석');
+  return rs.every(r => r.out) ? cal : biz;
+}
 function pDash() {
-  const a = D.att[TODAY] || {}; const st = active(); const exp0 = expectedToday(); const absT = new Set(D.abs.filter(x => x.date === TODAY).map(x => x.sid));
+  const day = V.dashD || dashDefault(); const isT = day === off(0) || day === ds(new Date()); const dayLbl = isT ? '오늘' : fmtD(day);
+  const a = D.att[day] || {}; const st = active(); const exp0 = expectedToday(day); const absT = new Set(D.abs.filter(x => x.date === day).map(x => x.sid));
   const exp = exp0 ? exp0.filter(id => !absT.has(id) || a[id]) : null; const expSet = new Set(exp || []); const absN = exp0 ? exp0.filter(id => absT.has(id) && !a[id]).length : 0;
   const isIn = s => a[s.id] && a[s.id].st !== '결석';
   const present = st.filter(isIn).length; const expIn = exp ? st.filter(s => expSet.has(s.id) && isIn(s)).length : 0;
   const notYet = exp ? st.filter(s => expSet.has(s.id) && !a[s.id]) : [];
   const toCheck = D.hw.filter(h => h.st === 'done');
-  const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>오늘 등원 (' + WD[new Date(TODAY + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (absN ? ' · 결석 통보 ' + absN + '명 제외' : '') + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>오늘 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
+  const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>' + dayLbl + ' 등원 (' + WD[new Date(day + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (absN ? ' · 결석 통보 ' + absN + '명 제외' : '') + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>' + dayLbl + ' 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
   const rk = x => expSet.has(x.id) ? 2 : absT.has(x.id) ? 1 : 0; const order = exp ? [...st].sort((x, y) => (rk(y) - rk(x)) || x.name.localeCompare(y.name, 'ko')) : st;
-  return '<h1>' + esc(TNAME()) + ' <span class="sub">오늘 ' + fmtD(TODAY) + '</span></h1>' +
+  return '<h1>' + esc(TNAME()) + ' </h1>' +
+    '<div class="bar"><button class="btn sm ghost" data-a="dashM" data-v="-1">‹ 전날</button><input type="date" id="dashD" value="' + day + '" style="width:auto"><button class="btn sm ghost" data-a="dashM" data-v="1">다음날 ›</button>' + (V.dashD ? '<button class="btn sm" data-a="dashT">오늘로</button>' : '') + '<span class="sub">' + (isT ? '오늘' : '지난 날짜') + ' 기준 대시보드' + (!V.dashD && day !== off(0) ? ' · 모두 하원해서 다음 날로 넘어왔어요' : '') + '</span></div>' +
     pushCard() + '<div class="kpis">' + kpi + '<div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
-    (exp && notYet.length ? '<section class="card hl"><h2>아직 안 온 학생 <span class="sub">오늘 수업 예정</span></h2><p>' + notYet.map(s => '<b>' + esc(s.name) + '</b>').join(' · ') + '</p></section>' : '') +
+    (exp && notYet.length ? '<section class="card hl"><h2>' + (day < off(0) ? '오지 않은 학생' : '아직 안 온 학생') + ' <span class="sub">' + dayLbl + ' 수업 예정</span></h2><p>' + notYet.map(s => '<b>' + esc(s.name) + '</b>').join(' · ') + '</p></section>' : '') +
     (isOwnerMe() && D.staff.some(x => x.st === 'pending') ? '<section class="card hl"><h2>부원장 가입 승인</h2><table><tbody>' + D.staff.filter(x => x.st === 'pending').map(x => '<tr><td><b>' + esc(x.name || '') + ' 부원장</b></td><td>' + esc(fmtP(x.phone)) + '</td><td class="r"><button class="btn sm ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn sm" data-a="stOk" data-id="' + x.id + '">승인</button></td></tr>').join('') + '</tbody></table></section>' : '') +
     absSection() +
     '<div class="grid2"><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section><section class="card"><h2>가입 승인 대기</h2>' + joinRows() + '</section></div>' +
-    '<section class="card"><h2>오늘 출결 <span class="sub">' + fmtD(TODAY) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th>' + (exp ? '<th>오늘 수업</th>' : '') + '<th>상태</th><th>오늘 기록</th></tr></thead><tbody>' +
-    order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === TODAY).pop(); const e = expSet.has(s.id); const ab = absT.has(s.id) && !a[s.id] ? absOf(s.id, TODAY) : null; return '<tr' + (exp && !e && !a[s.id] && !ab ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + clsChip(a[s.id], e, ab) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (ab ? '<span class="sub">결석 사유: ' + esc(ab.reason) + '</span>' : lg ? esc(lg.unit || subjOf(lg) + ' (메모 기록)') + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
+    '<section class="card"><h2>' + dayLbl + ' 출결 <span class="sub">' + fmtD(day) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th>' + (exp ? '<th>수업</th>' : '') + '<th>상태</th><th>수업 기록</th></tr></thead><tbody>' +
+    order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === day).pop(); const e = expSet.has(s.id); const ab = absT.has(s.id) && !a[s.id] ? absOf(s.id, day) : null; return '<tr' + (exp && !e && !a[s.id] && !ab ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + clsChip(a[s.id], e, ab) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (ab ? '<span class="sub">결석 사유: ' + esc(ab.reason) + '</span>' : lg ? esc(lg.unit || subjOf(lg) + ' (메모 기록)') + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
     '<section class="card"><h2>확인할 숙제</h2>' + hwTable(toCheck) + '</section>';
 }
 
@@ -607,7 +616,7 @@ function render() {
   if (V.toast) html += '<div class="toast">' + esc(V.toast) + '</div>';
   const same = app.dataset.p === V.page + V.screen;
   app.innerHTML = html; app.dataset.p = V.page + V.screen;
-  Object.entries(keep).forEach(([id, k]) => { const el = document.getElementById(id); if (!el || el.disabled || id.startsWith('fn_')) return; if ('c' in k) { if (id !== 'autoN') el.checked = k.c; } else { el.value = k.v; if (el.tagName === 'SELECT' && el.value === '' && el.options.length) el.selectedIndex = 0; } });
+  Object.entries(keep).forEach(([id, k]) => { const el = document.getElementById(id); if (!el || el.disabled || id.startsWith('fn_') || id === 'dashD') return; if ('c' in k) { if (id !== 'autoN') el.checked = k.c; } else { el.value = k.v; if (el.tagName === 'SELECT' && el.selectedIndex < 0 && el.options.length) el.selectedIndex = 0; } });
   app.querySelectorAll('input[name=hwS],input[name=schCk]').forEach(el => { if (el.value in hw) el.checked = hw[el.value]; });
   if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); }
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
@@ -767,6 +776,8 @@ app.addEventListener('click', async e => {
       await b.commit(); V.modal = null; V.editId = null; V.confirmLeave = null; return toast(s.name + ' 퇴원 처리했어요. 가족 계정의 이 학생 연결도 끊었어요.');
     }
     if (a === 'rejoin') { await updateDoc(doc(db, 'students', id), { left: false }); return toast('복귀 처리했어요. 가족 연결은 학생 관리에서 차단 해제해 주세요.'); }
+    if (a === 'dashM') { const d = new Date((V.dashD || dashDefault()) + 'T00:00'); d.setDate(d.getDate() + +v); V.dashD = ds(d); return render(); }
+    if (a === 'dashT') { V.dashD = null; return render(); }
     if (a === 'logAll') { V.logAll = !V.logAll; return render(); }
     if (a === 'absOk') { const x = D.abs.find(y => y.id === id); if (!x) return; const s = stu(x.sid) || { name: '' }; await updateDoc(doc(db, 'abs', id), { ok: true, okBy: TNAME() }); const tx = '[결석 확인] ' + s.name + ' 학생 ' + fmtD(x.date) + ' 결석 통보를 확인했어요.'; push([x.sid + '|parent'], tx, { tag: 'abs' }); await msg(x.sid + '|parent', x.sid, 's', tx).catch(() => { }); return toast(s.name + ' 결석 확인 · 학부모님께 알렸어요'); }
     if (a === 'ok' || a === 'rej') {
@@ -805,6 +816,7 @@ app.addEventListener('click', async e => {
 });
 
 app.addEventListener('change', async e => {
+  if (e.target.id === 'dashD') { V.dashD = e.target.value && e.target.value !== dashDefault() ? e.target.value : null; return render(); }
   if (e.target.id === 'wifiPc') { try { localStorage.setItem('tmm-academy-pc', e.target.checked ? '1' : '0'); } catch (x) { } if (e.target.checked) { await wifiAutoSync(true); toast('이 PC를 교습소 PC로 지정했어요'); } else toast('교습소 PC 지정을 해제했어요'); return render(); }
   if (e.target.id === 'xlIn' && e.target.files && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; return importXlsx(f); }
   if (e.target.dataset && e.target.dataset.fi !== undefined) { finField(e.target); return render(); }
