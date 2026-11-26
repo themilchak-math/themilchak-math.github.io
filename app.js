@@ -5,7 +5,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWith
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -324,7 +324,15 @@ function header(title,sub,back){
   return '<div class="hdr"><div class="sb"><span>더밀착수학</span><button class="lo" data-act="logout">로그아웃</button></div>'+(back?'<button class="back" data-act="back">‹ 뒤로</button>':'')+'<h2>'+esc(title)+'</h2>'+(sub?'<div class="who">'+esc(sub)+'</div>':'')+sel+'</div>';
 }
 function authHeader(t,s){return '<div class="hdr"><div class="sb"><span>더밀착수학</span><span>v'+APP_VERSION+'</span></div><h2>'+esc(t)+'</h2>'+(s?'<div class="who">'+esc(s)+'</div>':'')+'</div>'}
-const installTip=()=>isStandalone()?'':'<div class="card"><h3>홈 화면에 앱 설치하기</h3><p class="sub" style="margin:0 0 6px"><b>아이폰:</b> 사파리 아래쪽 공유 버튼(□↑) → <b>홈 화면에 추가</b> → 추가</p><p class="sub" style="margin:0"><b>안드로이드:</b> 크롬 오른쪽 위 ⋮ → <b>앱 설치</b> 또는 <b>홈 화면에 추가</b></p></div>';
+const isIOS=()=>/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const shareIco='<svg viewBox="0 0 24 24" width="20" height="20" style="vertical-align:-4px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v8h14v-8"/></svg>';
+function installSteps(){
+  if(isIOS()){const chrome=/CriOS/i.test(navigator.userAgent);return '<ol class="ist"><li>'+(chrome?'오른쪽 위 공유 버튼 '+shareIco+' 누르기':'화면 아래 가운데 공유 버튼 '+shareIco+' 누르기')+'</li><li>목록을 조금 올려서 <b>홈 화면에 추가</b> 누르기</li><li>오른쪽 위 <b>추가</b> 누르기</li></ol>'}
+  return '<ol class="ist"><li>오른쪽 위 <b>⋮</b> 누르기</li><li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b> 누르기</li></ol>';
+}
+const installTip=()=>isStandalone()?'':'<div class="card" style="border-color:var(--pri)"><h3>홈 화면에 앱 설치하기</h3>'+(U.bip?'<button class="btn" style="width:100%" data-act="install">앱 설치하기 (한 번만 누르면 돼요)</button>':installSteps())+'</div>';
+function installBar(){if(isStandalone()||U.noInstall)return '';return '<div class="upd ib"><span>홈 화면에 앱으로 설치할 수 있어요</span><span style="display:flex;gap:6px"><button class="btn sm" data-act="'+(U.bip?'install':'instHow')+'">설치</button><button class="btn sm ghost" data-act="instX" aria-label="닫기">✕</button></span></div>'}
+function instSheet(){return '<div class="sheetbg" data-act="close"><div class="sheet"><h3>홈 화면에 앱 설치하기</h3>'+installSteps()+'<p class="sub">설치하면 앱처럼 바로 열리고 로그인도 유지돼요.</p><button type="button" class="btn ghost" style="width:100%" data-act="close">닫기</button></div></div>'}
 const msgBox=()=>U.authMsg?'<div class="card" style="border-color:var(--acc)"><p style="margin:0;color:var(--acc);font-weight:700">'+esc(U.authMsg)+'</p></div>':'';
 
 function authView(){
@@ -336,9 +344,9 @@ function authView(){
     '<form id="signupF" class="card"><label class="f"><span>휴대폰번호</span><input id="jP" inputmode="numeric" autocomplete="tel" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호 (6자리 이상)</span><input id="jW" type="password" autocomplete="new-password"></label><label class="f"><span>비밀번호 확인</span><input id="jW2" type="password" autocomplete="new-password"></label><label class="sw" style="justify-content:flex-start;gap:8px;color:var(--ink)"><input type="checkbox" id="jA">[필수] 개인정보 수집·이용에 동의합니다</label><details class="sub" style="margin:-4px 0 14px"><summary>동의 내용 보기</summary>수집 항목: 이름, 휴대폰번호, 출결·숙제·학습 기록, 메시지 · 목적: 수업 관리와 학부모 안내 · 보관: 퇴원 후 1년까지 보관 뒤 삭제 · 동의하지 않을 수 있으나 앱을 이용할 수 없어요.</details><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>가입하기</button></form>'+
     '<button class="btn ghost" style="width:100%" data-act="authTab" data-v="login">이미 가입했어요 · 로그인</button>'+installTip()+'</div>';
   return authHeader('더밀착수학','학생·학부모·선생님 로그인')+'<div class="body">'+msgBox()+
-    '<form id="loginF" class="card"><label class="f"><span>휴대폰번호</span><input id="lP" inputmode="numeric" autocomplete="username" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호</span><input id="lW" type="password" autocomplete="current-password"></label><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>로그인</button></form>'+
+    installTip()+'<form id="loginF" class="card"><label class="f"><span>휴대폰번호</span><input id="lP" inputmode="numeric" autocomplete="username" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호</span><input id="lW" type="password" autocomplete="current-password"></label><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>로그인</button></form>'+
     '<button class="btn ghost" style="width:100%;margin-bottom:12px" data-act="authTab" data-v="signup">처음이에요 · 가입하기</button>'+
-    '<p class="sub" style="text-align:center;margin:0 0 12px">비밀번호를 잊으셨으면 선생님께 말씀해 주세요.</p>'+installTip()+
+    '<p class="sub" style="text-align:center;margin:0 0 12px">비밀번호를 잊으셨으면 선생님께 말씀해 주세요.</p>'+
     '<p style="text-align:center"><button class="lnk" data-act="authTab" data-v="setup">원장님 처음 설정</button></p></div>';
 }
 function waitView(){
@@ -396,7 +404,8 @@ function render(){
     else{
       html=appView();
       if(U.role==='teacher'&&!U.sheet)html+=pushBanner();
-      if(U.sheet==='qr')html+=qrSheet();else if(U.sheet==='scan')html+=scanSheet();else if(U.sheet)html+=sheetHtml();
+      if(U.sheet==='qr')html+=qrSheet();else if(U.sheet==='scan')html+=scanSheet();else if(U.sheet==='inst')html+=instSheet();else if(U.sheet)html+=sheetHtml();
+      if(!U.sheet&&!U.chat&&!U.update)html+=installBar();
     }
   }catch(err){console.error(err);html=authHeader('잠시 문제가 생겼어요','')+'<div class="body"><div class="card"><p>화면을 그리다 오류가 났어요. 새로고침해 주세요.</p><p class="sub">'+esc(err.message)+'</p><button class="btn" data-act="reload">새로고침</button></div></div>'}
   html+=updBar();
@@ -541,6 +550,9 @@ app.addEventListener('click',async e=>{
   try{
   if(a==='reload')return location.reload();
   if(a==='doUpdate'){if(U.update)U.update.postMessage('skip');return}
+  if(a==='install'){if(!U.bip)return;const ev=U.bip;U.bip=null;ev.prompt();const r=await ev.userChoice.catch(()=>null);if(r&&r.outcome==='accepted')toast('설치됐어요! 홈 화면에서 열어 주세요');return render()}
+  if(a==='instHow'){U.sheet='inst';return render()}
+  if(a==='instX'){U.noInstall=true;try{localStorage.setItem('tmm-noinst','1')}catch(e){}return render()}
   if(a==='authTab'){U.authTab=v;U.authMsg='';return render()}
   if(a==='logout'){qrStop();stopScan();U.famStarted=false;U.claimed=false;U.famSig=null;U.authMsg='';U.authTab='login';await signOut(auth);return}
   if(a==='reclaim'){await claim(U.wait);return toast('다시 요청했어요')}
@@ -704,5 +716,8 @@ if('serviceWorker' in navigator){
   }).catch(()=>{});
   let reloaded=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(reloaded)return;reloaded=true;location.reload()});
 }
+try{U.noInstall=localStorage.getItem('tmm-noinst')==='1'}catch(e){}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();U.bip=e;render()});
+window.addEventListener('appinstalled',()=>{U.bip=null;toast('설치됐어요! 홈 화면에서 열어 주세요')});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)location.reload()});
 render();
