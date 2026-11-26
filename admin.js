@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.1.4';
+const ADMIN_VERSION = '2.1.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -69,6 +69,7 @@ function inviteText(m) {
     + '가입할 때 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호를 넣어 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'
     + '설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');
 }
+const shortInvite = m => '[더밀착수학] ' + mLabel(m) + ' 앱 안내\n설치: https://themilchak-math.github.io/install.html\n가입 번호: ' + fmtP(m.phone) + ' (비밀번호는 원하는 걸로)';
 const smsHref = (m) => 'sms:' + m.phone + (isIOSdev() ? '&' : '?') + 'body=' + encodeURIComponent(inviteText(m));
 const thOf = (sid, rel) => sid + '|' + (rel === 'student' ? 'student' : 'parent');
 
@@ -658,7 +659,13 @@ function render() {
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
   const cb = document.getElementById('chatBody'); if (cb) cb.scrollTop = cb.scrollHeight;
   if (V.page === 'qr' && V.screen === 'app') drawQR();
-  if (V.modal === 'invite' && V.invQR) { const box = document.getElementById('invQRBox'); const m = D.members.find(x => x.id === V.invQR); if (box && m && window.QRCode) { box.innerHTML = ''; new window.QRCode(box, { text: 'SMSTO:' + m.phone + ':' + inviteText(m), width: 300, height: 300, correctLevel: window.QRCode.CorrectLevel.L }); } }
+  if (V.modal === 'invite' && V.invQR) { const box = document.getElementById('invQRBox'); const m = D.members.find(x => x.id === V.invQR); if (box && m && window.QRCode) { const mk = t => { const txt = 'SMSTO:' + m.phone + ':' + t; box.innerHTML = '';
+      if (window.qrcode && window.qrcode.stringToBytesFuncs) { // 한글(UTF-8)을 정확히 계산하는 QR 라이브러리
+        window.qrcode.stringToBytes = window.qrcode.stringToBytesFuncs['UTF-8']; const q = window.qrcode(0, 'L'); q.addData(txt, 'Byte'); q.make();
+        const n = q.getModuleCount(); box.innerHTML = q.createImgTag(Math.max(2, Math.floor(340 / (n + 8))), 4); return; }
+      new window.QRCode(box, { text: txt, width: 300, height: 300, correctLevel: window.QRCode.CorrectLevel.L }); };
+    // 한글이 많으면 QR 용량을 넘어요 → 넘으면 짧은 안내문으로
+    try { mk(inviteText(m)); } catch (e) { try { mk(shortInvite(m)); } catch (e2) { box.innerHTML = '<p class="sub">QR을 만들 수 없어요. [문구 복사]를 써 주세요.</p>'; } } } }
 }
 let rT = null; const sr = () => { if (rT) return; rT = requestAnimationFrame(() => { rT = null; render(); }); };
 let tt; const toast = m => { V.toast = m; clearTimeout(tt); tt = setTimeout(() => { V.toast = ''; render(); }, 3000); render(); };
