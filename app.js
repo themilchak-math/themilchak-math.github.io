@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.2.3';
+const APP_VERSION = '1.2.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -549,7 +549,7 @@ function pushHelp(){
   const sysPath='휴대폰 <b>설정 → 애플리케이션 → '+(isSamsung()?'삼성 인터넷':'사용 중인 인터넷 앱')+' → 알림 → 알림 허용</b>이 켜져 있는지도 확인해 주세요.';
   const samPath='삼성 인터넷 <b>메뉴(≡) → 설정 → 사이트 및 다운로드 → 사이트 알림</b>에서 알림을 켜고, 오른쪽 위 <b>⋮ → 허용 또는 차단된 사이트</b>에 더밀착수학이 차단돼 있으면 허용으로 바꿔 주세요.';
   const chrPath='크롬은 주소창 왼쪽 <b>자물쇠(또는 종) → 권한 → 알림 → 허용</b>.';
-  if(android&&isStandalone())return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>허용 창이 안 보이나요?</b><br>아래 버튼으로 인터넷 앱(삼성 인터넷)에서 열어 [알림 받기]를 누르면 이 앱에도 적용돼요.<a class="btn" style="display:flex;align-items:center;justify-content:center;margin-top:8px;text-decoration:none" href="intent://themilchak-math.github.io/#Intent;scheme=https;end">인터넷 앱에서 열어 알림 켜기</a><span class="sub" style="display:block;margin-top:6px">'+samPath+' '+sysPath+'</span></div>';
+  if(android&&isStandalone())return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>먼저 확인:</b> 앱 아이콘 길게 누르기 → ⓘ 앱 정보 → <b>알림 → 알림 허용</b> 켜기 후 앱을 다시 열어 주세요.</div>'+'<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>허용 창이 안 보이나요?</b><br>아래 버튼으로 인터넷 앱(삼성 인터넷)에서 열어 [알림 받기]를 누르면 이 앱에도 적용돼요.<a class="btn" style="display:flex;align-items:center;justify-content:center;margin-top:8px;text-decoration:none" href="intent://themilchak-math.github.io/#Intent;scheme=https;end">인터넷 앱에서 열어 알림 켜기</a><span class="sub" style="display:block;margin-top:6px">'+samPath+' '+sysPath+'</span></div>';
   if(android)return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>허용 창이 안 보이나요?</b><br>'+(isSamsung()?samPath:(/Chrome/i.test(navigator.userAgent)?chrPath+' ⋮ → 설정 → 사이트 설정 → 알림에서 <b>조용한 메시지 사용</b>을 끄면 다음부터 창이 떠요.':samPath+' '+chrPath))+'<br>'+sysPath+' 바꾼 뒤 이 화면을 새로고침하고 다시 눌러 주세요.</div>';
   return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>허용 창이 안 보이나요?</b><br>아이폰 <b>설정 → 알림 → 더밀착수학</b>에서 알림 허용을 켠 뒤 앱을 다시 열어 눌러 주세요.</div>';
 }
@@ -558,7 +558,7 @@ function pushCard(){
   let inner;
   if(st==='ios-install')inner='<p class="sub" style="margin:0">아이폰은 <b>홈 화면에 설치한 앱</b>에서만 알림을 받을 수 있어요. 공유 버튼 → 홈 화면에 추가 후, 설치된 앱에서 다시 열어 주세요.</p>';
   else if(st==='unsupported')inner='<p class="sub" style="margin:0">이 브라우저는 알림을 지원하지 않아요. '+(pushIOS()?'iOS 16.4 이상으로 업데이트해 주세요.':'삼성 인터넷 또는 크롬을 최신으로 업데이트해 주세요.')+'</p>';
-  else if(st==='denied')inner='<p class="sub" style="margin:0">알림이 차단돼 있어요. 휴대폰 <b>설정 → 알림</b>(또는 브라우저 사이트 설정)에서 더밀착수학 알림을 허용해 주세요.</p>';
+  else if(st==='denied')inner=(/Android/i.test(navigator.userAgent)&&isStandalone())?'<p class="sub" style="margin:0">이 앱의 알림이 꺼져 있어요.<br>① 홈 화면의 <b>더밀착수학 아이콘을 길게 누르기</b> → <b>ⓘ 앱 정보</b><br>② <b>알림</b> 누르기 → <b>알림 허용</b> 켜기<br>③ 앱을 닫았다가 다시 열고 [알림 받기] 누르기</p><button class="btn" style="width:100%;margin-top:10px" data-act="pushOn">다시 시도</button>':'<p class="sub" style="margin:0">알림이 차단돼 있어요. 휴대폰 <b>설정 → 알림</b>(또는 브라우저 사이트 설정)에서 더밀착수학 알림을 허용해 주세요.</p>';
   else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+(U.pushHint?pushHelp():'')+'';
   return '<div class="card" style="border-color:var(--pri)"><h3>알림 받기 <button class="btn sm ghost" data-act="pushHide" aria-label="닫기">나중에</button></h3>'+inner+'</div>';
 }
