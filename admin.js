@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.9.5';
+const ADMIN_VERSION = '1.9.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -95,16 +95,27 @@ function reqRows() {
   return '<table><tbody>' + l.map(q => { const s = stu(q.sid) || { name: '?' }; return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(q.at) + ' 등원 요청</td><td class="r"><button class="btn sm ghost" data-a="rej" data-id="' + q.id + '">거절</button> <button class="btn sm" data-a="ok" data-id="' + q.id + '">승인</button></td></tr>'; }).join('') + '</tbody></table>';
 }
 
+// 정산 메뉴의 등원 요일(이번 달)로 오늘 올 학생 계산. 정산 자료가 없으면 null
+function expectedToday() {
+  const w = new Date(TODAY + 'T00:00').getDay(); const m = (D.fin || {})[ymOf(TODAY)]; if (!m || !(m.rows || []).length) return null;
+  if (w === 0) return [];
+  return active().filter(s => (m.rows || []).some(r => (r.sid === s.id || (!r.sid && r.name === s.name)) && (r.d || [])[w - 1])).map(s => s.id);
+}
 function pDash() {
-  const a = D.att[TODAY] || {}; const st = active();
-  const present = st.filter(s => a[s.id] && a[s.id].st !== '결석').length;
+  const a = D.att[TODAY] || {}; const st = active(); const exp = expectedToday(); const expSet = new Set(exp || []);
+  const isIn = s => a[s.id] && a[s.id].st !== '결석';
+  const present = st.filter(isIn).length; const expIn = exp ? st.filter(s => expSet.has(s.id) && isIn(s)).length : 0;
+  const notYet = exp ? st.filter(s => expSet.has(s.id) && !a[s.id]) : [];
   const toCheck = D.hw.filter(h => h.st === 'done');
+  const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>오늘 등원 (' + WD[new Date(TODAY + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>오늘 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
+  const order = exp ? [...st].sort((x, y) => (expSet.has(y.id) - expSet.has(x.id)) || x.name.localeCompare(y.name, 'ko')) : st;
   return '<h1>' + esc(TNAME()) + ' <span class="sub">오늘 ' + fmtD(TODAY) + '</span></h1>' +
-    pushCard() + '<div class="kpis"><div><b>' + present + '/' + st.length + '</b><span>오늘 등원</span></div><div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
+    pushCard() + '<div class="kpis">' + kpi + '<div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
+    (exp && notYet.length ? '<section class="card hl"><h2>아직 안 온 학생 <span class="sub">오늘 수업 예정</span></h2><p>' + notYet.map(s => '<b>' + esc(s.name) + '</b>').join(' · ') + '</p></section>' : '') +
     (isOwnerMe() && D.staff.some(x => x.st === 'pending') ? '<section class="card hl"><h2>부원장 가입 승인</h2><table><tbody>' + D.staff.filter(x => x.st === 'pending').map(x => '<tr><td><b>' + esc(x.name || '') + ' 부원장</b></td><td>' + esc(fmtP(x.phone)) + '</td><td class="r"><button class="btn sm ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn sm" data-a="stOk" data-id="' + x.id + '">승인</button></td></tr>').join('') + '</tbody></table></section>' : '') +
     '<div class="grid2"><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section><section class="card"><h2>가입 승인 대기</h2>' + joinRows() + '</section></div>' +
-    '<section class="card"><h2>오늘 출결 <span class="sub">' + fmtD(TODAY) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th><th>수업</th><th>상태</th><th>오늘 기록</th></tr></thead><tbody>' +
-    st.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === TODAY).pop(); return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + esc(s.time) + '</td><td>' + attChip(a[s.id]) + '</td><td>' + (lg ? esc(lg.unit) + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
+    '<section class="card"><h2>오늘 출결 <span class="sub">' + fmtD(TODAY) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th>' + (exp ? '<th>오늘 수업</th>' : '') + '<th>상태</th><th>오늘 기록</th></tr></thead><tbody>' +
+    order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === TODAY).pop(); const e = expSet.has(s.id); return '<tr' + (exp && !e && !a[s.id] ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + (e ? chip('예정', 'ok') : chip('없음')) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (lg ? esc(lg.unit) + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
     '<section class="card"><h2>확인할 숙제</h2>' + hwTable(toCheck) + '</section>';
 }
 
