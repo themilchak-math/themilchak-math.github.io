@@ -3,7 +3,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
-import { pushState, enablePush, sendPush } from './push.js';
+import { pushState, enablePush, sendPush, pushErrorText } from './push.js';
 
 const ADMIN_VERSION = '1.2.0';
 const fb = initializeApp(firebaseConfig);
@@ -362,7 +362,7 @@ app.addEventListener('click', async e => {
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v;
   try {
     if (a === 'go') { if (V.page === 'qr' && v !== 'qr') qrStop(); V.page = v; if (v === 'qr') qrStart(); if (v === 'msg' && V.chat) markRead(V.chat); return render(); }
-    if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(e.message === 'denied' ? '알림이 허용되지 않았어요' : '알림을 켜지 못했어요'); } return render(); }
+    if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(pushErrorText(e)); } return render(); }
     if (a === 'pushHide') { V.pushHide = true; return render(); }
     if (a === 'logout') { qrStop(); await signOut(auth); return; }
     if (a === 'modal') { V.modal = v; V.editId = id || null; V.bulk = null; return render(); }

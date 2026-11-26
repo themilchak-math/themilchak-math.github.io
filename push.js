@@ -32,15 +32,31 @@ async function mySub() {
 
 // 이 기기에서 알림 켜기. targets: 이 사람이 받을 알림함 이름들 (원장님 'teacher', 가족 '학생id|parent' 등)
 export async function enablePush(db, uid, targets) {
-  const perm = await Notification.requestPermission();
-  if (perm !== 'granted') throw new Error('denied');
-  const reg = await navigator.serviceWorker.register('./sw.js');
-  await navigator.serviceWorker.ready;
+  const step = (p, ms, name) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout:' + name)), ms))]);
+  let perm = Notification.permission;
+  if (perm !== 'granted') perm = await step(Notification.requestPermission(), 25000, 'permission');
+  if (perm !== 'granted') throw new Error(perm === 'denied' ? 'denied' : 'dismissed');
+  let reg;
+  try { reg = await step(navigator.serviceWorker.register('./sw.js'), 15000, 'sw'); await step(navigator.serviceWorker.ready, 15000, 'ready'); }
+  catch (e) { throw new Error(String(e.message).startsWith('timeout') ? e.message : 'sw:' + e.message); }
+  let key; try { key = await step(vapidKey(), 15000, 'server'); } catch (e) { throw new Error(String(e.message).startsWith('timeout') ? e.message : 'server:' + e.message); }
   let sub = await reg.pushManager.getSubscription();
-  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: ub64u(await vapidKey()) });
+  if (!sub) { try { sub = await step(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: ub64u(key) }), 25000, 'subscribe'); } catch (e) { throw new Error(String(e.message).startsWith('timeout') ? e.message : 'subscribe:' + (e.name || '') + ' ' + e.message); } }
   const j = sub.toJSON(); const s = { endpoint: j.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth } };
-  for (const t of targets) await setDoc(doc(db, 'push', t), { subs: arrayUnion(s) }, { merge: true });
+  try { for (const t of targets) await setDoc(doc(db, 'push', t), { subs: arrayUnion(s) }, { merge: true }); } catch (e) { throw new Error('save:' + (e.code || e.message)); }
   try { localStorage.setItem('tmm-push-' + uid, '1'); } catch (e) { }
+}
+// 알림 켜기 실패 이유를 사람이 읽을 문장으로
+export function pushErrorText(e) {
+  const m = String((e && e.message) || e || '');
+  if (m === 'denied') return '알림이 차단돼 있어요. 휴대폰 설정 또는 크롬 주소창 왼쪽 자물쇠 → 권한 → 알림을 허용으로 바꿔 주세요.';
+  if (m === 'dismissed') return '알림 허용 창이 닫혔어요. 다시 누르고 [허용]을 눌러 주세요.';
+  if (m === 'timeout:permission') return '허용 창이 뜨지 않았어요. 크롬 주소창 왼쪽 자물쇠(또는 종 모양) 아이콘 → 알림 허용 후 다시 눌러 주세요.';
+  if (m.startsWith('timeout:sw') || m.startsWith('timeout:ready') || m.startsWith('sw:')) return '앱을 완전히 닫았다가 다시 열고 눌러 주세요. (' + m + ')';
+  if (m.startsWith('timeout:server') || m.startsWith('server:')) return '알림 서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요. (' + m + ')';
+  if (m.startsWith('timeout:subscribe') || m.startsWith('subscribe:')) return '이 브라우저에서 알림 등록이 안 돼요. 크롬을 최신으로 업데이트하거나, 삼성 인터넷이면 크롬으로 열어 주세요. (' + m + ')';
+  if (m.startsWith('save:')) return '알림 정보를 저장하지 못했어요. (' + m + ')';
+  return '알림을 켜지 못했어요. (' + m + ')';
 }
 
 // 알림 보내기 (실패해도 앱 동작에는 영향 없음). text가 "[제목] 내용" 꼴이면 제목을 떼어 씀
