@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel } from './subjects.j
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.5.6';
+const APP_VERSION = '1.6.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -55,7 +55,8 @@ function tabsFor(){
 
 
 const hwChip=h=>h.st==='checked'?'<span class="chip c-ok">확인 완료</span>':h.st==='done'?'<span class="chip c-pri">제출함</span>':(h.due<TODAY?'<span class="chip c-bad">기한 지남</span>':'<span class="chip c-warn">진행 중</span>');
-const attChip=a=>!a?'<span class="chip">미등원</span>':'<span style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end"><span class="chip '+(a.st==='출석'?'c-ok':a.st==='지각'?'c-warn':'c-bad')+'">'+a.st+(a.at?' '+a.at:'')+'</span>'+(a.out?'<span class="chip c-pri">하원 '+a.out+'</span>':'')+'</span>';
+const isIn=r=>!!r&&r.st!=='결석';
+const attChip=a=>!a?'<span class="chip">미등원</span>':a.st==='결석'?'<span class="chip c-bad">결석</span>':'<span style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end"><span class="chip c-ok">등원'+(a.at?' '+a.at:'')+'</span>'+(a.out?'<span class="chip c-pri">하원 '+a.out+'</span>':'')+'</span>';
 const qrCode=(t=Date.now())=>String((Math.floor(t/30000)*7919+13)%900000+100000);
 const qrLeft=()=>30-Math.floor(Date.now()/1000)%30;
 function qrSvg(code){let z=+code||1;const r=()=>(z=z*16807%2147483647)/2147483647;const N=25;let d='';
@@ -108,7 +109,7 @@ function mngView(){
 }
 const pending=()=>(D.req||[]).filter(q=>q.st==='pending');
 const myReq=sid=>pending().find(q=>q.sid===sid);
-function reqRows(){const l=pending();if(!l.length)return '<div class="empty">승인 대기 중인 등원 요청이 없어요</div>';return l.map(q=>{const s=stu(q.sid)||{name:'?',time:''};return '<div class="row" style="flex-wrap:wrap"><div class="av">'+esc(s.name.slice(-2))+'</div><div class="grow"><div class="nm">'+esc(s.name)+' 등원 요청</div><div class="sub">'+esc(q.at)+' QR 확인 · 수업 '+esc(s.time)+(q.at>s.time?' · 지각':'')+'</div></div><div style="display:flex;gap:6px"><button class="btn sm ghost" data-act="rej" data-id="'+q.id+'">거절</button><button class="btn sm" data-act="ok" data-id="'+q.id+'">승인</button></div></div>'}).join('')}
+function reqRows(){const l=pending();if(!l.length)return '<div class="empty">승인 대기 중인 등원 요청이 없어요</div>';return l.map(q=>{const s=stu(q.sid)||{name:'?',time:''};return '<div class="row" style="flex-wrap:wrap"><div class="av">'+esc(s.name.slice(-2))+'</div><div class="grow"><div class="nm">'+esc(s.name)+' 등원 요청</div><div class="sub">'+esc(q.at)+' 등원 요청'+'</div></div><div style="display:flex;gap:6px"><button class="btn sm ghost" data-act="rej" data-id="'+q.id+'">거절</button><button class="btn sm" data-act="ok" data-id="'+q.id+'">승인</button></div></div>'}).join('')}
 const loggedOn=(sid,d)=>D.logs.some(l=>l.sid===sid&&l.date===d);
 const fmtDist=m=>m>=1000?(m/1000).toFixed(1)+'km':m+'m';
 const stars=n=>'<span class="stars" aria-label="이해도 '+n+'/5">'+'★'.repeat(n)+'<span style="opacity:.25">'+'★'.repeat(5-n)+'</span></span>';
@@ -175,7 +176,7 @@ function tHome(){
   const present=D.students.filter(s=>a[s.id]&&a[s.id].st!=='결석').length;
   const toCheck=D.hw.filter(h=>h.st==='done');
   return header(TNAME(),'오늘 '+fmtD(TODAY))+'<div class="body">'+pushCard()+
-  '<div class="quick"><button data-act="sheet" data-s="qr">'+ic('att')+'등원 QR</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button><button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button><button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'시험기간</button></div>'+
+  '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button><button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button><button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'시험기간</button></div>'+
   (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
   (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+
@@ -191,8 +192,8 @@ function calCard(sid,teacher){
   for(let i=0;i<lead;i++)cells+='<div></div>';
   for(let d=1;d<=nd;d++){
     const ds=y+'-'+pad(m)+'-'+pad(d);const day=D.att[ds]||{};let cls='',sub='';
-    if(sid!=='all'){const r=day[sid];if(r){const k=ST.indexOf(r.st);cnt[k]++;cls=' k'+k}}
-    else{const rs=Object.values(day);if(rs.length){rs.forEach(r=>cnt[ST.indexOf(r.st)]++);const n=rs.filter(r=>r.st!=='결석').length;cls=rs.some(r=>r.st==='결석')?' k2':rs.some(r=>r.st==='지각')?' k1':' k0';sub='<small>'+n+'명</small>'}}
+    if(sid!=='all'){const r=day[sid];if(r){const k=isIn(r)?0:2;cnt[k]++;cls=' k'+k}}
+    else{const rs=Object.values(day);if(rs.length){rs.forEach(r=>cnt[isIn(r)?0:2]++);const n=rs.filter(isIn).length;cls=n?' k0':' k2';sub='<small>'+n+'명</small>'}}
     cells+='<button data-act="calD" data-v="'+ds+'" class="'+cls+(ds===TODAY?' td':'')+(ds===U.calD?' sel':'')+(ds>TODAY?' fu':'')+'" aria-label="'+m+'월 '+d+'일">'+d+sub+'</button>';
   }
   const dd=U.calD;let det='';
@@ -203,34 +204,33 @@ function calCard(sid,teacher){
   }
   return '<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><button class="btn sm ghost" data-act="calM" data-v="-1" aria-label="이전 달">‹</button><h3 style="margin:0">'+y+'년 '+m+'월 출결</h3><button class="btn sm ghost" data-act="calM" data-v="1" aria-label="다음 달">›</button></div>'+
   (teacher?'<div class="pills"><button data-act="calS" data-v="all" class="'+(sid==='all'?'on':'')+'">전체</button>'+D.students.map(x=>'<button data-act="calS" data-v="'+x.id+'" class="'+(sid===x.id?'on':'')+'">'+esc(x.name)+'</button>').join('')+'</div>':'')+
-  '<div class="cal">'+cells+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"><span class="chip c-ok">출석 '+cnt[0]+'</span><span class="chip c-warn">지각 '+cnt[1]+'</span><span class="chip c-bad">결석 '+cnt[2]+'</span>'+(sid==='all'?'<span class="sub" style="font-size:13px">숫자는 그날 등원 인원</span>':'')+'</div>'+det+'</div>';
+  '<div class="cal">'+cells+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"><span class="chip c-ok">등원 '+cnt[0]+'일</span><span class="chip c-bad">결석 '+cnt[2]+'일</span>'+(sid==='all'?'<span class="sub" style="font-size:13px">숫자는 그날 등원 인원</span>':'')+'</div>'+det+'</div>';
 }
 
 function tAtt(){
   const isT=U.attDate===TODAY;const a=D.att[U.attDate]||{};
   return header('출결 관리',fmtD(U.attDate)+(isT?' · 오늘':''))+'<div class="body">'+
-  '<button class="btn" style="width:100%;min-height:56px;font-size:17px;margin-bottom:12px" data-act="sheet" data-s="qr">등원 QR 띄우기</button>'+
   '<div class="card"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>'+
-  '<div class="card"><h3>출결 규칙</h3><p class="sub" style="margin:0">학생이 선생님 폰의 등원 QR(30초마다 바뀜)을 찍으면 선생님께 승인 요청이 가요. 승인해야 등원이 기록되고, 요청 시각이 수업 시작 이후면 지각이에요. 하원은 그날 학습 정리를 올린 뒤에만 열려요.</p></div>'+
+  '<div class="card"><h3>출결 규칙</h3><p class="sub" style="margin:0">학생이 앱에서 [등원하기]를 누르면 원장님께 승인 요청이 와요. 승인해야 등원이 기록되고, 하원은 그날 학습 정리를 올린 뒤에만 열려요. 시각 수정·삭제는 PC 관리자 [출결]에서 할 수 있어요.</p></div>'+
   '<div class="card"><label class="f"><span>날짜</span><input type="date" id="attDate" value="'+U.attDate+'"></label>'+(isOwnerMe()?'<div class="sw" style="margin:0"><span>등·하원 시 학부모님께 알림 자동 발송</span><input type="checkbox" id="autoN" '+(D.autoNotify?'checked':'')+'></div>':'')+'</div>'+
   '<div class="card"><h3>학생별 등·하원</h3>'+D.students.map(s=>{
     const r=a[s.id];const lg=loggedOn(s.id,U.attDate);
     const line=!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+r.out:lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
     let act='';
     if(r&&r.st!=='결석'&&!r.out&&!lg&&isT)act='<button class="btn sm" data-act="logFor" data-id="'+s.id+'">오늘 학습 정리 올리기</button>';
-    else if(!r)act='<button class="btn sm ghost" data-act="absent" data-id="'+s.id+'">결석 처리</button>';
+    else if(!r)act='<button class="btn sm" data-act="forceIn" data-id="'+s.id+'">등원 처리</button><button class="btn sm ghost" data-act="absent" data-id="'+s.id+'">결석 처리</button>';
     else if(r.st==='결석')act='<button class="btn sm ghost" data-act="unabsent" data-id="'+s.id+'">결석 취소</button>';
     return '<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(line)+'</div></div>'+attChip(r)+(act?'<div style="width:100%;display:flex;justify-content:flex-end">'+act+'</div>':'')+'</div>'}).join('')+'</div>'+
   calCard(D.students.some(x=>x.id===U.calS)?U.calS:'all',true)+
-  '<div class="card"><h3>최근 2주 출결 요약</h3>'+D.students.map(s=>{let c=[0,0,0];Object.keys(D.att).filter(d=>d>=off(-14)).forEach(d=>{const r=D.att[d][s.id];if(r)c[ST.indexOf(r.st)]++});return '<div class="row" style="flex-wrap:wrap"><div class="grow nm">'+esc(s.name)+'</div><span class="chip c-ok">출석 '+c[0]+'</span><span class="chip c-warn">지각 '+c[1]+'</span><span class="chip c-bad">결석 '+c[2]+'</span></div>'}).join('')+'</div></div>';
+  '<div class="card"><h3>최근 2주 출결 요약</h3>'+D.students.map(s=>{let c=[0,0];Object.keys(D.att).filter(d=>d>=off(-14)).forEach(d=>{const r=D.att[d][s.id];if(r)c[isIn(r)?0:1]++});return '<div class="row" style="flex-wrap:wrap"><div class="grow nm">'+esc(s.name)+'</div><span class="chip c-ok">등원 '+c[0]+'</span><span class="chip c-bad">결석 '+c[1]+'</span></div>'}).join('')+'</div></div>';
 }
 
 function checkCard(s){
   const r=(D.att[TODAY]||{})[s.id];const lg=!!(r&&r.logged)||loggedOn(s.id,TODAY);
   let m;
   const q=myReq(s.id);
-  if(!r&&q)m='<p style="margin:0 0 6px;font-weight:700">선생님 승인 대기 중</p><p class="sub" style="margin:0 0 10px">'+esc(q.at)+'에 등원 요청을 보냈어요. 선생님이 승인하면 등원이 기록돼요.</p><button class="btn ghost" style="width:100%" data-act="cancelReq" data-id="'+q.id+'">요청 취소</button>';
-  else if(!r)m='<p class="sub" style="margin:0 0 10px">수업 '+esc(s.time)+' 시작 · 교습소에 도착하면 선생님 폰의 등원 QR을 찍어주세요</p><button class="btn" style="width:100%;min-height:52px;font-size:17px" data-act="sheet" data-s="scan">QR 찍고 등원하기</button>';
+  if(!r&&q)m='<p style="margin:0 0 6px;font-weight:700">원장님 승인 대기 중</p><p class="sub" style="margin:0 0 10px">'+esc(q.at)+'에 등원 요청을 보냈어요. 원장님이 승인하면 등원이 기록돼요.</p><button class="btn ghost" style="width:100%" data-act="cancelReq" data-id="'+q.id+'">요청 취소</button>';
+  else if(!r)m='<p class="sub" style="margin:0 0 10px">교습소에 도착하면 눌러 주세요 · 원장님이 승인하면 등원이 기록돼요</p><button class="btn" style="width:100%;min-height:52px;font-size:17px" data-act="checkin">등원하기</button>';
   else if(r.st==='결석')m='<p style="margin:0">오늘은 결석으로 처리되었어요.</p>';
   else if(r.out)m='<p style="margin:0">오늘 수업 끝! 수고했어요.</p>';
   else m='<p class="sub" style="margin:0 0 10px">'+(lg?'선생님이 오늘 학습 정리를 올렸어요. 하원 체크를 해주세요.':'선생님이 오늘 학습 정리를 올리면 하원할 수 있어요.')+'</p><button class="btn" style="width:100%;min-height:52px;font-size:17px" data-act="checkout"'+(lg?'':' disabled')+'>'+(lg?'하원 체크':'하원 잠김 · 학습 정리 대기')+'</button>';
@@ -694,13 +694,15 @@ app.addEventListener('click',async e=>{
   if(a==='ok'||a==='rej'){
     const q=D.req.find(x=>x.id===id);if(!q)return;const s=stu(q.sid);
     if(a==='rej'){await updateDoc(doc(db,'reqs',q.id),{st:'rej'});await msg(q.sid+'|student',q.sid,'s','[등원 요청 반려] 선생님께 직접 말씀드려 주세요.');push([q.sid+'|student'],'[등원 요청 반려] 선생님께 직접 말씀드려 주세요.');return toast(s.name+' 등원 요청을 거절했어요')}
-    const st=q.at>s.time?'지각':'출석';const b=writeBatch(db);
+    const st='출석';const b=writeBatch(db);
     b.update(doc(db,'reqs',q.id),{st:'ok'});
-    b.set(doc(db,'att',TODAY+'_'+q.sid),{sid:q.sid,date:TODAY,st,at:q.at,by:'qr',logged:loggedOn(q.sid,TODAY)});
+    b.set(doc(db,'att',TODAY+'_'+q.sid),{sid:q.sid,date:TODAY,st,at:q.at,by:'app',logged:loggedOn(q.sid,TODAY)});
     await b.commit();
-    await notifyParent(q.sid,'[등원 알림] '+s.name+' 학생이 '+q.at+'에 등원했습니다. (QR 확인 · 선생님 승인'+(st==='지각'?' · 수업 '+s.time+' 시작, 지각':'')+')');
-    return toast(s.name+' '+st+' 승인'+(D.autoNotify?' · 학부모 알림 발송':''));
+    await notifyParent(q.sid,'[등원 알림] '+s.name+' 학생이 '+q.at+'에 등원했습니다.');
+    return toast(s.name+' 등원 승인'+(D.autoNotify?' · 학부모 알림 발송':''));
   }
+  if(a==='checkin'){const s=stu(U.me);if(myReq(s.id))return toast('이미 요청했어요');const t=hm();await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:t,date:TODAY,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생 '+t+' 등원 · 승인해 주세요',{tag:'req'});return toast('원장님께 등원 승인 요청을 보냈어요')}
+  if(a==='forceIn'){const s=stu(id);const t=U.attDate===TODAY?hm():(s.time||'16:00');await setDoc(doc(db,'att',U.attDate+'_'+id),{sid:id,date:U.attDate,st:'출석',at:t,by:'teacher',logged:loggedOn(id,U.attDate)});const q=(D.req||[]).find(x=>x.sid===id&&x.st==='pending');if(q)updateDoc(doc(db,'reqs',q.id),{st:'ok'}).catch(()=>{});if(U.attDate===TODAY)await notifyParent(id,'[등원 알림] '+s.name+' 학생이 '+t+'에 등원했습니다.');return toast(s.name+' 등원 처리 '+t)}
   if(a==='cancelReq'){await deleteDoc(doc(db,'reqs',id));return toast('요청을 취소했어요')}
   if(a==='checkout'){
     const s=stu(U.me);const r=(D.att[TODAY]||{})[s.id];if(!r||!r.logged)return toast('아직 하원할 수 없어요');

@@ -3,7 +3,7 @@ rules_version = '2';
 // - 원장님(config/main.owner)과 승인된 부원장(staff/{전화번호}.st=='ok')은 모든 데이터를 읽고 쓸 수 있어요.
 // - 부원장 등록·승인, 앱 기본 설정은 원장님만 할 수 있어요.
 // - 학부모·학생은 원장님이 승인해 연결한 아이(users/{uid}.sids)의 데이터만 볼 수 있어요.
-// - 학생은 자기 숙제 '완료', 오늘 '하원'(학습 정리 후), 등원 요청(유효한 QR 코드)만 할 수 있어요.
+// - 학생은 자기 숙제 '완료', 오늘 '하원'(학습 정리 후), 등원 요청(원장님 승인 필요)만 할 수 있어요.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
@@ -56,8 +56,7 @@ service cloud.firestore {
     match /reqs/{id} {
       allow read: if isTeacher() || linked(resource.data.sid);
       allow create: if isStudentOf(request.resource.data.sid) && request.resource.data.uid == request.auth.uid
-        && request.resource.data.st == 'pending' && qr().code != ''
-        && request.resource.data.code == qr().code && request.time.toMillis() < qr().exp;
+        && request.resource.data.st == 'pending';
       allow update: if isTeacher();
       allow delete: if isTeacher() || (isStudentOf(resource.data.sid) && resource.data.uid == request.auth.uid && resource.data.st == 'pending');
     }
