@@ -5,7 +5,7 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collec
 import { firebaseConfig } from './firebase-config.js';
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 
-const ADMIN_VERSION = '1.4.0';
+const ADMIN_VERSION = '1.4.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -84,10 +84,10 @@ const attChip = a => !a ? chip('미등원') : chip(a.st + (a.at ? ' ' + a.at : '
 const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입');
 const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 'done' ? chip('제출함', 'pri') : h.due < TODAY ? chip('기한 지남', 'bad') : chip('진행 중', 'warn');
 
-const NAV0 = [['dash', '대시보드'], ['qr', '등원 QR'], ['students', '학생·학부모'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['exam', '시험기간'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
+const NAV0 = [['dash', '대시보드'], ['qr', '등원 QR'], ['students', '학생·학부모'], ['school', '재학 학교'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['exam', '시험기간'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
 const navList = () => NAV0.filter(([k]) => k !== 'staff' || isOwnerMe());
 function navBadge(k) {
-  const n = k === 'dash' ? mPending().length + pending().length : k === 'qr' ? pending().length : k === 'students' ? mPending().length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : k === 'staff' ? D.staff.filter(x => x.st === 'pending').length : 0;
+  const n = k === 'dash' ? mPending().length + pending().length : k === 'qr' ? pending().length : k === 'students' ? mPending().length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : k === 'staff' ? D.staff.filter(x => x.st === 'pending').length : k === 'school' ? active().filter(s => !s.school).length : 0;
   return n ? '<span class="badge">' + n + '</span>' : '';
 }
 
@@ -219,6 +219,19 @@ function pExam() {
     '<section class="card"><h2>학교별 학생</h2>' + (bySchool.length ? '<table><tbody>' + bySchool.map(([x, l]) => { const nx = D.exams.filter(e => e.school === x && examLive(e)).sort((a, b) => a.start < b.start ? -1 : 1)[0]; return '<tr><td><b>' + esc(x) + '</b></td><td>' + l.map(s => esc(s.name)).join(', ') + '</td><td class="r">' + (nx ? chip(esc(nx.title) + ' ' + dday(nx), 'warn') : '<span class="sub">일정 없음</span>') + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">학교가 입력된 학생이 없어요</p>') + '</section></div>' +
     '<section class="card"><h2>등록된 시험 <span class="sub">' + all.length + '건</span></h2>' + (all.length ? '<table><thead><tr><th>학교</th><th>시험</th><th>기간</th><th>메모</th><th>상태</th><th></th></tr></thead><tbody>' + all.map(e => '<tr><td><b>' + esc(e.school) + '</b></td><td>' + esc(e.title) + '</td><td>' + fmtD(e.start) + (e.end && e.end !== e.start ? ' ~ ' + fmtD(e.end) : '') + '</td><td>' + esc(e.memo || '') + '</td><td>' + (examLive(e) ? chip(dday(e), 'warn') : chip('끝남')) + '</td><td class="r"><button class="btn xs ghost" data-a="exDel" data-id="' + e.id + '">삭제</button></td></tr>').join('') + '</tbody></table>' : '<p class="empty">아직 등록된 시험이 없어요</p>') + '</section>';
 }
+/* ---------- 재학 학교 일괄 등록 ---------- */
+function pSchool() {
+  const st = active(); const sc = schools(); const no = st.filter(s => !s.school);
+  const f = V.schF || 'all'; const list = f === 'none' ? no : f === 'all' ? st : st.filter(s => (s.school || '') === f);
+  const dl = '<datalist id="scAll">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>';
+  return '<h1>재학 학교 등록 <span class="sub">학생별 학교를 넣고 [저장] · 여러 명을 골라 한 번에 넣을 수도 있어요</span></h1>' + dl +
+    '<div class="grid2"><section class="card"><h2>학교별 인원</h2><table><tbody>' + sc.map(x => '<tr><td><b>' + esc(x) + '</b></td><td>' + st.filter(s => s.school === x).length + '명</td><td class="sub">' + st.filter(s => s.school === x).map(s => esc(s.name)).join(', ') + '</td></tr>').join('') + '<tr><td><b>미입력</b></td><td>' + no.length + '명</td><td class="sub">' + no.map(s => esc(s.name)).join(', ') + '</td></tr></tbody></table></section>' +
+    '<section class="card"><h2>선택한 학생에게 한 번에 넣기</h2><form id="schBulkF" class="form"><label>학교 이름<input id="schBulk" list="scAll" placeholder="예: 동탄중" autocomplete="off"></label><p class="sub">아래 표에서 학생을 체크한 뒤 [선택 학생에게 적용]을 누르세요.</p><button class="btn" type="submit">선택 학생에게 적용</button></form></section></div>' +
+    '<section class="card"><div class="bar" style="margin-bottom:10px"><b>보기</b> ' + [['all', '전체 ' + st.length], ['none', '미입력 ' + no.length]].concat(sc.map(x => [x, x])).map(([k, l]) => '<button class="btn xs ' + (f === k ? '' : 'ghost') + '" data-a="schF" data-v="' + esc(k) + '">' + esc(l) + '</button>').join(' ') + '</div>' +
+    '<form id="schF"><table><thead><tr><th style="width:36px"><input type="checkbox" id="schAllCk" title="모두 선택"></th><th>이름</th><th>학년</th><th>학교</th></tr></thead><tbody>' +
+    (list.length ? list.map(s => '<tr><td><input type="checkbox" name="schCk" value="' + s.id + '"></td><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td><input id="sc_' + s.id + '" data-sid="' + s.id + '" list="scAll" value="' + esc(s.school || '') + '" placeholder="학교 이름" autocomplete="off" style="max-width:260px"></td></tr>').join('') : '<tr><td colspan="4" class="empty">해당하는 학생이 없어요</td></tr>') +
+    '</tbody></table><div class="mf"><span style="flex:1"></span><button class="btn" type="submit">변경 내용 저장</button></div></form></section>';
+}
 /* ---------- 부원장 (원장님만) ---------- */
 const staffInvite = x => '[더밀착수학] ' + (x.name || '') + ' 선생님, 더밀착수학 관리 앱 부원장 계정 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호(' + fmtP(x.phone) + ')와 원하는 비밀번호 입력\n3) 원장님 승인 후 이용 가능\nPC 관리자 페이지: https://themilchak-math.github.io/admin.html';
 function pStaff() {
@@ -274,7 +287,7 @@ function loginView() {
 function render() {
   const keep = {}; let focusId = null;
   app.querySelectorAll('input[id],textarea[id],select[id]').forEach(el => { keep[el.id] = el.type === 'checkbox' ? { c: el.checked } : { v: el.value }; });
-  const hw = {}; app.querySelectorAll('input[name=hwS]').forEach(el => hw[el.value] = el.checked);
+  const hw = {}; app.querySelectorAll('input[name=hwS],input[name=schCk]').forEach(el => hw[el.value] = el.checked);
   V.keep = keep;
   const ae = document.activeElement; if (ae && ae.id && app.contains(ae)) focusId = ae.id;
   const main = app.querySelector('main'); const sc = main ? main.scrollTop : 0;
@@ -284,7 +297,7 @@ function render() {
   else {
     let page = '';
     if (V.page === 'staff' && !isOwnerMe()) V.page = 'dash';
-    try { page = ({ dash: pDash, qr: pQR, students: pStudents, att: pAtt, log: pLog, hw: pHw, exam: pExam, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
+    try { page = ({ dash: pDash, qr: pQR, students: pStudents, att: pAtt, log: pLog, hw: pHw, exam: pExam, school: pSchool, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
     catch (e) { console.error(e); page = '<section class="card"><p class="err">화면 오류: ' + esc(e.message) + '</p></section>'; }
     html = '<aside><div class="brand">더밀착수학<small>관리자</small></div><nav>' + navList().map(([k, l]) => '<button data-a="go" data-v="' + k + '" class="' + (V.page === k ? 'on' : '') + '">' + l + navBadge(k) + '</button>').join('') + '</nav><div class="foot"><a href="./" target="_blank">폰 앱 열기</a><button data-a="logout">로그아웃</button><small>v' + ADMIN_VERSION + '</small></div></aside><main>' + page + '</main>' + modalHtml();
   }
@@ -292,7 +305,7 @@ function render() {
   const same = app.dataset.p === V.page + V.screen;
   app.innerHTML = html; app.dataset.p = V.page + V.screen;
   Object.entries(keep).forEach(([id, k]) => { const el = document.getElementById(id); if (!el || el.disabled) return; if ('c' in k) { if (id !== 'autoN') el.checked = k.c; } else { el.value = k.v; if (el.tagName === 'SELECT' && el.value === '' && el.options.length) el.selectedIndex = 0; } });
-  app.querySelectorAll('input[name=hwS]').forEach(el => { if (el.value in hw) el.checked = hw[el.value]; });
+  app.querySelectorAll('input[name=hwS],input[name=schCk]').forEach(el => { if (el.value in hw) el.checked = hw[el.value]; });
   if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); }
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
   const cb = document.getElementById('chatBody'); if (cb) cb.scrollTop = cb.scrollHeight;
@@ -408,6 +421,7 @@ app.addEventListener('click', async e => {
     if (a === 'stRej') { await updateDoc(doc(db, 'staff', id), { st: 'none', uid: deleteField() }); return toast('거절했어요'); }
     if (a === 'stDel') { const x = D.staff.find(y => y.id === id); if (!x || !confirm((x.name || '') + ' 부원장을 삭제할까요? 그 번호로는 더 이상 관리 기능을 쓸 수 없어요.')) return; await deleteDoc(doc(db, 'staff', id)); return toast('삭제했어요'); }
     if (a === 'stCopy') { const x = D.staff.find(y => y.id === id); try { await navigator.clipboard.writeText(staffInvite(x)); toast('문구를 복사했어요'); } catch (e) { toast('복사하지 못했어요'); } return; }
+    if (a === 'schF') { V.schF = v; return render(); }
     if (a === 'exDel') { if (!confirm('이 시험 일정을 삭제할까요?')) return; await deleteDoc(doc(db, 'exams', id)); return toast('시험 일정을 삭제했어요'); }
     if (a === 'modal') { V.modal = v; V.editId = id || null; V.bulk = null; return render(); }
     if (a === 'invite') { V.modal = 'invite'; V.inviteSids = [id]; V.invQR = null; return render(); }
@@ -461,6 +475,7 @@ app.addEventListener('click', async e => {
 });
 
 app.addEventListener('change', async e => {
+  if (e.target.id === 'schAllCk') { document.querySelectorAll('input[name=schCk]').forEach(x => x.checked = e.target.checked); return; }
   const t = e.target;
   try {
     if (t.id === 'autoN') { await updateDoc(doc(db, 'config', 'main'), { autoNotify: t.checked }); return toast(t.checked ? '자동 알림 켬' : '자동 알림 끔'); }
@@ -490,6 +505,17 @@ app.addEventListener('submit', async e => {
       return toast(ids.length + '명에게 숙제를 냈어요');
     }
     if (f === 'ntF') { if (!g('nT').trim()) return toast('제목을 입력해 주세요'); await addDoc(collection(db, 'notices'), { title: g('nT').trim(), body: g('nB').trim(), at: TODAY, pin: document.getElementById('nP').checked, reads: [], ts: now() }); push(active().flatMap(x => [x.id + '|student', x.id + '|parent']), g('nT').trim(), { title: '새 공지', tag: 'notice' }); document.getElementById('nT').value = ''; document.getElementById('nB').value = ''; return toast('공지를 올렸어요'); }
+    if (f === 'schF') {
+      const b = writeBatch(db); let n = 0;
+      document.querySelectorAll('input[data-sid]').forEach(el => { const s = stu(el.dataset.sid); const v = el.value.trim(); if (s && (s.school || '') !== v) { b.update(doc(db, 'students', s.id), { school: v }); n++; } });
+      if (!n) return toast('바뀐 내용이 없어요'); await b.commit(); return toast(n + '명 학교를 저장했어요');
+    }
+    if (f === 'schBulkF') {
+      const v = g('schBulk').trim(); const ids = [...document.querySelectorAll('input[name=schCk]:checked')].map(x => x.value);
+      if (!v) return toast('학교 이름을 입력해 주세요'); if (!ids.length) return toast('아래 표에서 학생을 선택해 주세요');
+      ids.forEach(id => { const el = document.getElementById('sc_' + id); if (el) el.value = v; const ck = document.querySelector('input[name=schCk][value="' + id + '"]'); if (ck) ck.checked = false; }); const b = writeBatch(db); ids.forEach(id => b.update(doc(db, 'students', id), { school: v })); await b.commit();
+      document.getElementById('schBulk').value = ''; return toast(ids.length + '명을 ' + v + '(으)로 저장했어요');
+    }
     if (f === 'examF') {
       const school = g('exS').trim(), title = g('exT').trim(), start = g('exA'), end = g('exB') || g('exA'), memo = g('exM').trim();
       if (!school || !title || !start) return toast('학교·시험·시작일을 입력해 주세요');
