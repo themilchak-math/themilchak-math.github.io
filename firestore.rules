@@ -72,6 +72,12 @@ service cloud.firestore {
       allow update: if isOwner() || (hasProfile() && onlyKeys(['reads'])
         && request.resource.data.reads.toSet().difference(resource.data.reads.toSet()) == [request.auth.uid].toSet());
     }
+    match /push/{id} {
+      // 알림 받는 기기 목록. 'teacher' 또는 '학생id|student' / '학생id|parent'
+      allow read: if isOwner() || (signedIn() && id == 'teacher') || (hasProfile() && id.split('[|]')[0] in me().sids);
+      allow create, update: if isOwner() || (myThread(id) && request.resource.data.keys().hasOnly(['subs']));
+      allow delete: if isOwner();
+    }
     match /msgs/{id} {
       allow read: if isOwner() || myThread(resource.data.th);
       allow create: if isOwner()

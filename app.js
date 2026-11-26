@@ -4,8 +4,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
+import { PUSH_URL, pushState, enablePush, sendPush, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.1.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -149,7 +150,7 @@ function tHome(){
   const a=D.att[TODAY]||{};
   const present=D.students.filter(s=>a[s.id]&&a[s.id].st!=='결석').length;
   const toCheck=D.hw.filter(h=>h.st==='done');
-  return header(TNAME(),'오늘 '+fmtD(TODAY))+'<div class="body">'+
+  return header(TNAME(),'오늘 '+fmtD(TODAY))+'<div class="body">'+pushCard()+
   '<div class="quick"><button data-act="sheet" data-s="qr">'+ic('att')+'등원 QR</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button><button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button><button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button></div>'+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
   (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+
@@ -255,7 +256,7 @@ function sHome(){
   const s=stu(U.me);
   const todo=D.hw.filter(h=>h.sid===s.id&&h.st==='todo');
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
-  return header(s.name+' 학생',s.grade+' · '+s.course)+'<div class="body">'+checkCard(s)+
+  return header(s.name+' 학생',s.grade+' · '+s.course)+'<div class="body">'+pushCard()+checkCard(s)+
   '<div class="stats"><div><b>'+todo.length+'</b><span>남은 숙제</span></div><div><b>'+coursePct(s.id,s.course)+'%</b><span>진도율</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   '<div class="card"><h3>해야 할 숙제</h3>'+hwList(todo,'student')+'</div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
@@ -267,7 +268,7 @@ function pHome(){
   const s=stu(U.me);const a=(D.att[TODAY]||{})[s.id];
   const hs=D.hw.filter(h=>h.sid===s.id);const doneRate=hs.length?Math.round(hs.filter(h=>h.st!=='todo').length/hs.length*100):0;
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
-  return header(s.name+' 학부모님',s.grade+' · '+s.course)+'<div class="body">'+
+  return header(s.name+' 학부모님',s.grade+' · '+s.course)+'<div class="body">'+pushCard()+
   '<div class="card"><h3>오늘 출결 <small>'+fmtD(TODAY)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+attChip(a)+'</div></div>'+
   '<div class="stats"><div><b>'+coursePct(s.id,s.course)+'%</b><span>진도율</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
@@ -449,7 +450,7 @@ function startScan(){
 function stopScan(){if(scanner){const s=scanner;scanner=null;s.stop().catch(()=>{}).finally(()=>{try{s.clear()}catch(e){}})}}
 async function sendCode(code){
   const s=stu(U.me);U.sheet=null;
-  try{await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:hm(),date:TODAY,code,st:'pending',ts:now()});toast('선생님께 등원 승인 요청을 보냈어요')}
+  try{await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:hm(),date:TODAY,code,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생이 등원 QR을 찍었어요 ('+hm()+'). 승인해 주세요.',{tag:'req'});toast('선생님께 등원 승인 요청을 보냈어요')}
   catch(e){fail(e,'코드가 맞지 않거나 만료됐어요. 선생님 화면을 다시 찍어주세요.')}
 }
 
@@ -525,12 +526,25 @@ function watchMembers(){
 }
 async function claim(ms){
   const go=ms.filter(m=>m.st==='none'&&!(m.rel==='student'&&m.grade==='중1'&&!m.guardianOk));
-  for(const m of go){try{await updateDoc(doc(db,'members',m.id),{st:'pending',uid:ME.uid,at:hm()})}catch(e){console.warn(e)}}
+  const done=[];for(const m of go){try{await updateDoc(doc(db,'members',m.id),{st:'pending',uid:ME.uid,at:hm()});done.push(m)}catch(e){console.warn(e)}}
+  if(done.length)push(['teacher'],'[가입 요청] '+done.map(m=>(m.name||'')+' '+REL[m.rel]).join(', ')+' 가입을 승인해 주세요.',{tag:'join'});
 }
 
 /* ================= 쓰기 도우미 ================= */
 const msg=(th,sid,f,t)=>addDoc(collection(db,'msgs'),{th,sid,f,t,at:stamp(),ts:now(),r:false});
-function notifyParent(sid,text){if(!D.autoNotify)return Promise.resolve();return msg(sid+'|parent',sid,'s',text).catch(e=>console.warn(e))}
+const isTeacher=()=>U.role==='teacher'&&D.cfg&&D.cfg.owner===ME.uid;
+const push=(targets,text,opts)=>{sendPush(db,auth,targets,text,Object.assign({prune:isTeacher()},opts||{}))};
+const famName=()=>{const s=stu(U.me);return (s?s.name:'')+(U.role==='student'?' 학생':' 학부모님')};
+function notifyParent(sid,text){if(!D.autoNotify)return Promise.resolve();push([sid+'|parent'],text);return msg(sid+'|parent',sid,'s',text).catch(e=>console.warn(e))}
+function pushCard(){
+  const st=pushState(ME.uid);if(st==='off'||st==='on'||U.pushHide)return '';
+  let inner;
+  if(st==='ios-install')inner='<p class="sub" style="margin:0">아이폰은 <b>홈 화면에 설치한 앱</b>에서만 알림을 받을 수 있어요. 공유 버튼 → 홈 화면에 추가 후, 설치된 앱에서 다시 열어 주세요.</p>';
+  else if(st==='unsupported')inner='<p class="sub" style="margin:0">이 브라우저는 알림을 지원하지 않아요. '+(pushIOS()?'iOS 16.4 이상으로 업데이트해 주세요.':'크롬에서 열어 주세요.')+'</p>';
+  else if(st==='denied')inner='<p class="sub" style="margin:0">알림이 차단돼 있어요. 휴대폰 <b>설정 → 알림</b>(또는 브라우저 사이트 설정)에서 더밀착수학 알림을 허용해 주세요.</p>';
+  else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn">알림 받기</button>';
+  return '<div class="card" style="border-color:var(--pri)"><h3>알림 받기 <button class="btn sm ghost" data-act="pushHide" aria-label="닫기">나중에</button></h3>'+inner+'</div>';
+}
 function markRead(k){
   const other=U.role==='teacher'?['o']:['t','s'];const l=thread(k).filter(m=>other.includes(m.f)&&!m.r&&m.id);
   if(!l.length)return;const b=writeBatch(db);l.forEach(m=>{m.r=true;b.update(doc(db,'msgs',m.id),{r:true})});b.commit().catch(e=>console.warn(e));
@@ -553,6 +567,8 @@ app.addEventListener('click',async e=>{
   if(a==='install'){if(!U.bip)return;const ev=U.bip;U.bip=null;ev.prompt();const r=await ev.userChoice.catch(()=>null);if(r&&r.outcome==='accepted')toast('설치됐어요! 홈 화면에서 열어 주세요');return render()}
   if(a==='instHow'){U.sheet='inst';return render()}
   if(a==='instX'){U.noInstall=true;try{localStorage.setItem('tmm-noinst','1')}catch(e){}return render()}
+  if(a==='pushOn'){try{await enablePush(db,ME.uid,U.role==='teacher'?['teacher']:ME.ths);toast('알림이 켜졌어요')}catch(e){toast(e.message==='denied'?'알림이 허용되지 않았어요. 설정에서 허용해 주세요.':'알림을 켜지 못했어요. 잠시 후 다시 해 주세요.')}return render()}
+  if(a==='pushHide'){U.pushHide=true;return render()}
   if(a==='authTab'){U.authTab=v;U.authMsg='';return render()}
   if(a==='logout'){qrStop();stopScan();U.famStarted=false;U.claimed=false;U.famSig=null;U.authMsg='';U.authTab='login';await signOut(auth);return}
   if(a==='reclaim'){await claim(U.wait);return toast('다시 요청했어요')}
@@ -581,7 +597,8 @@ app.addEventListener('click',async e=>{
 
   // 가입 승인·관리
   if(a==='mOk'){const m=D.members.find(x=>x.id===id);if(!m||!m.uid)return;const all=D.members.filter(x=>x.uid===m.uid&&x.st==='pending');const b=writeBatch(db);all.forEach(x=>linkUser(b,x));await b.commit();
-    for(const x of all)if(x.rel!=='student')await msg(thOf(x.sid,x.rel),x.sid,'s','[가입 승인] '+mLabel(x)+'으로 연결되었어요. 환영합니다!');
+    for(const x of all){if(x.rel!=='student')await msg(thOf(x.sid,x.rel),x.sid,'s','[가입 승인] '+mLabel(x)+'으로 연결되었어요. 환영합니다!')}
+    push([...new Set(all.map(x=>thOf(x.sid,x.rel)))],'[가입 승인] 더밀착수학 앱 이용이 승인됐어요. 앱을 열어 주세요.');
     return toast(all.map(mLabel).join(', ')+' 승인 완료')}
   if(a==='mRej'){const m=D.members.find(x=>x.id===id);const all=D.members.filter(x=>x.uid&&x.uid===m.uid&&x.st==='pending');const b=writeBatch(db);all.forEach(x=>b.update(doc(db,'members',x.id),{st:'none',uid:deleteField()}));await b.commit();return toast(mLabel(m)+' 가입을 거절했어요')}
   if(a==='mBlock'||a==='mReset'){const m=D.members.find(x=>x.id===id);const b=writeBatch(db);
@@ -593,7 +610,7 @@ app.addEventListener('click',async e=>{
   // 등원
   if(a==='ok'||a==='rej'){
     const q=D.req.find(x=>x.id===id);if(!q)return;const s=stu(q.sid);
-    if(a==='rej'){await updateDoc(doc(db,'reqs',q.id),{st:'rej'});await msg(q.sid+'|student',q.sid,'s','[등원 요청 반려] 선생님께 직접 말씀드려 주세요.');return toast(s.name+' 등원 요청을 거절했어요')}
+    if(a==='rej'){await updateDoc(doc(db,'reqs',q.id),{st:'rej'});await msg(q.sid+'|student',q.sid,'s','[등원 요청 반려] 선생님께 직접 말씀드려 주세요.');push([q.sid+'|student'],'[등원 요청 반려] 선생님께 직접 말씀드려 주세요.');return toast(s.name+' 등원 요청을 거절했어요')}
     const st=q.at>s.time?'지각':'출석';const b=writeBatch(db);
     b.update(doc(db,'reqs',q.id),{st:'ok'});
     b.set(doc(db,'att',TODAY+'_'+q.sid),{sid:q.sid,date:TODAY,st,at:q.at,by:'qr',logged:loggedOn(q.sid,TODAY)});
@@ -614,7 +631,7 @@ app.addEventListener('click',async e=>{
   // 숙제·기록·공지
   if(a==='hwCheck'){await updateDoc(doc(db,'hw',id),{st:'checked'});return toast('숙제 확인 완료')}
   if(a==='hwDel'){await deleteDoc(doc(db,'hw',id));return toast('숙제를 삭제했어요')}
-  if(a==='hwDone'){const h=D.hw.find(x=>x.id===id);await updateDoc(doc(db,'hw',id),{st:'done'});await msg(h.sid+'|student',h.sid,'o','[숙제 완료] '+h.title);return toast('선생님께 완료를 알렸어요')}
+  if(a==='hwDone'){const h=D.hw.find(x=>x.id===id);await updateDoc(doc(db,'hw',id),{st:'done'});await msg(h.sid+'|student',h.sid,'o','[숙제 완료] '+h.title);push(['teacher'],'[숙제 완료] '+(stu(h.sid)||{}).name+': '+h.title);return toast('선생님께 완료를 알렸어요')}
   if(a==='togSh'){const x=D.logs.find(l=>l.id===id);await updateDoc(doc(db,'logs',id),{sh:!x.sh});return toast(x.sh?'비공개로 바꿨어요':'공유했어요')}
   if(a==='delLog'){await deleteDoc(doc(db,'logs',id));return toast('기록을 삭제했어요')}
   if(a==='readN'){await updateDoc(doc(db,'notices',id),{reads:arrayUnion(ME.uid)});return}
@@ -661,17 +678,17 @@ app.addEventListener('submit',async e=>{
     }catch(err){U.pendingSetup=false;U.authMsg=err.code==='permission-denied'?'이미 원장님 계정이 설정된 앱이에요.':authErr(err.code);if(auth.currentUser)await signOut(auth)}
     U.busy=false;return render()}
   if(fid==='codeF'){const c=digits(g('codeIn'));if(c.length!==6)return toast('숫자 6자리를 입력해 주세요');stopScan();return sendCode(c)}
-  if(fid==='sendF'){const t=g('msgIn').trim();if(!t)return;const [sid]=U.chat.split('|');document.getElementById('msgIn').value='';await msg(U.chat,sid,U.role==='teacher'?'t':'o',t);return}
+  if(fid==='sendF'){const t=g('msgIn').trim();if(!t)return;const [sid]=U.chat.split('|');document.getElementById('msgIn').value='';await msg(U.chat,sid,U.role==='teacher'?'t':'o',t);if(U.role==='teacher')push([U.chat],t,{title:TNAME()+' 메시지',tag:'m'+U.chat});else push(['teacher'],t,{title:famName()+' 메시지',tag:'m'+U.chat});return}
   if(U.sheet==='hw'){
     const ids=[...document.querySelectorAll('input[name=hwS]:checked')].map(x=>x.value);const title=g('hwT').trim();
     if(!ids.length||!title)return toast('학생과 제목을 입력해 주세요');
     const due=g('hwD')||TODAY;const b=writeBatch(db);
     ids.forEach(sid=>{b.set(doc(collection(db,'hw')),{sid,title,range:g('hwR').trim()||'-',due,st:'todo',note:'',ts:now()});b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[새 숙제] '+title+' · 마감 '+fmtD(due),at:stamp(),ts:now(),r:false})});
-    await b.commit();U.sheet=null;return toast(ids.length+'명에게 숙제를 냈어요');
+    await b.commit();push(ids.map(x=>x+'|student'),'[새 숙제] '+title+' · 마감 '+fmtD(due));U.sheet=null;return toast(ids.length+'명에게 숙제를 냈어요');
   }
   if(U.sheet==='notice'){
     if(!g('nT').trim())return toast('제목을 입력해 주세요');
-    await addDoc(collection(db,'notices'),{title:g('nT').trim(),body:g('nB').trim(),at:TODAY,pin:document.getElementById('nP').checked,reads:[],ts:now()});
+    await addDoc(collection(db,'notices'),{title:g('nT').trim(),body:g('nB').trim(),at:TODAY,pin:document.getElementById('nP').checked,reads:[],ts:now()});push(D.students.flatMap(x=>[x.id+'|student',x.id+'|parent']),g('nT').trim(),{title:'새 공지',tag:'notice'});
     U.sheet=null;U.tab='comm';U.comm='notice';return toast('공지를 올렸어요');
   }
   if(U.sheet==='log'){
@@ -685,6 +702,7 @@ app.addEventListener('submit',async e=>{
     if(r)b.update(doc(db,'att',TODAY+'_'+sid),{logged:true});
     if(open)b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.',at:stamp(),ts:now(),r:false});
     await b.commit();
+    if(open)push([sid+'|student'],'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.');
     if(f.sh)await notifyParent(sid,'[수업 기록] '+fmtD(TODAY)+' '+f.course+' '+unit+' · 개념 '+f.c+'% · 문제풀이 '+f.p+'%');
     U.pc[sid]=f.course;U.logS=sid;U.sheet=null;U.lf=null;U.tab=U.ret||'log';U.ret=null;return toast(open?'정리 완료 · 하원이 열렸어요':'기록을 저장했어요');
   }

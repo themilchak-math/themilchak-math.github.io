@@ -3,8 +3,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
+import { pushState, enablePush, sendPush } from './push.js';
 
-const ADMIN_VERSION = '1.0.0';
+const ADMIN_VERSION = '1.1.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -89,7 +90,7 @@ function pDash() {
   const present = st.filter(s => a[s.id] && a[s.id].st !== '결석').length;
   const toCheck = D.hw.filter(h => h.st === 'done');
   return '<h1>' + esc(TNAME()) + ' <span class="sub">오늘 ' + fmtD(TODAY) + '</span></h1>' +
-    '<div class="kpis"><div><b>' + present + '/' + st.length + '</b><span>오늘 등원</span></div><div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
+    pushCard() + '<div class="kpis"><div><b>' + present + '/' + st.length + '</b><span>오늘 등원</span></div><div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
     '<div class="grid2"><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section><section class="card"><h2>가입 승인 대기</h2>' + joinRows() + '</section></div>' +
     '<section class="card"><h2>오늘 출결 <span class="sub">' + fmtD(TODAY) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th><th>수업</th><th>상태</th><th>오늘 기록</th></tr></thead><tbody>' +
     st.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === TODAY).pop(); return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + esc(s.time) + '</td><td>' + attChip(a[s.id]) + '</td><td>' + (lg ? esc(lg.unit) + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
@@ -289,7 +290,13 @@ onAuthStateChanged(auth, user => {
 
 /* ---------- 쓰기 ---------- */
 const msg = (th, sid, f, t) => addDoc(collection(db, 'msgs'), { th, sid, f, t, at: stamp(), ts: now(), r: false });
-const notifyParent = (sid, t) => (D.cfg && D.cfg.autoNotify === false) ? Promise.resolve() : msg(sid + '|parent', sid, 's', t).catch(e => console.warn(e));
+const push = (targets, text, opts) => { sendPush(db, auth, targets, text, Object.assign({ prune: true }, opts || {})); };
+const notifyParent = (sid, t) => { if (D.cfg && D.cfg.autoNotify === false) return Promise.resolve(); push([sid + '|parent'], t); return msg(sid + '|parent', sid, 's', t).catch(e => console.warn(e)); };
+function pushCard() {
+  const st = pushState(auth.currentUser && auth.currentUser.uid); if (st === 'off' || st === 'on' || V.pushHide) return '';
+  const inner = st === 'denied' ? '<p class="sub">이 PC 크롬에서 알림이 차단돼 있어요. 주소창 왼쪽 자물쇠 → 사이트 설정 → 알림 → 허용으로 바꿔 주세요.</p>' : st === 'unsupported' ? '<p class="sub">이 브라우저는 알림을 지원하지 않아요. 크롬에서 열어 주세요.</p>' : '<p class="sub">등원·가입 요청, 숙제 완료, 학생·학부모 메시지가 오면 이 PC에도 알림이 떠요. (폰 앱에서도 따로 켜 주세요)</p><button class="btn" data-a="pushOn">이 PC에서 알림 받기</button>';
+  return '<section class="card hl"><h2>알림 받기 <button class="btn xs ghost" data-a="pushHide">나중에</button></h2>' + inner + '</section>';
+}
 function markRead(k) { const l = thread(k).filter(m => m.f === 'o' && !m.r); if (!l.length) return; const b = writeBatch(db); l.forEach(m => { m.r = true; b.update(doc(db, 'msgs', m.id), { r: true }); }); b.commit().catch(e => console.warn(e)); }
 function linkUser(b, m) {
   b.update(doc(db, 'members', m.id), { st: 'ok' });
@@ -312,8 +319,11 @@ async function saveLogFor(sid, b) {
   if (r) b.update(doc(db, 'att', TODAY + '_' + sid), { logged: true });
   if (open) b.set(doc(collection(db, 'msgs')), { th: sid + '|student', sid, f: 's', t: '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.', at: stamp(), ts: now(), r: false });
   if (sh && !(D.cfg && D.cfg.autoNotify === false)) b.set(doc(collection(db, 'msgs')), { th: sid + '|parent', sid, f: 's', t: '[수업 기록] ' + fmtD(TODAY) + ' ' + course + ' ' + unit + ' · 개념 ' + c + '% · 문제풀이 ' + p + '%', at: stamp(), ts: now(), r: false });
+  pendingPush.push(() => { if (open) push([sid + '|student'], '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.'); if (sh && !(D.cfg && D.cfg.autoNotify === false)) push([sid + '|parent'], '[수업 기록] ' + fmtD(TODAY) + ' ' + course + ' ' + unit + ' · 개념 ' + c + '% · 문제풀이 ' + p + '%'); });
   return s.name;
 }
+let pendingPush = [];
+const flushPush = () => { const l = pendingPush; pendingPush = []; l.forEach(f => f()); };
 function parseBulk(txt) {
   const rows = txt.split(/\r?\n/).map(l => l.split(/\t|,/).map(x => x.trim())).filter(r => r.some(x => x));
   if (rows.length && !GRADES.includes(rows[0][1]) && /이름|학생/.test(rows[0][0])) rows.shift();
@@ -332,13 +342,15 @@ app.addEventListener('click', async e => {
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v;
   try {
     if (a === 'go') { if (V.page === 'qr' && v !== 'qr') qrStop(); V.page = v; if (v === 'qr') qrStart(); if (v === 'msg' && V.chat) markRead(V.chat); return render(); }
+    if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(e.message === 'denied' ? '알림이 허용되지 않았어요' : '알림을 켜지 못했어요'); } return render(); }
+    if (a === 'pushHide') { V.pushHide = true; return render(); }
     if (a === 'logout') { qrStop(); await signOut(auth); return; }
     if (a === 'modal') { V.modal = v; V.editId = id || null; V.bulk = null; return render(); }
     if (a === 'close') { V.modal = null; V.editId = null; V.bulk = null; return render(); }
     if (a === 'calM') { let [y, m] = V.calM.split('-').map(Number); m += +v; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } V.calM = y + '-' + pad(m); return render(); }
     if (a === 'open') { V.chat = v; markRead(v); return render(); }
     if (a === 'bulkCheck') { V.bulk = parseBulk(document.getElementById('bulkIn').value); return render(); }
-    if (a === 'mOk') { const m = D.members.find(x => x.id === id); if (!m || !m.uid) return; const all = D.members.filter(x => x.uid === m.uid && x.st === 'pending'); const b = writeBatch(db); all.forEach(x => linkUser(b, x)); await b.commit(); for (const x of all) if (x.rel !== 'student') await msg(thOf(x.sid, x.rel), x.sid, 's', '[가입 승인] ' + mLabel(x) + '으로 연결되었어요. 환영합니다!'); return toast(all.map(mLabel).join(', ') + ' 승인 완료'); }
+    if (a === 'mOk') { const m = D.members.find(x => x.id === id); if (!m || !m.uid) return; const all = D.members.filter(x => x.uid === m.uid && x.st === 'pending'); const b = writeBatch(db); all.forEach(x => linkUser(b, x)); await b.commit(); for (const x of all) if (x.rel !== 'student') await msg(thOf(x.sid, x.rel), x.sid, 's', '[가입 승인] ' + mLabel(x) + '으로 연결되었어요. 환영합니다!'); push([...new Set(all.map(x => thOf(x.sid, x.rel)))], '[가입 승인] 더밀착수학 앱 이용이 승인됐어요. 앱을 열어 주세요.'); return toast(all.map(mLabel).join(', ') + ' 승인 완료'); }
     if (a === 'mRej') { const m = D.members.find(x => x.id === id); const all = D.members.filter(x => x.uid && x.uid === m.uid && x.st === 'pending'); const b = writeBatch(db); all.forEach(x => b.update(doc(db, 'members', x.id), { st: 'none', uid: deleteField() })); await b.commit(); return toast(mLabel(m) + ' 가입을 거절했어요'); }
     if (a === 'mBlock' || a === 'mReset') { const m = D.members.find(x => x.id === id); const b = writeBatch(db); b.update(doc(db, 'members', m.id), a === 'mBlock' ? { st: 'block' } : { st: 'none', uid: deleteField() }); if (m.uid) b.set(doc(db, 'users', m.uid), { sids: arrayRemove(m.sid), ths: arrayRemove(thOf(m.sid, m.rel)) }, { merge: true }); await b.commit(); return toast(a === 'mBlock' ? mLabel(m) + ' 접속을 차단했어요' : '재가입 가능 상태예요. Firebase 콘솔 Authentication에서 ' + fmtP(m.phone) + ' 계정을 삭제해 주세요.'); }
     if (a === 'mUnblock') { const m = D.members.find(x => x.id === id); if (!m.uid) return; const b = writeBatch(db); linkUser(b, m); await b.commit(); return toast('차단을 해제했어요'); }
@@ -351,7 +363,7 @@ app.addEventListener('click', async e => {
     if (a === 'rejoin') { await updateDoc(doc(db, 'students', id), { left: false }); return toast('복귀 처리했어요. 가족 연결은 학생 관리에서 차단 해제해 주세요.'); }
     if (a === 'ok' || a === 'rej') {
       const q = D.req.find(x => x.id === id); if (!q) return; const s = stu(q.sid);
-      if (a === 'rej') { await updateDoc(doc(db, 'reqs', q.id), { st: 'rej' }); await msg(q.sid + '|student', q.sid, 's', '[등원 요청 반려] 선생님께 직접 말씀드려 주세요.'); return toast(s.name + ' 등원 요청을 거절했어요'); }
+      if (a === 'rej') { await updateDoc(doc(db, 'reqs', q.id), { st: 'rej' }); await msg(q.sid + '|student', q.sid, 's', '[등원 요청 반려] 선생님께 직접 말씀드려 주세요.'); push([q.sid + '|student'], '[등원 요청 반려] 선생님께 직접 말씀드려 주세요.'); return toast(s.name + ' 등원 요청을 거절했어요'); }
       const st = q.at > s.time ? '지각' : '출석'; const b = writeBatch(db);
       b.update(doc(db, 'reqs', q.id), { st: 'ok' });
       b.set(doc(db, 'att', TODAY + '_' + q.sid), { sid: q.sid, date: TODAY, st, at: q.at, by: 'qr', logged: D.logs.some(l => l.sid === q.sid && l.date === TODAY) });
@@ -366,11 +378,11 @@ app.addEventListener('click', async e => {
       if (v === TODAY) await notifyParent(id, '[출결 알림] ' + s.name + ' 학생이 오늘 결석으로 처리되었습니다.');
       return toast(s.name + ' ' + fmtD(v) + ' 결석 처리');
     }
-    if (a === 'saveLog') { const b = writeBatch(db); const n = await saveLogFor(id, b); await b.commit(); return toast(n + ' 수업 기록 저장'); }
+    if (a === 'saveLog') { const b = writeBatch(db); pendingPush = []; const n = await saveLogFor(id, b); await b.commit(); flushPush(); return toast(n + ' 수업 기록 저장'); }
     if (a === 'saveChecked') {
       const ids = active().filter(s => (document.getElementById('lk_' + s.id) || {}).checked).map(s => s.id);
       if (!ids.length) return toast('저장할 학생을 체크해 주세요');
-      const b = writeBatch(db); const names = []; for (const sid of ids) names.push(await saveLogFor(sid, b)); await b.commit();
+      const b = writeBatch(db); const names = []; pendingPush = []; for (const sid of ids) names.push(await saveLogFor(sid, b)); await b.commit(); flushPush();
       return toast(names.length + '명 수업 기록 저장: ' + names.join(', '));
     }
     if (a === 'togSh') { const x = D.logs.find(l => l.id === id); await updateDoc(doc(db, 'logs', id), { sh: !x.sh }); return; }
@@ -401,16 +413,16 @@ app.addEventListener('submit', async e => {
   e.preventDefault(); const g = id => (document.getElementById(id) || {}).value || ''; const f = e.target.id;
   try {
     if (f === 'loginF') { const ph = digits(g('lP')); if (ph.length < 10) { V.msg = '휴대폰번호를 확인해 주세요'; return render(); } V.busy = true; V.msg = ''; render(); try { await signInWithEmailAndPassword(auth, ph + MAIL, g('lW')); } catch (err) { V.msg = '번호나 비밀번호가 맞지 않아요.'; } V.busy = false; return render(); }
-    if (f === 'sendF') { const t = g('msgIn').trim(); if (!t || !V.chat) return; document.getElementById('msgIn').value = ''; await msg(V.chat, V.chat.split('|')[0], 't', t); return; }
+    if (f === 'sendF') { const t = g('msgIn').trim(); if (!t || !V.chat) return; document.getElementById('msgIn').value = ''; await msg(V.chat, V.chat.split('|')[0], 't', t); push([V.chat], t, { title: TNAME() + ' 메시지', tag: 'm' + V.chat }); return; }
     if (f === 'hwF') {
       const ids = [...document.querySelectorAll('input[name=hwS]:checked')].map(x => x.value); const title = g('hwT').trim();
       if (!ids.length || !title) return toast('학생과 제목을 입력해 주세요');
       const due = g('hwD') || TODAY; const b = writeBatch(db);
       ids.forEach(sid => { b.set(doc(collection(db, 'hw')), { sid, title, range: g('hwR').trim() || '-', due, st: 'todo', note: '', ts: now() }); b.set(doc(collection(db, 'msgs')), { th: sid + '|student', sid, f: 's', t: '[새 숙제] ' + title + ' · 마감 ' + fmtD(due), at: stamp(), ts: now(), r: false }); });
-      await b.commit(); ['hwT', 'hwR'].forEach(i => document.getElementById(i).value = ''); document.querySelectorAll('input[name=hwS]').forEach(x => x.checked = false);
+      await b.commit(); push(ids.map(x => x + '|student'), '[새 숙제] ' + title + ' · 마감 ' + fmtD(due)); ['hwT', 'hwR'].forEach(i => document.getElementById(i).value = ''); document.querySelectorAll('input[name=hwS]').forEach(x => x.checked = false);
       return toast(ids.length + '명에게 숙제를 냈어요');
     }
-    if (f === 'ntF') { if (!g('nT').trim()) return toast('제목을 입력해 주세요'); await addDoc(collection(db, 'notices'), { title: g('nT').trim(), body: g('nB').trim(), at: TODAY, pin: document.getElementById('nP').checked, reads: [], ts: now() }); document.getElementById('nT').value = ''; document.getElementById('nB').value = ''; return toast('공지를 올렸어요'); }
+    if (f === 'ntF') { if (!g('nT').trim()) return toast('제목을 입력해 주세요'); await addDoc(collection(db, 'notices'), { title: g('nT').trim(), body: g('nB').trim(), at: TODAY, pin: document.getElementById('nP').checked, reads: [], ts: now() }); push(active().flatMap(x => [x.id + '|student', x.id + '|parent']), g('nT').trim(), { title: '새 공지', tag: 'notice' }); document.getElementById('nT').value = ''; document.getElementById('nB').value = ''; return toast('공지를 올렸어요'); }
     if (f === 'stuF') {
       const name = g('sN').trim(); if (!name) return toast('이름을 입력해 주세요');
       const grade = g('sG'), time = g('sT') || '16:00'; const ph = { student: digits(g('p_student')), father: digits(g('p_father')), mother: digits(g('p_mother')) };
@@ -444,4 +456,5 @@ app.addEventListener('submit', async e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && V.modal) { V.modal = null; V.editId = null; render(); } });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ds(new Date()) !== TODAY) location.reload(); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => { });
 render();
