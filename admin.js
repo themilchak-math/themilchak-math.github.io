@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.1.1';
+const ADMIN_VERSION = '2.1.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -196,7 +196,16 @@ function pAtt() {
     return '<tr><th class="nm">' + esc(s.name) + '</th>' + cells + '<td class="sum">' + c[0] + '</td><td class="sum">' + c[1] + '</td></tr>';
   }).join('');
   const today = D.att[day] || {};
-  const todayRows = active().map(s => { const r = today[s.id]; const ab = !r && absOf(s.id, day); return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + (ab ? chip('결석 통보', 'bad') + ' <span class="sub">' + esc(ab.reason) + '</span>' : attChip(r)) + '</td><td class="r"><button class="btn xs ghost" data-a="attEdit" data-id="' + s.id + '" data-v="' + day + '">' + (r ? '수정' : '입력') + '</button></td></tr>'; }).join('');
+  const exB = expectedToday(day), st = active(); const ex = ((D.extra[day] || {}).sids || []).filter(id => st.some(x => x.id === id) && !(exB || []).includes(id)); const exSet = new Set(ex); const regSet = new Set(exB || []);
+  const absD = new Set(D.abs.filter(x => x.date === day).map(x => x.sid));
+  const rk = x => regSet.has(x.id) && !(absD.has(x.id) && !today[x.id]) ? 3 : exSet.has(x.id) ? 2 : absD.has(x.id) ? 1 : 0;
+  const ord = [...st].sort((x, y) => (rk(y) - rk(x)) || (exSet.has(x.id) && exSet.has(y.id) ? ex.indexOf(x.id) - ex.indexOf(y.id) : x.name.localeCompare(y.name, 'ko')));
+  const plan = exB || ex.length;
+  const tag = s => { const r = today[s.id]; if (exSet.has(s.id)) return !r ? chip('보충 예정', 'pri') : r.st === '결석' ? chip('결석', 'bad') : r.out ? chip('완료', 'pri') : chip('학습중', 'ok'); const e = regSet.has(s.id); const ab = !r && absD.has(s.id); return clsChip(r, e, ab); };
+  let prevG = null;
+  const todayRows = ord.map(s => { const r = today[s.id]; const ab = !r && absOf(s.id, day); const g = rk(s); const dim = plan && g === 0 && !r;
+    const sep = plan && g !== prevG && (g === 2 || (g === 0 && prevG !== null)) ? '<tr><td colspan="4" class="sub" style="padding-top:10px;font-weight:700">' + (g === 2 ? '보충' : '그 외 학생') + '</td></tr>' : ''; prevG = g;
+    return sep + '<tr' + (dim ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td>' + (plan ? '<td>' + tag(s) + '</td>' : '') + '<td>' + (ab ? chip('결석 통보', 'bad') + ' <span class="sub">' + esc(ab.reason) + '</span>' : attChip(r)) + '</td><td class="r"><button class="btn xs ghost" data-a="attEdit" data-id="' + s.id + '" data-v="' + day + '">' + (r ? '수정' : '입력') + '</button></td></tr>'; }).join('');
   return '<h1>출결 <span class="sub">칸을 누르면 등원·하원 시각을 직접 입력·수정·삭제할 수 있어요</span></h1>' + dayBar(day, isT) +
     '<div class="grid2"><section class="card"><h2>' + dayLbl + ' 등·하원 <span class="sub">' + fmtD(day) + '</span></h2><table><tbody>' + (todayRows || '<tr><td class="empty">학생이 없어요</td></tr>') + '</tbody></table></section><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section></div>' +
     wifiSection() +
