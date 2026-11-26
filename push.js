@@ -1,6 +1,6 @@
 // 더밀착수학 푸시 알림 (폰 앱·관리자 공용)
 // 알림 서버 주소: Cloudflare Worker (push-worker/worker.js)
-import { doc, getDoc, setDoc, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { doc, getDoc, getDocs, collection, setDoc, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 export const PUSH_URL = 'https://themilchak-push.djkim0075.workers.dev';
 
@@ -76,4 +76,21 @@ export async function sendPush(db, auth, targets, text, opts = {}) {
     const res = await r.json().catch(() => ({}));
     if (opts.prune && res.gone && res.gone.length) for (const e of res.gone) { const f = from[e]; if (f) setDoc(doc(db, 'push', f.t), { subs: arrayRemove(f.s) }, { merge: true }).catch(() => { }); }
   } catch (e) { console.warn('알림 전송 실패', e); }
+}
+
+// 새 버전 알림: 원장님 기기(폰 앱·관리자)가 열릴 때 version.json이 마지막으로 알린 버전보다 새로우면 모두에게 한 번 알림
+const verNum = v => String(v || '0').split('.').map(n => parseInt(n, 10) || 0);
+const verGt = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+let announcing = false;
+export async function announceUpdate(db, auth) {
+  if (announcing || !PUSH_URL || !auth.currentUser) return; announcing = true;
+  try {
+    const r = await fetch('./version.json', { cache: 'no-store' }); if (!r.ok) return;
+    const { v, note } = await r.json(); if (!v) return;
+    const cfg = await getDoc(doc(db, 'config', 'main')); const last = cfg.exists() ? cfg.data().notifiedVer : null;
+    if (last && !verGt(v, last)) return;
+    await setDoc(doc(db, 'config', 'main'), { notifiedVer: v }, { merge: true });
+    const all = await getDocs(collection(db, 'push')); const ids = (all.docs || []).map(d => d.id);
+    await sendPush(db, auth, ids, (note ? note + ' · ' : '') + '알림을 누르면 새 버전으로 바로 바뀌어요.', { title: '더밀착수학 앱 업데이트 (v' + v + ')', tag: 'update', url: './?u=1' });
+  } catch (e) { console.warn('업데이트 알림 실패', e); } finally { announcing = false; }
 }

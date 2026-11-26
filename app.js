@@ -4,9 +4,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
-import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, isIOS as pushIOS } from './push.js';
+import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -507,7 +507,7 @@ onAuthStateChanged(auth,user=>{
   B(doc(db,'config','main'),d=>{
     D.cfg=d.exists()?d.data():null;D.autoNotify=D.cfg?D.cfg.autoNotify!==false:true;
     if(!D.cfg){if(U.pendingSetup)return;U.screen='auth';U.authMsg='아직 원장님 설정이 안 된 앱이에요.';render();return}
-    if(D.cfg.owner===ME.uid){if(U.role!=='teacher'||U.screen!=='app'){U.role='teacher';U.screen='app';stopData();subTeacher();autoPush()}sr();return}
+    if(D.cfg.owner===ME.uid){if(U.role!=='teacher'||U.screen!=='app'){U.role='teacher';U.screen='app';stopData();subTeacher();autoPush();announceUpdate(db,auth)}sr();return}
     if(!U.famStarted){U.famStarted=true;startFamily()}
     sr();
   });
@@ -757,9 +757,12 @@ app.addEventListener('submit',async e=>{
 });
 
 /* ================= 앱 업데이트·설치 ================= */
+U.fresh=Date.now();
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js').then(reg=>{
-    const show=w=>{U.update=w;render()};
+    // 앱을 막 열었거나(15초 안) 업데이트 알림을 눌러 들어왔으면 바로 새 버전 적용, 쓰는 중이면 배너만
+    const show=w=>{U.update=w;if(Date.now()-U.fresh<15000||/[?&]u=1/.test(location.search)){w.postMessage('skip');return}render()};
+    U.reg=reg;reg.update().catch(()=>{});
     if(reg.waiting&&navigator.serviceWorker.controller)show(reg.waiting);
     reg.addEventListener('updatefound',()=>{const w=reg.installing;if(!w)return;w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)show(w)})});
     setInterval(()=>reg.update().catch(()=>{}),30*60*1000);
@@ -769,6 +772,6 @@ if('serviceWorker' in navigator){
 try{U.noInstall=localStorage.getItem('tmm-noinst')==='1'}catch(e){}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();U.bip=e;render()});
 window.addEventListener('appinstalled',()=>{U.bip=null;toast('설치됐어요! 홈 화면에서 열어 주세요')});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)return location.reload();if(document.visibilityState==='visible'){if(U.chat)markRead(U.chat);autoPush()}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)return location.reload();if(document.visibilityState==='visible'){U.fresh=Date.now();if(U.reg)U.reg.update().catch(()=>{});if(U.chat)markRead(U.chat);autoPush();if(isTeacher())announceUpdate(db,auth)}});
 window.addEventListener('focus',()=>{if(U.chat)markRead(U.chat)});
 render();

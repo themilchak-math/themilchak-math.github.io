@@ -3,9 +3,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
-import { pushState, enablePush, sendPush, pushErrorText } from './push.js';
+import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 
-const ADMIN_VERSION = '1.2.3';
+const ADMIN_VERSION = '1.3.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -305,6 +305,7 @@ onAuthStateChanged(auth, user => {
     u();
     if (!d.exists() || d.data().owner !== user.uid) { V.msg = '원장님 계정만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); return; }
     V.screen = 'app'; V.msg = ''; subscribe(); if (V.page === 'qr') qrStart(); render();
+    announceUpdate(db, auth);
     try { if ('Notification' in window && Notification.permission === 'granted') enablePush(db, user.uid, ['teacher']).catch(e => console.warn('autoPush', e)); } catch (e) { }
   }, () => { V.msg = '원장님 계정만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); });
 });

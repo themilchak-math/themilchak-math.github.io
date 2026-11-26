@@ -1,5 +1,5 @@
 // 더밀착수학 앱 서비스워커 - 앱을 고칠 때마다 VERSION 숫자를 올리면 가족 폰에 "새 버전" 알림이 떠요
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const CACHE = 'tmm-' + VERSION;
 const SHELL = ['./', './index.html', './app.js', './push.js', './firebase-config.js', './manifest.json', './icon-192.png', './apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {})); });
@@ -21,5 +21,5 @@ self.addEventListener('push', e => {
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
-  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => { for (const c of cs) { if (c.url.startsWith(self.registration.scope) && 'focus' in c) return c.focus(); } return clients.openWindow(url); }));
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => { for (const c of cs) { if (c.url.startsWith(self.registration.scope) && 'focus' in c) { if (e.notification.tag === 'update' && 'navigate' in c) return c.focus().then(w => (w || c).navigate(url)).catch(() => c.focus()); return c.focus(); } } return clients.openWindow(url); }));
 });
