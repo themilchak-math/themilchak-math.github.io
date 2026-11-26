@@ -34,7 +34,7 @@ async function mySub() {
 export async function enablePush(db, uid, targets) {
   const step = (p, ms, name) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout:' + name)), ms))]);
   let perm = Notification.permission;
-  if (perm !== 'granted') perm = await step(Notification.requestPermission(), 25000, 'permission');
+  if (perm !== 'granted') perm = await step(new Promise(res => { try { const r = Notification.requestPermission(res); if (r && r.then) r.then(res, () => res(Notification.permission)); } catch (e) { res(Notification.permission); } }), 20000, 'permission');
   if (perm !== 'granted') throw new Error(perm === 'denied' ? 'denied' : 'dismissed');
   let reg;
   try { reg = await step(navigator.serviceWorker.register('./sw.js'), 15000, 'sw'); await step(navigator.serviceWorker.ready, 15000, 'ready'); }
