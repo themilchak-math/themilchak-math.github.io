@@ -75,6 +75,9 @@ table.log select,table.log input:not([type=checkbox]){width:100%}table.log tr.ca
 .login{display:grid;place-items:center;height:100%;grid-column:1/-1;padding:20px}.login .card{width:min(400px,100%);display:flex;flex-direction:column;gap:10px}.login label{display:flex;flex-direction:column;gap:4px;font-weight:700;font-size:13px}
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;border-radius:12px;z-index:30;max-width:80%}
 @media(max-width:800px){#app{grid-template-columns:1fr}aside{flex-direction:row;flex-wrap:wrap;padding:10px}nav{flex-direction:row;flex-wrap:wrap}.foot{flex-direction:row}main{padding:16px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.row3{grid-template-columns:1fr}.msgs{grid-template-columns:1fr;height:auto}}
+table.fin{font-size:13px}table.fin th,table.fin td{padding:5px 4px;white-space:nowrap}table.fin input:not([type=checkbox]),table.fin select{min-height:30px;padding:4px 6px}table.fin tr.tot td{background:var(--soft);font-weight:500}table.fin tr.left td{opacity:.55}
+table.mealt{font-size:12.5px;width:auto}table.mealt th,table.mealt td{padding:3px 6px;border:1px solid var(--line);white-space:nowrap}table.mealt td.meal{min-width:42px;height:26px;cursor:pointer;font-weight:700;color:var(--pri)}table.mealt td.meal:hover{background:var(--soft)}table.mealt td.meal.on{background:#e6eaff}table.mealt tr.sun td{color:var(--acc);background:#fff6f4}table.mealt tr.tot td{background:var(--soft)}
+:root{--bad:#e0401f}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 </head>

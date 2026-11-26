@@ -105,5 +105,13 @@ service cloud.firestore {
       allow read: if isTeacher() || hasProfile();
       allow write: if isTeacher();
     }
+    match /sinfo/{sid} {
+      // 학생명부 상세(생년월일·첫 등록일·메모·연락처): 원장님·부원장만
+      allow read, write: if isTeacher();
+    }
+    match /fin/{id} {
+      // 정산(원비·식대): 원장님만
+      allow read, write: if isOwner();
+    }
   }
 }

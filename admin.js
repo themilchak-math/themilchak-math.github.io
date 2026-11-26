@@ -5,8 +5,9 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collec
 import { firebaseConfig } from './firebase-config.js';
 import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './subjects.js';
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
+import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.5.0';
+const ADMIN_VERSION = '1.6.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -33,7 +34,7 @@ const COURSES = Object.keys(BY_SUBJ['수학']);
 const PCT = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 /* ---------- 상태 ---------- */
-const D = { students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], cfg: null };
+const D = { students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], fin: {}, finSet: null, sinfo: {}, cfg: null };
 const V = { screen: 'loading', page: 'dash', msg: '', busy: false, calM: TODAY.slice(0, 7), chat: null, hwF: 'all', modal: null, bulk: null, qr: null, toast: '' };
 const app = document.getElementById('app');
 const docs = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -74,8 +75,8 @@ const attChip = a => !a ? chip('미등원') : chip(a.st + (a.at ? ' ' + a.at : '
 const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입');
 const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 'done' ? chip('제출함', 'pri') : h.due < TODAY ? chip('기한 지남', 'bad') : chip('진행 중', 'warn');
 
-const NAV0 = [['dash', '대시보드'], ['qr', '등원 QR'], ['students', '학생·학부모'], ['school', '재학 학교'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['exam', '시험기간'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
-const navList = () => NAV0.filter(([k]) => k !== 'staff' || isOwnerMe());
+const NAV0 = [['dash', '대시보드'], ['qr', '등원 QR'], ['students', '학생·학부모'], ['roster', '학생명부'], ['school', '재학 학교'], ['fin', '정산'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['exam', '시험기간'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
+const navList = () => NAV0.filter(([k]) => (k !== 'staff' && k !== 'fin') || isOwnerMe());
 function navBadge(k) {
   const n = k === 'dash' ? mPending().length + pending().length : k === 'qr' ? pending().length : k === 'students' ? mPending().length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : k === 'staff' ? D.staff.filter(x => x.st === 'pending').length : k === 'school' ? active().filter(s => !s.school).length : 0;
   return n ? '<span class="badge">' + n + '</span>' : '';
@@ -224,6 +225,233 @@ function pSchool() {
     (list.length ? list.map(s => '<tr><td><input type="checkbox" name="schCk" value="' + s.id + '"></td><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td><input id="sc_' + s.id + '" data-sid="' + s.id + '" list="scAll" value="' + esc(s.school || '') + '" placeholder="학교 이름" autocomplete="off" style="max-width:260px"></td></tr>').join('') : '<tr><td colspan="4" class="empty">해당하는 학생이 없어요</td></tr>') +
     '</tbody></table><div class="mf"><span style="flex:1"></span><button class="btn" type="submit">변경 내용 저장</button></div></form></section>';
 }
+/* ---------- 정산 (원장님만) : 월별 원비 · 식대 ---------- */
+const DAYS6 = ['월', '화', '수', '목', '금', '토'];
+const FIN_MAX = 20; // 기존 엑셀과 같은 한 달 최대 학생 줄 수
+const won = n => (n === '' || n == null) ? '' : Number(n).toLocaleString('ko-KR');
+const finSet = () => Object.assign({ meal: 8000, cap1: 6, cap2: 9 }, D.finSet || {});
+const ymOf = d => d.slice(0, 7);
+const ymLabel = ym => ym.replace('-', '.');
+const daysIn = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate();
+const dateOf = (ym, d) => ym + '-' + pad(d);
+const finMonths = () => Object.keys(D.fin || {}).sort().reverse();
+const clone = o => JSON.parse(JSON.stringify(o || {}));
+const numOr = v => (v === '' || v == null || isNaN(+v)) ? '' : +v;
+function calcRow(r, meals, set) {
+  const wk = (r.d || []).filter(Boolean).length;
+  const fee = (r.price === '' || r.price == null) && (r.disc === '' || r.disc == null) ? '' : (+r.price || 0) - (+r.disc || 0);
+  const mealN = r.name ? ((meals || {})[r.name] || []).length : 0;
+  const mealAmt = mealN * set.meal; return { wk, fee, mealN, mealAmt, total: (+fee || 0) + mealAmt };
+}
+function calcMonth(m, set) {
+  set = set || finSet(); const rows = (m.rows || []).filter(r => r.name || r.price);
+  const cs = rows.map(r => calcRow(r, m.meals, set));
+  const sum = k => cs.reduce((a, c) => a + (+c[k] || 0), 0);
+  const staff = (((m.meals || {})['원장'] || []).length + ((m.meals || {})['부원장'] || []).length) * set.meal;
+  const perDay = DAYS6.map((_, k) => rows.filter(r => (r.d || [])[k]).length);
+  return { n: rows.filter(r => r.name).length, fee: sum('fee'), disc: rows.reduce((a, r) => a + (+r.disc || 0), 0), price: rows.reduce((a, r) => a + (+r.price || 0), 0), meal: sum('mealAmt'), mealN: sum('mealN'), total: sum('total'), staff, wk: sum('wk'), perDay };
+}
+const finCur = () => V.finEdit && V.finEdit.ym === V.ym ? V.finEdit : null;
+function finOpen(ym) { V.ym = ym; V.finEdit = D.fin[ym] ? clone(D.fin[ym]) : null; V.finDirty = false; }
+let finT = null;
+function finTouch() {
+  V.finDirty = true; V.finSaving = 'pending'; clearTimeout(finT);
+  finT = setTimeout(async () => {
+    const m = V.finEdit; if (!m) return; V.finSaving = 'saving'; sr();
+    try { await setDoc(doc(db, 'fin', 'm_' + m.ym), m); V.finDirty = false; V.finSaving = 'saved'; } catch (e) { V.finSaving = 'error'; fail(e, '정산을 저장하지 못했어요. 인터넷 연결을 확인해 주세요.'); }
+    sr();
+  }, 700);
+}
+const saveBadge = () => V.finSaving === 'saving' || V.finSaving === 'pending' ? chip('저장 중...', 'warn') : V.finSaving === 'error' ? chip('저장 실패', 'bad') : chip('자동 저장됨', 'ok');
+function pFin() {
+  if (!isOwnerMe()) return '<h1>정산</h1><section class="card"><p class="empty">원장님만 볼 수 있어요</p></section>';
+  const ms = finMonths(); const set = finSet();
+  if (!V.ym || (!D.fin[V.ym] && !finCur())) { if (ms.length) finOpen(ms.includes(ymOf(TODAY)) ? ymOf(TODAY) : ms[0]); }
+  const m = finCur();
+  const head = '<h1>정산 <span class="sub">원비 = 정가 − 할인 (교습소 수입) · 식대는 별도 사업자 청구 · 학부모 총 납부액 = 원비 + 식대</span></h1>' +
+    '<div class="bar">' + ms.map(ym => '<button class="btn sm ' + (ym === V.ym ? '' : 'ghost') + '" data-a="finYm" data-v="' + ym + '">' + ymLabel(ym) + '</button>').join(' ') +
+    ' <button class="btn sm" data-a="finNew">+ 새 달 만들기</button><span style="flex:1"></span><label class="btn sm ghost" style="cursor:pointer">엑셀 불러오기<input type="file" id="xlIn" accept=".xlsx" hidden></label> <button class="btn sm ghost" data-a="xlOut">엑셀로 내보내기</button></div>';
+  if (!m) return head + '<section class="card"><p class="empty">아직 정산 자료가 없어요. [엑셀 불러오기]로 기존 파일을 가져오거나 [+ 새 달 만들기]를 누르세요.</p></section>' + finSummary() + finSettings(set);
+  const C = calcMonth(m, set); const ym = m.ym; const P = 'fn_' + ym.replace('-', '') + '_';
+  const studs = D.students.filter(s => !s.left).map(s => s.name);
+  const rows = (m.rows || []).map((r, i) => {
+    const c = calcRow(r, m.meals, set); const s = r.sid ? stu(r.sid) : D.students.find(x => x.name === r.name); const si = s ? (D.sinfo[s.id] || {}) : {};
+    return '<tr><td>' + (i + 1) + '</td><td><input id="' + P + i + '_name" data-fi="' + i + '" data-k="name" list="finStu" value="' + esc(r.name || '') + '" style="width:84px"></td>' +
+      '<td class="sub">' + esc(s ? (s.school || '') : (r.name ? '명부에 없음' : '')) + '</td><td class="sub">' + esc(s ? s.grade : '') + '</td>' +
+      '<td><input id="' + P + i + '_course" data-fi="' + i + '" data-k="course" value="' + esc(r.course ?? '') + '" style="width:44px"></td>' +
+      DAYS6.map((_, k) => '<td class="cen"><input type="checkbox" id="' + P + i + '_d' + k + '" data-fi="' + i + '" data-k="d" data-day="' + k + '"' + ((r.d || [])[k] ? ' checked' : '') + '></td>').join('') +
+      '<td class="cen"><b>' + (r.name ? c.wk : '') + '</b></td>' +
+      '<td><input id="' + P + i + '_price" data-fi="' + i + '" data-k="price" inputmode="numeric" value="' + esc(r.price ?? '') + '" style="width:80px;text-align:right"></td>' +
+      '<td><input id="' + P + i + '_disc" data-fi="' + i + '" data-k="disc" inputmode="numeric" value="' + esc(r.disc ?? '') + '" style="width:66px;text-align:right"></td>' +
+      '<td class="r"><b>' + won(c.fee) + '</b></td>' +
+      '<td><input id="' + P + i + '_extra" data-fi="' + i + '" data-k="extra" value="' + esc(r.extra || '') + '" style="width:120px"></td>' +
+      '<td><input id="' + P + i + '_book" data-fi="' + i + '" data-k="book" value="' + esc(r.book || '') + '" style="width:100px"></td>' +
+      '<td class="cen">' + (r.name ? c.mealN : '') + '</td><td class="r">' + (r.name ? won(c.mealAmt) : '') + '</td><td class="r"><b>' + (r.name ? won(c.total) : '') + '</b></td>' +
+      '<td><input id="' + P + i + '_memo" data-fi="' + i + '" data-k="memo" value="' + esc(r.memo || '') + '" style="width:120px"></td>' +
+      '<td><button class="btn xs ghost" data-a="finDel" data-v="' + i + '" title="줄 삭제">✕</button></td></tr>';
+  }).join('');
+  const over = k => C.perDay[k] > set.cap1;
+  const table = '<section class="card scroll"><h2>① 원비 · 수강 정보 <span class="sub">' + ymLabel(ym) + ' · 학생 ' + C.n + '명</span> ' + saveBadge() + '</h2><datalist id="finStu">' + studs.map(n => '<option value="' + esc(n) + '">').join('') + '</datalist>' +
+    '<table class="fin"><thead><tr><th>No</th><th>이름</th><th>학교</th><th>학년</th><th>Course</th>' + DAYS6.map(d => '<th class="cen">' + d + '</th>').join('') + '<th>주 횟수</th><th>정가</th><th>할인</th><th>원비 (교습소)</th><th>보충과목 (과외 별도)</th><th>교재</th><th>식대 횟수</th><th>식대 (별도)</th><th>학부모 총 납부액</th><th>메모</th><th></th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="23" class="empty">학생 줄이 없어요</td></tr>') +
+    '<tr class="tot"><td></td><td><b>합계</b></td><td colspan="3">' + C.n + '명</td>' + C.perDay.map((n, k) => '<td class="cen"' + (over(k) ? ' style="color:var(--bad);font-weight:700"' : '') + '>' + n + '</td>').join('') + '<td class="cen"><b>' + C.wk + '</b></td><td class="r">' + won(C.price) + '</td><td class="r">' + won(C.disc) + '</td><td class="r"><b>' + won(C.fee) + '</b></td><td></td><td></td><td class="cen">' + C.mealN + '</td><td class="r">' + won(C.meal) + '</td><td class="r"><b>' + won(C.total) + '</b></td><td colspan="2"></td></tr>' +
+    '<tr class="sub"><td></td><td>1층 정원</td><td colspan="3">하루 최대 ' + set.cap1 + '명</td>' + DAYS6.map((_, k) => '<td class="cen">' + (over(k) ? '<b style="color:var(--bad)">초과</b>' : set.cap1 - C.perDay[k]) + '</td>').join('') + '<td colspan="12"></td></tr>' +
+    '</tbody></table><div class="bar" style="margin-top:10px"><button class="btn sm" data-a="finAdd"' + ((m.rows || []).length >= FIN_MAX ? ' disabled' : '') + '>+ 학생 줄 추가</button><button class="btn sm ghost" data-a="finFill">재원생 중 빠진 학생 채우기</button><span class="sub">이름은 목록에서 고르면 학교·학년이 자동으로 나와요 · 요일은 등원하는 요일 체크 · 한 달 최대 ' + FIN_MAX + '줄 (기존 엑셀과 같음)</span><span style="flex:1"></span><button class="btn sm ghost danger" data-a="finDelMonth">이 달 삭제</button></div></section>';
+  const wkCap1 = set.cap1 * 6, wkCap2 = set.cap2 * 6;
+  const sumCard = '<div class="grid2"><section class="card"><h2>② 이번 달 요약</h2><table><tbody>' +
+    [['교습소 원비 수입', C.fee], ['장기수강 할인 합계', C.disc], ['식대 청구 (별도 사업자)', C.meal], ['학부모 총 납부액 (원비+식대)', C.total], ['원장 · 부원장 식대', C.staff]].map(([l, v]) => '<tr><td>' + l + '</td><td class="r"><b>' + won(v) + '원</b></td></tr>').join('') + '</tbody></table></section>' +
+    '<section class="card"><h2>③ 주간 정원 (최대 인원)</h2><table><tbody><tr><td>1층 교습소</td><td class="r">' + wkCap1 + '명</td><td class="sub">평일 ' + set.cap1 * 5 + ' / 토 ' + set.cap1 + '</td></tr><tr><td>2층 공부방</td><td class="r">' + wkCap2 + '명</td><td class="sub">평일 ' + set.cap2 * 5 + ' / 토 ' + set.cap2 + '</td></tr><tr><td>합계</td><td class="r">' + (wkCap1 + wkCap2) + '명</td><td></td></tr><tr><td>1층 현재 주간 등원</td><td class="r"><b>' + C.wk + '명</b></td><td></td></tr><tr><td>1층 남은 자리 (주간)</td><td class="r"><b' + (wkCap1 - C.wk < 0 ? ' style="color:var(--bad)"' : '') + '>' + (wkCap1 - C.wk) + '명</b></td><td></td></tr></tbody></table></section></div>';
+  return head + table + sumCard + finMeals(m, set) + finSummary() + finSettings(set);
+}
+function finMeals(m, set) {
+  const ym = m.ym; const n = daysIn(ym); const people = ['원장', '부원장', ...(m.rows || []).map(r => r.name).filter(Boolean)];
+  const has = (k, d) => ((m.meals || {})[k] || []).includes(d);
+  const body = Array.from({ length: n }, (_, i) => { const d = i + 1; const dt = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, d); const w = dt.getDay();
+    return '<tr' + (w === 0 ? ' class="sun"' : '') + '><td>' + (+ym.slice(5, 7)) + '/' + d + '</td><td class="cen">' + WD[w] + '</td>' + people.map(p => '<td class="cen meal' + (has(p, d) ? ' on' : '') + '" data-a="meal" data-v="' + esc(p) + '|' + d + '">' + (has(p, d) ? '1' : '') + '</td>').join('') + '</tr>'; }).join('');
+  const cnt = p => ((m.meals || {})[p] || []).length;
+  return '<section class="card scroll"><h2>④ 식대 출석표 <span class="sub">먹은 날 칸을 누르면 1 ↔ 빈칸 · 1회 ' + won(set.meal) + '원</span></h2><div class="bar"><button class="btn sm ghost" data-a="mealAtt">등원 기록으로 채우기</button><span class="sub">앱 출결에서 그날 등원한 학생 칸에 1을 넣어요 (이미 있는 1은 그대로)</span></div>' +
+    '<table class="mealt"><thead><tr><th>날짜</th><th>요일</th>' + people.map(p => '<th class="cen">' + esc(p) + '</th>').join('') + '</tr></thead><tbody>' + body +
+    '<tr class="tot"><td colspan="2"><b>횟수</b></td>' + people.map(p => '<td class="cen"><b>' + cnt(p) + '</b></td>').join('') + '</tr><tr class="tot"><td colspan="2"><b>금액</b></td>' + people.map(p => '<td class="cen">' + won(cnt(p) * set.meal) + '</td>').join('') + '</tr></tbody></table></section>';
+}
+function finSummary() {
+  const ms = finMonths().slice().reverse(); if (!ms.length) return '';
+  const set = finSet(); const cs = ms.map(ym => [ym, calcMonth(D.fin[ym], set)]);
+  const t = k => cs.reduce((a, [, c]) => a + c[k], 0);
+  return '<section class="card"><h2>월별 요약</h2><table><thead><tr><th>월</th><th class="r">학생 수</th><th class="r">교습소 원비 수입</th><th class="r">장기수강 할인</th><th class="r">식대 청구 (별도 사업자)</th><th class="r">학부모 총 납부액</th><th class="r">원장단 식대</th></tr></thead><tbody>' +
+    cs.map(([ym, c]) => '<tr><td><a href="#" data-a="finYm" data-v="' + ym + '">' + ymLabel(ym) + '</a></td><td class="r">' + c.n + '</td><td class="r">' + won(c.fee) + '</td><td class="r">' + won(c.disc) + '</td><td class="r">' + won(c.meal) + '</td><td class="r">' + won(c.total) + '</td><td class="r">' + won(c.staff) + '</td></tr>').join('') +
+    '<tr class="tot"><td><b>합계</b></td><td></td><td class="r"><b>' + won(t('fee')) + '</b></td><td class="r"><b>' + won(t('disc')) + '</b></td><td class="r"><b>' + won(t('meal')) + '</b></td><td class="r"><b>' + won(t('total')) + '</b></td><td class="r"><b>' + won(t('staff')) + '</b></td></tr></tbody></table></section>';
+}
+function finSettings(set) {
+  return '<section class="card"><h2>설정</h2><form id="finSetF" class="form"><div class="row2" style="grid-template-columns:repeat(3,minmax(0,1fr))"><label>식대 단가 (1회, 원)<input id="fsMeal" inputmode="numeric" value="' + set.meal + '"></label><label>1층 교습소 하루 최대 인원<input id="fsCap1" inputmode="numeric" value="' + set.cap1 + '"></label><label>2층 공부방 하루 최대 인원<input id="fsCap2" inputmode="numeric" value="' + set.cap2 + '"></label></div><button class="btn" type="submit">설정 저장</button><p class="sub">식대 단가를 바꾸면 모든 달의 식대 금액이 새 단가로 다시 계산돼요 (기존 엑셀과 같은 방식).</p></form></section>';
+}
+function finNewMonth() {
+  const ms = finMonths(); let ym;
+  if (!ms.length) ym = ymOf(TODAY); else { const [y, mo] = ms[0].split('-').map(Number); ym = mo === 12 ? (y + 1) + '-01' : y + '-' + pad(mo + 1); }
+  const prev = ms.length ? D.fin[ms[0]] : null;
+  const rows = prev ? clone(prev.rows).filter(r => { const s = r.sid ? stu(r.sid) : D.students.find(x => x.name === r.name); return !s || !s.left; }) : D.students.filter(s => !s.left).slice(0, FIN_MAX).map(s => ({ name: s.name, sid: s.id, course: '', d: [0, 0, 0, 0, 0, 0], price: '', disc: '', extra: '', book: '', memo: '' }));
+  return { ym, rows, meals: {} };
+}
+
+/* ---------- 학생명부 ---------- */
+const kindOf = g => /^고/.test(g || '') ? '고등' : /^중/.test(g || '') ? '중등' : '';
+const phoneOf = (s, rel) => { const m = memberOf(s.id, rel); if (m && m.phone) return m.phone; const si = D.sinfo[s.id] || {}; return ((si.phones || {})[rel]) || ''; };
+function pRoster() {
+  const list = [...D.students].sort((a, b) => (!!a.left - !!b.left) || a.name.localeCompare(b.name, 'ko'));
+  const sc = schools();
+  return '<h1>학생명부 <span class="sub">재원·퇴원 학생 기본 정보 · 연락처 변경은 [학생·학부모] 메뉴의 [수정]에서</span></h1>' +
+    '<div class="bar"><button class="btn" data-a="modal" data-v="stu">+ 학생 등록</button><span style="flex:1"></span><label class="btn ghost" style="cursor:pointer">엑셀 불러오기<input type="file" id="xlIn" accept=".xlsx" hidden></label> <button class="btn ghost" data-a="xlOut">엑셀로 내보내기</button></div>' +
+    '<datalist id="rsSc">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>' +
+    '<section class="card scroll"><form id="rosterF"><table class="fin"><thead><tr><th>No</th><th>이름</th><th>생년월일</th><th>학생 연락처</th><th>모 연락처</th><th>부 연락처</th><th>학교</th><th>학년</th><th>구분</th><th>첫 등록일</th><th>상태</th><th>메모</th></tr></thead><tbody>' +
+    (list.length ? list.map((s, i) => { const si = D.sinfo[s.id] || {}; const P = 'rs_' + s.id + '_';
+      return '<tr' + (s.left ? ' class="left"' : '') + '><td>' + (i + 1) + '</td><td><b>' + esc(s.name) + '</b></td><td><input type="date" id="' + P + 'birth" data-rs="' + s.id + '" value="' + esc(si.birth || '') + '"></td>' +
+        ['student', 'mother', 'father'].map(rel => '<td class="sub">' + esc(fmtP(phoneOf(s, rel))) + '</td>').join('') +
+        '<td><input id="' + P + 'school" data-rs="' + s.id + '" list="rsSc" value="' + esc(s.school || '') + '" style="width:90px"></td><td><select id="' + P + 'grade" data-rs="' + s.id + '">' + GRADES.map(g => opt(g, s.grade)).join('') + '</select></td><td class="sub">' + kindOf(s.grade) + '</td>' +
+        '<td><input type="date" id="' + P + 'joined" data-rs="' + s.id + '" value="' + esc(si.joined || '') + '"></td><td><select id="' + P + 'st" data-rs="' + s.id + '">' + opt('재원', s.left ? '퇴원' : '재원') + opt('퇴원', s.left ? '퇴원' : '재원') + '</select></td>' +
+        '<td><input id="' + P + 'memo" data-rs="' + s.id + '" value="' + esc(si.memo || '') + '" style="width:160px"></td></tr>'; }).join('') : '<tr><td colspan="12" class="empty">학생이 없어요</td></tr>') +
+    '</tbody></table><div class="mf"><span class="sub">퇴원으로 바꾸면 앱 목록·정산 새 달에서 빠져요 (기록은 남아요)</span><span style="flex:1"></span><button class="btn" type="submit">변경 내용 저장</button></div></form></section>';
+}
+
+/* ---------- 엑셀 불러오기 / 내보내기 ---------- */
+const truthy = v => v !== null && v !== undefined && v !== '' && v !== 0 && v !== '0';
+function parseWorkbook(wb) {
+  const S = wb.sheets; const out = { settings: null, roster: [], months: [] };
+  if (S['설정']) out.settings = { meal: +S['설정'].C4 || 8000, cap1: +S['설정'].C5 || 6, cap2: +S['설정'].C6 || 9 };
+  const R = S['학생명부'];
+  if (R) for (let r = 5; r < 400; r++) { const name = R['B' + r]; if (!name) continue;
+    const g = R['H' + r], kind = R['I' + r] || '';
+    const grade = typeof g === 'string' && /^[중고]\d$/.test(g) ? g : g ? ((/고/.test(kind) ? '고' : '중') + g) : '';
+    out.roster.push({ name: String(name).trim(), birth: xlDate(R['C' + r]), phones: { student: digits(R['D' + r]), mother: digits(R['E' + r]), father: digits(R['F' + r]) }, school: R['G' + r] ? String(R['G' + r]).trim() : '', grade, kind, joined: xlDate(R['J' + r]), status: R['K' + r] || '재원', memo: R['L' + r] ? String(R['L' + r]) : '' }); }
+  for (const name of wb.order) { const mm = /^(\d{4})\.(\d{1,2})$/.exec(name); if (!mm) continue;
+    const M = S[name]; const ym = mm[1] + '-' + mm[2].padStart(2, '0'); const rows = [], idx = {};
+    for (let r = 5; r <= 24; r++) { const nm = M['C' + r] ? String(M['C' + r]).trim() : ''; const price = M['N' + r];
+      if (!nm && price == null) continue; idx[r - 5] = nm;
+      rows.push({ name: nm, course: M['F' + r] != null ? String(M['F' + r]) : '', d: 'GHIJKL'.split('').map(c => truthy(M[c + r]) ? 1 : 0), price: numOr(price), disc: numOr(M['O' + r]), extra: M['Q' + r] ? String(M['Q' + r]) : '', book: M['R' + r] ? String(M['R' + r]) : '', memo: M['V' + r] ? String(M['V' + r]) : '' }); }
+    const meals = {}; const nd = daysIn(ym);
+    for (let r = 37; r < 37 + nd; r++) { const d = r - 36;
+      if (truthy(M['D' + r])) (meals['원장'] || (meals['원장'] = [])).push(d);
+      if (truthy(M['E' + r])) (meals['부원장'] || (meals['부원장'] = [])).push(d);
+      for (let k = 0; k < 20; k++) { const nm = idx[k]; if (nm && truthy(M[colL(5 + k) + r])) (meals[nm] || (meals[nm] = [])).push(d); } }
+    out.months.push({ ym, rows, meals }); }
+  return out;
+}
+const colL = n => String.fromCharCode(65 + n); // 0→A (A~Z 범위만)
+async function importXlsx(file) {
+  try { const wb = await readXlsx(file); const p = parseWorkbook(wb);
+    if (!p.roster.length && !p.months.length) return toast('학생명부나 월별(예: 2026.12) 시트를 찾지 못했어요');
+    V.xl = p; V.xlName = file.name; V.modal = 'xl'; render(); }
+  catch (e) { fail(e, '엑셀을 읽지 못했어요: ' + e.message); }
+}
+function xlModal() {
+  const p = V.xl; const byName = n => D.students.find(s => s.name === n);
+  const newOnes = p.roster.filter(r => !byName(r.name));
+  const set = p.settings || finSet();
+  return '<div class="mbg" data-a="close"><div class="modal wide"><h2>엑셀 불러오기 <span class="sub">' + esc(V.xlName || '') + '</span></h2>' +
+    '<table><tbody><tr><td>설정</td><td>' + (p.settings ? '식대 ' + won(p.settings.meal) + '원 · 1층 ' + p.settings.cap1 + '명 · 2층 ' + p.settings.cap2 + '명' : '<span class="sub">없음</span>') + '</td></tr>' +
+    '<tr><td>학생명부</td><td>' + p.roster.length + '명 (앱에 이미 있는 학생 ' + (p.roster.length - newOnes.length) + '명은 정보 갱신, 새로 추가 ' + newOnes.length + '명' + (newOnes.length ? ': ' + newOnes.map(r => esc(r.name) + (r.status === '퇴원' ? '(퇴원)' : '')).join(', ') : '') + ')</td></tr>' +
+    '<tr><td>월별 정산</td><td>' + (p.months.length ? p.months.map(m => { const c = calcMonth(m, set); return '<div>' + ymLabel(m.ym) + ' · ' + c.n + '명 · 원비 ' + won(c.fee) + ' · 식대 ' + won(c.meal) + ' · 총 ' + won(c.total) + (D.fin[m.ym] ? ' <span class="chip warn">앱에 있는 이 달을 덮어써요</span>' : '') + '</div>'; }).join('') : '<span class="sub">없음</span>') + '</td></tr></tbody></table>' +
+    '<p class="sub">새로 추가되는 재원 학생은 학생·학부모 번호도 함께 등록돼요(가입 안내 문자는 따로 보내세요). 위 금액이 기존 엑셀의 월별요약과 같은지 확인한 뒤 [가져오기]를 누르세요.</p>' +
+    '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" data-a="xlGo">가져오기</button></div></div></div>';
+}
+async function xlCommit() {
+  const p = V.xl; if (!p) return; const b = writeBatch(db); let ops = 0; const nameToSid = {};
+  D.students.forEach(s => { nameToSid[s.name] = s.id; });
+  if (p.settings) { b.set(doc(db, 'fin', 'settings'), p.settings); ops++; }
+  for (const r of p.roster) {
+    let sid = nameToSid[r.name]; const left = r.status === '퇴원'; const grade = r.grade || (stu(sid) || {}).grade || '중2';
+    if (!sid) { const ref = doc(collection(db, 'students')); sid = ref.id; nameToSid[r.name] = sid;
+      b.set(ref, { name: r.name, grade, school: r.school, time: '16:00', course: DEF_COURSE[grade] || '중2-2', left, ts: now() }); ops++;
+      if (!left) for (const rel of ['student', 'mother', 'father']) { const ph = r.phones[rel]; if (ph && ph.length >= 10) { addMember(b, sid, rel, ph, r.name, grade); ops += 2; } } }
+    else { const upd = { left }; if (r.school) upd.school = r.school; if (r.grade) upd.grade = r.grade; b.update(doc(db, 'students', sid), upd); ops++; }
+    b.set(doc(db, 'sinfo', sid), { birth: r.birth, joined: r.joined, kind: r.kind, memo: r.memo, phones: r.phones }, { merge: true }); ops++;
+  }
+  for (const m of p.months) { m.rows.forEach(r => { if (r.name && nameToSid[r.name]) r.sid = nameToSid[r.name]; }); b.set(doc(db, 'fin', 'm_' + m.ym), m); ops++; }
+  if (ops > 480) return toast('한 번에 가져오기엔 내용이 너무 많아요. 시트를 나눠서 가져와 주세요.');
+  await b.commit(); V.xl = null; V.modal = null; V.ym = null; V.finEdit = null;
+  toast('엑셀을 가져왔어요 · 학생 ' + p.roster.length + '명 · ' + p.months.length + '개월');
+}
+function exportXlsx() {
+  const set = finSet(); const sheets = []; const ms = finMonths();
+  sheets.push({ name: '사용법', cols: [2, 110], cells: { B1: { v: '더(The)밀착수학교습소  원비 · 식대 통합 관리', s: 5 }, B3: '관리자 페이지(themilchak-math.github.io/admin.html)에서 내려받은 파일이에요. ' + fmtD(TODAY) + ' 기준.', B4: '파란 글씨 = 입력값 / 검정 = 자동 계산. 이 파일을 고쳐서 관리자 페이지 [엑셀 불러오기]로 다시 올리면 앱에 반영돼요.', B5: '시트: 설정 · 월별요약 · 학생명부 · 달마다 시트 1장 (위 = 원비·수강 정보, 아래 = 식대 출석표)' } });
+  sheets.push({ name: '설정', cols: [2, 28, 12, 50], cells: { B2: { v: '설정', s: 5 }, B4: '식대 단가 (1회)', C4: { v: set.meal, s: 2 }, B5: '1층 교습소 하루 최대 인원', C5: set.cap1, B6: '2층 공부방 하루 최대 인원', C6: set.cap2 } });
+  const sum = { B1: { v: '월별 요약', s: 5 } }; ['월 (시트 이름)', '학생 수', '교습소 원비 수입', '장기수강 할인', '식대 청구 (별도 사업자)', '학부모 총 납부액', '원장단 식대'].forEach((h, i) => { sum[colL(1 + i) + '4'] = { v: h, s: 6 }; });
+  ms.slice().reverse().forEach((ym, i) => { const r = 5 + i, sh = "'" + ymLabel(ym) + "'!"; sum['B' + r] = ymLabel(ym); sum['C' + r] = { f: 'COUNTA(' + sh + 'C5:C24)' }; sum['D' + r] = { f: sh + 'P25', s: 2 }; sum['E' + r] = { f: sh + 'O25', s: 2 }; sum['F' + r] = { f: sh + 'T25', s: 2 }; sum['G' + r] = { f: sh + 'U25', s: 2 }; sum['H' + r] = { f: sh + 'E32', s: 2 }; });
+  const lr = 5 + ms.length; sum['B' + lr] = { v: '합계', s: 1 }; 'DEFGH'.split('').forEach(c => { sum[c + lr] = { f: 'SUM(' + c + '5:' + c + (lr - 1) + ')', s: 4 }; });
+  sheets.push({ name: '월별요약', cols: [2, 16, 9, 16, 14, 20, 18, 14], cells: sum });
+  const ro = { B1: { v: '학생명부', s: 5 } }; ['No', '이름', '생년월일', '학생 연락처', '모 연락처', '부 연락처', '학교', '학년', '구분', '첫 등록일', '상태', '메모'].forEach((h, i) => { ro[colL(i) + '4'] = { v: h, s: 6 }; });
+  [...D.students].sort((a, b) => (!!a.left - !!b.left) || a.name.localeCompare(b.name, 'ko')).forEach((s, i) => { const r = 5 + i, si = D.sinfo[s.id] || {};
+    Object.assign(ro, { ['A' + r]: i + 1, ['B' + r]: { v: s.name, s: 7 }, ['C' + r]: si.birth ? { v: si.birth, date: true } : null, ['D' + r]: fmtP(phoneOf(s, 'student')), ['E' + r]: fmtP(phoneOf(s, 'mother')), ['F' + r]: fmtP(phoneOf(s, 'father')), ['G' + r]: s.school || '', ['H' + r]: +String(s.grade || '').slice(1) || s.grade, ['I' + r]: kindOf(s.grade), ['J' + r]: si.joined ? { v: si.joined, date: true } : null, ['K' + r]: s.left ? '퇴원' : '재원', ['L' + r]: si.memo || '' }); });
+  sheets.push({ name: '학생명부', cols: [5, 10, 12, 15, 15, 15, 10, 6, 6, 12, 6, 24], cells: ro });
+  for (const ym of ms) sheets.push(monthSheet(D.fin[ym], set));
+  download(writeXlsx(sheets), '더밀착수학_원비식대_' + TODAY.replace(/-/g, '') + '.xlsx');
+  toast('엑셀 파일을 내려받았어요');
+}
+function monthSheet(m, set) {
+  const c = {}; const ym = m.ym; const [y, mo] = ym.split('-').map(Number);
+  c.B1 = { v: y + '년 ' + mo + '월  원비 · 식대 정산', s: 5 }; c.B2 = '기준월'; c.C2 = { v: ym + '-01', date: true }; c.B3 = { v: '① 원비 · 수강 정보', s: 1 };
+  ['No', '이름', '학교', '학년', 'Course', '월', '화', '수', '목', '금', '토', '주 횟수', '정가', '할인', '원비 (교습소)', '보충과목 (과외 별도)', '교재', '식대 횟수', '식대 (별도 사업자)', '학부모 총 납부액', '메모'].forEach((h, i) => { c[colL(1 + i) + '4'] = { v: h, s: 6 }; });
+  const rows = (m.rows || []).slice(0, FIN_MAX);
+  for (let i = 0; i < FIN_MAX; i++) { const r = 5 + i, x = rows[i]; c['B' + r] = i + 1; const mc = colL(5 + i);
+    c['M' + r] = { f: 'IF(C' + r + '="","",SUM(G' + r + ':L' + r + '))' }; c['P' + r] = { f: 'IF(AND(N' + r + '="",O' + r + '=""),"",N(N' + r + ')-N(O' + r + '))', s: 2 };
+    c['S' + r] = { f: 'IF(C' + r + '="","",' + mc + '68)' }; c['T' + r] = { f: 'IF(C' + r + '="","",S' + r + '*설정!$C$4)', s: 2 }; c['U' + r] = { f: 'IF(C' + r + '="","",N(P' + r + ')+N(T' + r + '))', s: 2 };
+    if (!x) continue; const s = x.sid ? stu(x.sid) : D.students.find(z => z.name === x.name);
+    c['C' + r] = { v: x.name, s: 7 }; c['D' + r] = s ? s.school || '' : ''; c['E' + r] = s ? (+String(s.grade).slice(1) || s.grade) : '';
+    if (x.course !== '' && x.course != null) c['F' + r] = isNaN(+x.course) ? x.course : +x.course;
+    (x.d || []).forEach((v, k) => { if (v) c[colL(6 + k) + r] = 1; });
+    if (x.price !== '' && x.price != null) c['N' + r] = { v: +x.price, s: 2 }; if (x.disc !== '' && x.disc != null) c['O' + r] = { v: +x.disc, s: 2 };
+    if (x.extra) c['Q' + r] = x.extra; if (x.book) c['R' + r] = x.book; if (x.memo) c['V' + r] = x.memo; }
+  c.B25 = { v: '합계', s: 1 }; c.C25 = { f: 'COUNTA(C5:C24)&"명"', str: true }; 'GHIJKLMNOPSTU'.split('').forEach(k => { c[k + '25'] = { f: 'SUM(' + k + '5:' + k + '24)', s: 4 }; });
+  c.B27 = { v: '② 이번 달 요약', s: 1 }; [['교습소 원비 수입', 'P25'], ['장기수강 할인 합계', 'O25'], ['식대 청구 (별도 사업자)', 'T25'], ['학부모 총 납부액 (원비+식대)', 'U25'], ['원장 · 부원장 식대', '(D68+E68)*설정!$C$4']].forEach(([l, f], i) => { c['B' + (28 + i)] = l; c['E' + (28 + i)] = { f, s: 4 }; });
+  c.B34 = { v: '③ 식대 출석표', s: 1 }; c.D34 = '먹은 날 1 입력 · 학생 순서는 ① 표와 같음';
+  c.B36 = { v: '날짜', s: 6 }; c.C36 = { v: '요일', s: 6 }; c.D36 = { v: '원장', s: 6 }; c.E36 = { v: '부원장', s: 6 };
+  rows.forEach((x, i) => { c[colL(5 + i) + '36'] = { v: x.name || '', s: 6 }; });
+  const nd = daysIn(ym); const has = (k, d) => ((m.meals || {})[k] || []).includes(d);
+  for (let d = 1; d <= nd; d++) { const r = 36 + d; c['B' + r] = { v: dateOf(ym, d), date: true }; c['C' + r] = WD[new Date(y, mo - 1, d).getDay()];
+    if (has('원장', d)) c['D' + r] = 1; if (has('부원장', d)) c['E' + r] = 1; rows.forEach((x, i) => { if (x.name && has(x.name, d)) c[colL(5 + i) + r] = 1; }); }
+  c.B68 = { v: '횟수', s: 1 }; c.B69 = { v: '금액', s: 1 };
+  for (let k = 3; k < 25; k++) { const L2 = colL(k); c[L2 + '68'] = { f: 'SUM(' + L2 + '37:' + L2 + '67)' }; c[L2 + '69'] = { f: L2 + '68*설정!$C$4', s: 2 }; }
+  return { name: ymLabel(ym), cols: [2, 6, 9, 9, 5, 7, 4, 4, 4, 4, 4, 4, 7, 10, 9, 12, 20, 14, 8, 12, 14, 18], cells: c };
+}
+
 /* ---------- 부원장 (원장님만) ---------- */
 const staffInvite = x => '[더밀착수학] ' + (x.name || '') + ' 선생님, 더밀착수학 관리 앱 부원장 계정 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호(' + fmtP(x.phone) + ')와 원하는 비밀번호 입력\n3) 원장님 승인 후 이용 가능\nPC 관리자 페이지: https://themilchak-math.github.io/admin.html';
 function pStaff() {
@@ -251,6 +479,7 @@ function pMsg() {
 }
 
 function modalHtml() {
+  if (V.modal === 'xl' && V.xl) return xlModal();
   if (V.modal === 'stu') {
     const s = V.editId ? stu(V.editId) : null;
     const ph = rel => { const m = s && memberOf(s.id, rel); const lock = m && m.st !== 'none'; return '<label>' + REL[rel] + ' 휴대폰' + (lock ? ' <span class="sub">(' + (m.st === 'ok' ? '연결됨' : m.st === 'pending' ? '승인 대기' : '차단') + ' · 바꾸려면 차단 후 새로 등록)</span>' : '') + '<input id="p_' + rel + '" inputmode="numeric" placeholder="없으면 비워두세요" value="' + esc(m ? fmtP(m.phone) : '') + '"' + (lock ? ' disabled' : '') + '></label>'; };
@@ -288,15 +517,15 @@ function render() {
   else if (V.screen === 'login') html = loginView();
   else {
     let page = '';
-    if (V.page === 'staff' && !isOwnerMe()) V.page = 'dash';
-    try { page = ({ dash: pDash, qr: pQR, students: pStudents, att: pAtt, log: pLog, hw: pHw, exam: pExam, school: pSchool, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
+    if ((V.page === 'staff' || V.page === 'fin') && !isOwnerMe()) V.page = 'dash';
+    try { page = ({ dash: pDash, qr: pQR, students: pStudents, att: pAtt, log: pLog, hw: pHw, exam: pExam, school: pSchool, fin: pFin, roster: pRoster, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
     catch (e) { console.error(e); page = '<section class="card"><p class="err">화면 오류: ' + esc(e.message) + '</p></section>'; }
     html = '<aside><div class="brand">더밀착수학<small>관리자</small></div><nav>' + navList().map(([k, l]) => '<button data-a="go" data-v="' + k + '" class="' + (V.page === k ? 'on' : '') + '">' + l + navBadge(k) + '</button>').join('') + '</nav><div class="foot"><a href="./" target="_blank">폰 앱 열기</a><button data-a="logout">로그아웃</button><small>v' + ADMIN_VERSION + '</small></div></aside><main>' + page + '</main>' + modalHtml();
   }
   if (V.toast) html += '<div class="toast">' + esc(V.toast) + '</div>';
   const same = app.dataset.p === V.page + V.screen;
   app.innerHTML = html; app.dataset.p = V.page + V.screen;
-  Object.entries(keep).forEach(([id, k]) => { const el = document.getElementById(id); if (!el || el.disabled) return; if ('c' in k) { if (id !== 'autoN') el.checked = k.c; } else { el.value = k.v; if (el.tagName === 'SELECT' && el.value === '' && el.options.length) el.selectedIndex = 0; } });
+  Object.entries(keep).forEach(([id, k]) => { const el = document.getElementById(id); if (!el || el.disabled || id.startsWith('fn_')) return; if ('c' in k) { if (id !== 'autoN') el.checked = k.c; } else { el.value = k.v; if (el.tagName === 'SELECT' && el.value === '' && el.options.length) el.selectedIndex = 0; } });
   app.querySelectorAll('input[name=hwS],input[name=schCk]').forEach(el => { if (el.value in hw) el.checked = hw[el.value]; });
   if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); }
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
@@ -332,6 +561,8 @@ function subscribe() {
   L(collection(db, 'members'), s => { D.members = docs(s); sr(); });
   L(collection(db, 'exams'), s => { D.exams = docs(s); sr(); });
   L(collection(db, 'staff'), s => { D.staff = docs(s); sr(); });
+  L(collection(db, 'sinfo'), s => { D.sinfo = {}; s.docs.forEach(d => { D.sinfo[d.id] = d.data(); }); sr(); });
+  if (isOwnerMe()) L(collection(db, 'fin'), s => { D.fin = {}; D.finSet = null; s.docs.forEach(d => { if (d.id === 'settings') D.finSet = d.data(); else if (d.id.startsWith('m_')) D.fin[d.id.slice(2)] = d.data(); }); if (V.ym && !V.finDirty) V.finEdit = D.fin[V.ym] ? clone(D.fin[V.ym]) : (V.finEdit && V.finEdit.ym === V.ym ? V.finEdit : null); sr(); });
 }
 onAuthStateChanged(auth, user => {
   unsubs.forEach(f => f()); unsubs = []; qrStop();
@@ -346,7 +577,7 @@ onAuthStateChanged(auth, user => {
       try { const sd = await getDoc(doc(db, 'staff', ph)); const x = sd.exists() ? sd.data() : null; if (!x || x.st !== 'ok' || x.uid !== user.uid) throw 0; V.staff = x; }
       catch (e) { V.msg = '원장님·승인된 부원장만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); return; }
     }
-    V.screen = 'app'; V.msg = ''; subscribe(); if (V.page === 'qr') qrStart(); render();
+    D.cfg = d.data(); V.screen = 'app'; V.msg = ''; subscribe(); if (V.page === 'qr') qrStart(); render();
     if (!V.staff) announceUpdate(db, auth);
     try { if ('Notification' in window && Notification.permission === 'granted') enablePush(db, user.uid, ['teacher']).catch(e => console.warn('autoPush', e)); } catch (e) { }
   }, () => { V.msg = '원장님 계정만 관리자 페이지를 쓸 수 있어요.'; signOut(auth); });
@@ -409,6 +640,18 @@ app.addEventListener('click', async e => {
     if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(pushErrorText(e)); } return render(); }
     if (a === 'pushHide') { V.pushHide = true; return render(); }
     if (a === 'logout') { qrStop(); await signOut(auth); return; }
+    if (a === 'finYm') { e.preventDefault(); if (V.finDirty) return toast('저장 중이에요. 잠시 후 다시 눌러 주세요'); finOpen(v); return render(); }
+    if (a === 'finNew') { const m = finNewMonth(); if (D.fin[m.ym]) return toast(ymLabel(m.ym) + '은(는) 이미 있어요'); V.ym = m.ym; V.finEdit = m; finTouch(); return toast(ymLabel(m.ym) + ' 정산을 만들었어요 (지난달 학생·원비 복사, 식대는 비움)'); }
+    if (a === 'finAdd') { const m = finCur(); if (!m) return; if ((m.rows || []).length >= FIN_MAX) return toast('한 달 최대 ' + FIN_MAX + '줄이에요'); m.rows = m.rows || []; m.rows.push({ name: '', course: '', d: [0, 0, 0, 0, 0, 0], price: '', disc: '', extra: '', book: '', memo: '' }); finTouch(); return render(); }
+    if (a === 'finFill') { const m = finCur(); if (!m) return; m.rows = m.rows || []; const have = new Set(m.rows.map(r => r.name)); const add = D.students.filter(s => !s.left && !have.has(s.name)); if (!add.length) return toast('빠진 재원생이 없어요'); add.forEach(s => { if (m.rows.length < FIN_MAX) m.rows.push({ name: s.name, sid: s.id, course: '', d: [0, 0, 0, 0, 0, 0], price: '', disc: '', extra: '', book: '', memo: '' }); }); finTouch(); return toast(add.length + '명을 추가했어요. 원비·요일을 입력해 주세요'); }
+    if (a === 'finDel') { const m = finCur(); if (!m) return; const r = m.rows[+v]; if (r && (r.name || r.price) && !confirm((r.name || (+v + 1) + '번 줄') + ' 줄을 삭제할까요? (그 학생 식대 표시도 함께 지워져요)')) return; m.rows.splice(+v, 1); if (r && r.name && m.meals) delete m.meals[r.name]; finTouch(); return render(); }
+    if (a === 'finDelMonth') { const m = finCur(); if (!m || !confirm(ymLabel(m.ym) + ' 정산을 통째로 삭제할까요? 되돌릴 수 없어요.')) return; clearTimeout(finT); V.finDirty = false; await deleteDoc(doc(db, 'fin', 'm_' + m.ym)); V.ym = null; V.finEdit = null; return toast('삭제했어요'); }
+    if (a === 'meal') { const m = finCur(); if (!m) return; const i = v.lastIndexOf('|'); const k = v.slice(0, i), d = +v.slice(i + 1); m.meals = m.meals || {}; const l = m.meals[k] || (m.meals[k] = []); const j = l.indexOf(d); if (j >= 0) l.splice(j, 1); else { l.push(d); l.sort((x, y) => x - y); } finTouch(); return render(); }
+    if (a === 'mealAtt') { const m = finCur(); if (!m) return; m.meals = m.meals || {}; let n = 0; const nd = daysIn(m.ym);
+      (m.rows || []).forEach(r => { if (!r.name) return; const s = r.sid ? stu(r.sid) : D.students.find(x => x.name === r.name); if (!s) return; for (let d = 1; d <= nd; d++) { const at = (D.att[dateOf(m.ym, d)] || {})[s.id]; if (at && at.st !== '결석') { const l = m.meals[r.name] || (m.meals[r.name] = []); if (!l.includes(d)) { l.push(d); n++; } } } (m.meals[r.name] || []).sort((x, y) => x - y); });
+      if (!n) return toast('채울 등원 기록이 없어요'); finTouch(); return toast('등원 기록으로 ' + n + '칸을 채웠어요'); }
+    if (a === 'xlGo') { el.disabled = true; try { await xlCommit(); } finally { el.disabled = false; } return; }
+    if (a === 'xlOut') { exportXlsx(); return; }
     if (a === 'stOk') { await updateDoc(doc(db, 'staff', id), { st: 'ok' }); return toast('부원장 승인 완료'); }
     if (a === 'stRej') { await updateDoc(doc(db, 'staff', id), { st: 'none', uid: deleteField() }); return toast('거절했어요'); }
     if (a === 'stDel') { const x = D.staff.find(y => y.id === id); if (!x || !confirm((x.name || '') + ' 부원장을 삭제할까요? 그 번호로는 더 이상 관리 기능을 쓸 수 없어요.')) return; await deleteDoc(doc(db, 'staff', id)); return toast('삭제했어요'); }
@@ -467,6 +710,8 @@ app.addEventListener('click', async e => {
 });
 
 app.addEventListener('change', async e => {
+  if (e.target.id === 'xlIn' && e.target.files && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; return importXlsx(f); }
+  if (e.target.dataset && e.target.dataset.fi !== undefined) { finField(e.target); return render(); }
   if (e.target.id === 'schAllCk') { document.querySelectorAll('input[name=schCk]').forEach(x => x.checked = e.target.checked); return; }
   const t = e.target;
   try {
@@ -501,6 +746,15 @@ app.addEventListener('submit', async e => {
       return toast(ids.length + '명에게 숙제를 냈어요');
     }
     if (f === 'ntF') { if (!g('nT').trim()) return toast('제목을 입력해 주세요'); await addDoc(collection(db, 'notices'), { title: g('nT').trim(), body: g('nB').trim(), at: TODAY, pin: document.getElementById('nP').checked, reads: [], ts: now() }); push(active().flatMap(x => [x.id + '|student', x.id + '|parent']), g('nT').trim(), { title: '새 공지', tag: 'notice' }); document.getElementById('nT').value = ''; document.getElementById('nB').value = ''; return toast('공지를 올렸어요'); }
+    if (f === 'finSetF') { const meal = +digits(g('fsMeal')), cap1 = +digits(g('fsCap1')), cap2 = +digits(g('fsCap2')); if (!meal || !cap1) return toast('숫자를 확인해 주세요'); await setDoc(doc(db, 'fin', 'settings'), { meal, cap1, cap2: cap2 || 0 }); return toast('설정을 저장했어요'); }
+    if (f === 'rosterF') {
+      const b = writeBatch(db); let n = 0;
+      for (const s of D.students) { const P = 'rs_' + s.id + '_'; const el = id => document.getElementById(P + id); if (!el('birth')) continue; const si = D.sinfo[s.id] || {};
+        const birth = el('birth').value, joined = el('joined').value, memo = el('memo').value.trim(), school = el('school').value.trim(), grade = el('grade').value, left = el('st').value === '퇴원';
+        if ((si.birth || '') !== birth || (si.joined || '') !== joined || (si.memo || '') !== memo) { b.set(doc(db, 'sinfo', s.id), { birth, joined, memo, kind: kindOf(grade) }, { merge: true }); n++; }
+        if ((s.school || '') !== school || s.grade !== grade || !!s.left !== left) { b.update(doc(db, 'students', s.id), { school, grade, left }); n++; } }
+      if (!n) return toast('바뀐 내용이 없어요'); await b.commit(); return toast('학생명부를 저장했어요');
+    }
     if (f === 'schF') {
       const b = writeBatch(db); let n = 0;
       document.querySelectorAll('input[data-sid]').forEach(el => { const s = stu(el.dataset.sid); const v = el.value.trim(); if (s && (s.school || '') !== v) { b.update(doc(db, 'students', s.id), { school: v }); n++; } });
@@ -565,3 +819,13 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && V.modal) {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ds(new Date()) !== TODAY) return location.reload(); if (document.visibilityState === 'visible' && V.chat && V.page === 'msg') markRead(V.chat); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => { });
 render();
+
+function finField(t) {
+  const m = finCur(); if (!m) return; const r = m.rows[+t.dataset.fi]; if (!r) return; const k = t.dataset.k;
+  if (k === 'd') { r.d = r.d || [0, 0, 0, 0, 0, 0]; r.d[+t.dataset.day] = t.checked ? 1 : 0; }
+  else if (k === 'price' || k === 'disc') r[k] = numOr(digits(t.value) === '' ? '' : digits(t.value));
+  else if (k === 'name') { const nv = t.value.trim(); if (nv !== r.name) { if (r.name && m.meals && m.meals[r.name]) { if (nv) m.meals[nv] = m.meals[r.name]; delete m.meals[r.name]; } r.name = nv; const s = D.students.find(x => x.name === nv); if (s) r.sid = s.id; else delete r.sid; } }
+  else r[k] = t.value;
+  finTouch();
+}
+app.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.fi !== undefined && t.type !== 'checkbox' && t.dataset.k !== 'name') { const m = finCur(); const r = m && m.rows[+t.dataset.fi]; if (r) { r[t.dataset.k] = (t.dataset.k === 'price' || t.dataset.k === 'disc') ? numOr(digits(t.value)) : t.value; V.finDirty = true; } } });
