@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.9.2';
+const ADMIN_VERSION = '1.9.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -308,11 +308,19 @@ function finTouch() {
   }, 700);
 }
 const saveBadge = () => V.finSaving === 'saving' || V.finSaving === 'pending' ? chip('저장 중...', 'warn') : V.finSaving === 'error' ? chip('저장 실패', 'bad') : chip('자동 저장됨', 'ok');
+const rowStu = r => r.sid ? stu(r.sid) : D.students.find(x => x.name === r.name);
+const blankRow = s => ({ name: s.name, sid: s.id, course: '', d: [0, 0, 0, 0, 0, 0], price: '', disc: '', extra: '', book: '', memo: '' });
+// 이번 달·다음 달 정산에는 재원생이 자동으로 들어가요 (학생은 학생명부에서만 추가)
+function finSync(m) {
+  if (!m || m.ym < ymOf(TODAY)) return false; m.rows = m.rows || []; let ch = false;
+  for (const s of active()) { const r = m.rows.find(x => x.sid === s.id || (!x.sid && x.name === s.name)); if (!r) { if (m.rows.length < FIN_MAX) { m.rows.push(blankRow(s)); ch = true; } } else if (!r.sid || r.name !== s.name) { if (r.name !== s.name && m.meals && m.meals[r.name]) { m.meals[s.name] = m.meals[r.name]; delete m.meals[r.name]; } r.sid = s.id; r.name = s.name; ch = true; } }
+  return ch;
+}
 function pFin() {
   if (!isOwnerMe()) return '<h1>정산</h1><section class="card"><p class="empty">원장님만 볼 수 있어요</p></section>';
   const ms = finMonths(); const set = finSet();
   if (!V.ym || (!D.fin[V.ym] && !finCur())) { if (ms.length) finOpen(ms.includes(ymOf(TODAY)) ? ymOf(TODAY) : ms[0]); }
-  const m = finCur();
+  const m = finCur(); if (m && finSync(m)) finTouch();
   const head = '<h1>정산 <span class="sub">원비 = 정가 − 할인 (교습소 수입) · 식대는 별도 사업자 청구 · 학부모 총 납부액 = 원비 + 식대</span></h1>' +
     '<div class="bar">' + ms.map(ym => '<button class="btn sm ' + (ym === V.ym ? '' : 'ghost') + '" data-a="finYm" data-v="' + ym + '">' + ymLabel(ym) + '</button>').join(' ') +
     ' <button class="btn sm" data-a="finNew">+ 새 달 만들기</button><span style="flex:1"></span><label class="btn sm ghost" style="cursor:pointer">엑셀 불러오기<input type="file" id="xlIn" accept=".xlsx" hidden></label> <button class="btn sm ghost" data-a="xlOut">엑셀로 내보내기</button></div>';
@@ -320,8 +328,8 @@ function pFin() {
   const C = calcMonth(m, set); const ym = m.ym; const P = 'fn_' + ym.replace('-', '') + '_';
   const studs = D.students.filter(s => !s.left).map(s => s.name);
   const rows = (m.rows || []).map((r, i) => {
-    const c = calcRow(r, m.meals, set); const s = r.sid ? stu(r.sid) : D.students.find(x => x.name === r.name); const si = s ? (D.sinfo[s.id] || {}) : {};
-    return '<tr><td>' + (i + 1) + '</td><td><input id="' + P + i + '_name" data-fi="' + i + '" data-k="name" list="finStu" value="' + esc(r.name || '') + '" style="width:84px"></td>' +
+    const c = calcRow(r, m.meals, set); const s = rowStu(r);
+    return '<tr><td>' + (i + 1) + '</td><td><b>' + esc(r.name || '') + '</b>' + (s && s.left ? ' <span class="sub">퇴원</span>' : !s ? ' <span class="sub">앱에 없음</span>' : '') + '</td>' +
       '<td class="sub">' + esc(s ? (s.school || '') : (r.name ? '명부에 없음' : '')) + '</td><td class="sub">' + esc(s ? s.grade : '') + '</td>' +
       '<td><input id="' + P + i + '_course" data-fi="' + i + '" data-k="course" value="' + esc(r.course ?? '') + '" style="width:44px"></td>' +
       DAYS6.map((_, k) => '<td class="cen"><input type="checkbox" id="' + P + i + '_d' + k + '" data-fi="' + i + '" data-k="d" data-day="' + k + '"' + ((r.d || [])[k] ? ' checked' : '') + '></td>').join('') +
@@ -333,15 +341,15 @@ function pFin() {
       '<td><input id="' + P + i + '_book" data-fi="' + i + '" data-k="book" value="' + esc(r.book || '') + '" style="width:100px"></td>' +
       '<td class="cen">' + (r.name ? c.mealN : '') + '</td><td class="r">' + (r.name ? won(c.mealAmt) : '') + '</td><td class="r"><b>' + (r.name ? won(c.total) : '') + '</b></td>' +
       '<td><input id="' + P + i + '_memo" data-fi="' + i + '" data-k="memo" value="' + esc(r.memo || '') + '" style="width:120px"></td>' +
-      '<td><button class="btn xs ghost" data-a="finDel" data-v="' + i + '" title="줄 삭제">✕</button></td></tr>';
+      '<td>' + (!s || s.left ? '<button class="btn xs ghost" data-a="finDel" data-v="' + i + '" title="이 달에서 빼기">✕</button>' : '') + '</td></tr>';
   }).join('');
   const over = k => C.perDay[k] > set.cap1;
-  const table = '<section class="card scroll"><h2>① 원비 · 수강 정보 <span class="sub">' + ymLabel(ym) + ' · 학생 ' + C.n + '명</span> ' + saveBadge() + '</h2><datalist id="finStu">' + studs.map(n => '<option value="' + esc(n) + '">').join('') + '</datalist>' +
+  const table = '<section class="card scroll"><h2>① 원비 · 수강 정보 <span class="sub">' + ymLabel(ym) + ' · 학생 ' + C.n + '명</span> ' + saveBadge() + '</h2>' +
     '<table class="fin"><thead><tr><th>No</th><th>이름</th><th>학교</th><th>학년</th><th>Course</th>' + DAYS6.map(d => '<th class="cen">' + d + '</th>').join('') + '<th>주 횟수</th><th>정가</th><th>할인</th><th>원비 (교습소)</th><th>보충과목 (과외 별도)</th><th>교재</th><th>식대 횟수</th><th>식대 (별도)</th><th>학부모 총 납부액</th><th>메모</th><th></th></tr></thead><tbody>' +
     (rows || '<tr><td colspan="23" class="empty">학생 줄이 없어요</td></tr>') +
     '<tr class="tot"><td></td><td><b>합계</b></td><td colspan="3">' + C.n + '명</td>' + C.perDay.map((n, k) => '<td class="cen"' + (over(k) ? ' style="color:var(--bad);font-weight:700"' : '') + '>' + n + '</td>').join('') + '<td class="cen"><b>' + C.wk + '</b></td><td class="r">' + won(C.price) + '</td><td class="r">' + won(C.disc) + '</td><td class="r"><b>' + won(C.fee) + '</b></td><td></td><td></td><td class="cen">' + C.mealN + '</td><td class="r">' + won(C.meal) + '</td><td class="r"><b>' + won(C.total) + '</b></td><td colspan="2"></td></tr>' +
     '<tr class="sub"><td></td><td>1층 정원</td><td colspan="3">하루 최대 ' + set.cap1 + '명</td>' + DAYS6.map((_, k) => '<td class="cen">' + (over(k) ? '<b style="color:var(--bad)">초과</b>' : set.cap1 - C.perDay[k]) + '</td>').join('') + '<td colspan="12"></td></tr>' +
-    '</tbody></table><div class="bar" style="margin-top:10px"><button class="btn sm" data-a="finAdd"' + ((m.rows || []).length >= FIN_MAX ? ' disabled' : '') + '>+ 학생 줄 추가</button><button class="btn sm ghost" data-a="finFill">재원생 중 빠진 학생 채우기</button><span class="sub">이름은 목록에서 고르면 학교·학년이 자동으로 나와요 · 요일은 등원하는 요일 체크 · 한 달 최대 ' + FIN_MAX + '줄 (기존 엑셀과 같음)</span><span style="flex:1"></span><button class="btn sm ghost danger" data-a="finDelMonth">이 달 삭제</button></div></section>';
+    '</tbody></table><div class="bar" style="margin-top:10px"><span class="sub">학생은 [학생명부]에서 추가하면 이번 달·다음 달 정산에 자동으로 들어와요 · 여기서는 Course·요일·원비·보충과목·교재·메모만 입력 · 퇴원생 줄만 ✕로 뺄 수 있어요</span><span style="flex:1"></span><button class="btn sm ghost danger" data-a="finDelMonth">이 달 삭제</button></div></section>';
   const wkCap1 = set.cap1 * 6, wkCap2 = set.cap2 * 6;
   const sumCard = '<div class="grid2"><section class="card"><h2>② 이번 달 요약</h2><table><tbody>' +
     [['교습소 원비 수입', C.fee], ['장기수강 할인 합계', C.disc], ['식대 청구 (별도 사업자)', C.meal], ['학부모 총 납부액 (원비+식대)', C.total], ['원장 · 부원장 식대', C.staff]].map(([l, v]) => '<tr><td>' + l + '</td><td class="r"><b>' + won(v) + '원</b></td></tr>').join('') + '</tbody></table></section>' +
@@ -696,8 +704,6 @@ app.addEventListener('click', async e => {
     if (a === 'attDel') { if (!confirm('이 날 출결 기록을 삭제할까요?')) return; await deleteDoc(doc(db, 'att', V.attDate + '_' + V.attSid)); V.modal = null; return toast('출결 기록을 삭제했어요'); }
     if (a === 'finYm') { e.preventDefault(); if (V.finDirty) return toast('저장 중이에요. 잠시 후 다시 눌러 주세요'); finOpen(v); return render(); }
     if (a === 'finNew') { const m = finNewMonth(); if (D.fin[m.ym]) return toast(ymLabel(m.ym) + '은(는) 이미 있어요'); V.ym = m.ym; V.finEdit = m; finTouch(); return toast(ymLabel(m.ym) + ' 정산을 만들었어요 (지난달 학생·원비 복사, 식대는 비움)'); }
-    if (a === 'finAdd') { const m = finCur(); if (!m) return; if ((m.rows || []).length >= FIN_MAX) return toast('한 달 최대 ' + FIN_MAX + '줄이에요'); m.rows = m.rows || []; m.rows.push({ name: '', course: '', d: [0, 0, 0, 0, 0, 0], price: '', disc: '', extra: '', book: '', memo: '' }); finTouch(); return render(); }
-    if (a === 'finFill') { const m = finCur(); if (!m) return; m.rows = m.rows || []; const have = new Set(m.rows.map(r => r.name)); const add = D.students.filter(s => !s.left && !have.has(s.name)); if (!add.length) return toast('빠진 재원생이 없어요'); add.forEach(s => { if (m.rows.length < FIN_MAX) m.rows.push({ name: s.name, sid: s.id, course: '', d: [0, 0, 0, 0, 0, 0], price: '', disc: '', extra: '', book: '', memo: '' }); }); finTouch(); return toast(add.length + '명을 추가했어요. 원비·요일을 입력해 주세요'); }
     if (a === 'finDel') { const m = finCur(); if (!m) return; const r = m.rows[+v]; if (r && (r.name || r.price) && !confirm((r.name || (+v + 1) + '번 줄') + ' 줄을 삭제할까요? (그 학생 식대 표시도 함께 지워져요)')) return; m.rows.splice(+v, 1); if (r && r.name && m.meals) delete m.meals[r.name]; finTouch(); return render(); }
     if (a === 'finDelMonth') { const m = finCur(); if (!m || !confirm(ymLabel(m.ym) + ' 정산을 통째로 삭제할까요? 되돌릴 수 없어요.')) return; clearTimeout(finT); V.finDirty = false; await deleteDoc(doc(db, 'fin', 'm_' + m.ym)); V.ym = null; V.finEdit = null; return toast('삭제했어요'); }
     if (a === 'meal') { const m = finCur(); if (!m) return; const i = v.lastIndexOf('|'); const k = v.slice(0, i), d = +v.slice(i + 1); m.meals = m.meals || {}; const l = m.meals[k] || (m.meals[k] = []); const j = l.indexOf(d); if (j >= 0) l.splice(j, 1); else { l.push(d); l.sort((x, y) => x - y); } finTouch(); return render(); }
