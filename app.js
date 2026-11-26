@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } fro
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.9.2';
+const APP_VERSION = '1.9.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -274,6 +274,7 @@ function tAtt(){
     if(r&&r.st!=='결석'&&!r.out&&!lg&&isT)act='<button class="btn sm" data-act="logFor" data-id="'+s.id+'">오늘 학습 정리 올리기</button>';
     else if(!r)act='<button class="btn sm" data-act="forceIn" data-id="'+s.id+'">등원 처리</button><button class="btn sm ghost" data-act="absent" data-id="'+s.id+'">결석 처리</button>';
     else if(r.st==='결석')act='<button class="btn sm ghost" data-act="unabsent" data-id="'+s.id+'">결석 취소</button>';
+    if(r&&r.st!=='결석')act+='<button class="btn sm ghost" style="color:var(--acc)" data-act="attDel" data-id="'+s.id+'">'+(U.attDelArm===s.id?'한 번 더 누르면 삭제':'기록 삭제')+'</button>';
     return '<div class="row" style="flex-wrap:wrap'+(P.plan&&g===0&&!r?';opacity:.5':'')+'"><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(line)+'</div></div>'+(P.plan?P.tag(s)+' ':'')+attChip(r)+(act?'<div style="width:100%;display:flex;justify-content:flex-end">'+act+'</div>':'')+'</div>'}).join('')+'</div>'})()+
   calCard(D.students.some(x=>x.id===U.calS)?U.calS:'all',true)+
   '<div class="card"><h3>최근 2주 출결 요약</h3>'+D.students.map(s=>{let c=[0,0];Object.keys(D.att).filter(d=>d>=off(-14)).forEach(d=>{const r=D.att[d][s.id];if(r)c[isIn(r)?0:1]++});return '<div class="row" style="flex-wrap:wrap"><div class="grow nm">'+esc(s.name)+'</div><span class="chip c-ok">등원 '+c[0]+'</span><span class="chip c-bad">결석 '+c[1]+'</span></div>'}).join('')+'</div></div>';
@@ -817,6 +818,7 @@ app.addEventListener('click',async e=>{
     return toast('하원 완료! 수고했어요');
   }
   if(a==='absent'){const s=stu(id);await setDoc(doc(db,'att',curDay()+'_'+id),{sid:id,date:curDay(),st:'결석',at:'',by:'teacher'});if(curDay()===TODAY)await notifyParent(id,'[출결 알림] '+s.name+' 학생이 오늘 결석으로 처리되었습니다.');return toast('결석 처리했어요')}
+  if(a==='attDel'){const s0=stu(id);if(U.attDelArm!==id){U.attDelArm=id;setTimeout(()=>{if(U.attDelArm===id){U.attDelArm=null;render()}},4000);return render()}U.attDelArm=null;await deleteDoc(doc(db,'att',curDay()+'_'+id));return toast((s0?s0.name+' ':'')+fmtD(curDay())+' 등·하원 기록을 삭제했어요')}
   if(a==='unabsent'){await deleteDoc(doc(db,'att',curDay()+'_'+id));return toast('결석을 취소했어요')}
 
   // 숙제·기록·공지
