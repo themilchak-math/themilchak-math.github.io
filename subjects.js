@@ -61,8 +61,8 @@ export function lessonSummary(logs) {
   const ls = (logs || []).filter(l => l && l.sh !== false).sort((a, b) => (a.ts || 0) - (b.ts || 0)); if (!ls.length) return '';
   const pc = l => (l.c == null ? 50 : +l.c);
   let t;
-  if (ls.length === 1) { const l = ls[0]; t = '오늘은 ' + nameOf(l) + ' ' + unitOf(l) + '을 학습했습니다. ' + focusOf(pc(l)) + ' 진행했어요 (개념 ' + pc(l) + '% · 문제풀이 ' + (100 - pc(l)) + '%).'; }
-  else t = '오늘은 ' + ls.length + '가지를 학습했습니다.\n' + ls.map(l => '· ' + nameOf(l) + ' ' + unitOf(l) + (l.w ? ' (수업의 ' + l.w + '%)' : '') + ' — ' + focusOf(pc(l)).replace(/[을를] 중심으로$/, ' 위주').replace('개념 정리와 문제풀이를 함께', '개념·문제풀이 고르게')).join('\n');
+  if (ls.length === 1) { const l = ls[0]; t = '오늘은 ' + nameOf(l) + ' ' + (l.unit ? unitOf(l) + '을 학습했습니다. ' : '수업을 했습니다. ') + focusOf(pc(l)) + ' 진행했어요 (개념 ' + pc(l) + '% · 문제풀이 ' + (100 - pc(l)) + '%).'; }
+  else t = '오늘은 ' + ls.length + '가지를 학습했습니다.\n' + ls.map(l => '· ' + nameOf(l) + (l.unit ? ' ' + unitOf(l) : '') + (l.w ? ' (수업의 ' + l.w + '%)' : '') + ' — ' + focusOf(pc(l)).replace(/[을를] 중심으로$/, ' 위주').replace('개념 정리와 문제풀이를 함께', '개념·문제풀이 고르게')).join('\n');
   const cm = ls.map(l => (l.cm || '').trim()).filter(Boolean).join(' / ');
-  return t + (cm ? '\n선생님 메모: ' + cm : '');
+  return t + (cm ? '\n' + (ls.some(l => !l.unit) ? '오늘 수업 내용: ' : '선생님 메모: ') + cm : '');
 }

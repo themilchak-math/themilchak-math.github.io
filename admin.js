@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.0.2';
+const ADMIN_VERSION = '2.0.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -54,7 +54,7 @@ const lastOf = (sid, course, unit) => sortLogs(D.logs.filter(l => l.sid === sid 
 const latest = sid => sortLogs(D.logs.filter(l => l.sid === sid)).pop();
 const latestIn = (sid, sj) => sortLogs(D.logs.filter(l => l.sid === sid && subjOf(l) === sj)).pop();
 const courseOpts = (sj, cur) => GROUPS[sj].map(([g, cs]) => '<optgroup label="' + g + '">' + cs.map(c => opt(c, cur)).join('') + '</optgroup>').join('');
-const unitsOf = (sid, course) => { const base = CUR[course] || []; const extra = [...new Set(D.logs.filter(l => l.sid === sid && l.course === course && !base.includes(l.unit)).map(l => l.unit))]; return base.concat(extra); };
+const unitsOf = (sid, course) => { const base = CUR[course] || []; const extra = [...new Set(D.logs.filter(l => l.sid === sid && l.course === course && !base.includes(l.unit)).map(l => l.unit).filter(Boolean))]; return base.concat(extra); };
 const unreadAll = () => Object.values(D.threads).reduce((a, t) => a + t.filter(m => m.f === 'o' && !m.r).length, 0);
 const TNAME = () => V.staff && V.staff.name ? V.staff.name + ' 부원장님' : ((D.cfg && D.cfg.teacher) ? D.cfg.teacher + ' 원장님' : '원장님');
 const isOwnerMe = () => !!(D.cfg && auth.currentUser && D.cfg.owner === auth.currentUser.uid);
@@ -125,7 +125,7 @@ function pDash() {
     absSection() +
     '<div class="grid2"><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section><section class="card"><h2>가입 승인 대기</h2>' + joinRows() + '</section></div>' +
     '<section class="card"><h2>오늘 출결 <span class="sub">' + fmtD(TODAY) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th>' + (exp ? '<th>오늘 수업</th>' : '') + '<th>상태</th><th>오늘 기록</th></tr></thead><tbody>' +
-    order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === TODAY).pop(); const e = expSet.has(s.id); const ab = absT.has(s.id) && !a[s.id] ? absOf(s.id, TODAY) : null; return '<tr' + (exp && !e && !a[s.id] && !ab ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + clsChip(a[s.id], e, ab) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (ab ? '<span class="sub">결석 사유: ' + esc(ab.reason) + '</span>' : lg ? esc(lg.unit) + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
+    order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === TODAY).pop(); const e = expSet.has(s.id); const ab = absT.has(s.id) && !a[s.id] ? absOf(s.id, TODAY) : null; return '<tr' + (exp && !e && !a[s.id] && !ab ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + clsChip(a[s.id], e, ab) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (ab ? '<span class="sub">결석 사유: ' + esc(ab.reason) + '</span>' : lg ? esc(lg.unit || subjOf(lg) + ' (메모 기록)') + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
     '<section class="card"><h2>확인할 숙제</h2>' + hwTable(toCheck) + '</section>';
 }
 
@@ -215,8 +215,8 @@ function attModal() {
 const ratioOf = l => { const c = +l.c || 0, p = +l.p || 0, t = c + p; return t ? Math.round(c / t * 100) : 50; };
 function defaultsFor(s, sj) {
   if (!sj) { const l0 = latest(s.id); sj = l0 ? subjOf(l0) : '수학'; }
-  const l = latestIn(s.id, sj); const course = l ? l.course : (sj === '수학' ? s.course : defCourse(s.grade, sj));
-  const unit = l ? l.unit : (unitsOf(s.id, course)[0] || null); const c = l ? Math.round(ratioOf(l) / 10) * 10 : 50;
+  const l = sortLogs(D.logs.filter(x => x.sid === s.id && subjOf(x) === sj && x.unit)).pop() || latestIn(s.id, sj); const course = l ? l.course : (sj === '수학' ? s.course : defCourse(s.grade, sj));
+  const unit = (l && l.unit) || (unitsOf(s.id, course)[0] || null); const c = l ? Math.round(ratioOf(l) / 10) * 10 : 50;
   return { subj: sj, course, unit, c, pp: 100 - c };
 }
 const opt = (v, cur, label) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label ?? v) + '</option>';
@@ -237,11 +237,11 @@ function pLog() {
       return '<tr class="' + (came ? 'came' : '') + (first ? '' : ' sub2') + '"><td>' + (first ? '<input type="checkbox" id="lk_' + s.id + '" ' + (came && !done.length ? 'checked' : '') + '>' : '') + '</td><td>' + (first ? '<b>' + esc(s.name) + '</b><div class="sub">' + esc(s.grade) + ' · ' + (a[s.id] ? (a[s.id].st === '결석' ? '결석' : '등원') : '미등원') + '</div><button class="btn xs ghost" style="margin-top:4px" data-a="logAdd" data-id="' + s.id + '">+ 단원·과목</button>' : '<span class="sub">↳ ' + (k + 1) + '번째</span>' + (k === keys.length - 1 ? ' <button class="btn xs ghost" data-a="logDelRow" data-id="' + s.id + '" title="이 줄 빼기">✕</button>' : '')) + '</td>' +
         '<td><select id="lj_' + key + '" data-sid="' + key + '" class="lj" style="min-width:78px">' + SUBJS.map(x => opt(x, d.subj)).join('') + '</select></td>' +
         '<td><select id="lc_' + key + '" data-sid="' + key + '" class="lc">' + courseOpts(d.subj, d.course) + '</select></td>' +
-        '<td><select id="lu_' + key + '" data-sid="' + key + '" class="lu">' + unitsOf(s.id, d.course).map(u => { const x = lastOf(s.id, d.course, u); return opt(u, d.unit, (x ? '• ' : '') + u); }).join('') + '</select></td>' +
+        '<td><select id="lu_' + key + '" data-sid="' + key + '" class="lu">' + unitsOf(s.id, d.course).map(u => { const x = lastOf(s.id, d.course, u); return opt(u, d.unit, (x ? '• ' : '') + u); }).join('') + opt('', null, '단원 없이 (메모 필수)') + '</select></td>' +
         '<td>' + (nK > 1 ? '<select id="lw_' + key + '" data-sid="' + key + '" class="lw" style="min-width:76px">' + [10, 20, 30, 40, 50, 60, 70, 80, 90].map(v => opt(String(v), String(wDef), v + '%')).join('') + '</select>' : '<span class="sub">100%</span>') + '</td>' +
         '<td><select id="lpc_' + key + '">' + PCT.map(v => opt(String(v), String(d.c), v + '%')).join('') + '</select></td>' +
         '<td><select id="lpp_' + key + '">' + PCT.map(v => opt(String(v), String(d.pp), v + '%')).join('') + '</select></td>' +
-        '<td>' + (first ? '<input id="lm_' + s.id + '" placeholder="특별한 일만">' : '') + '</td>' +
+        '<td>' + (first ? '<input id="lm_' + s.id + '" placeholder="특별한 일만 (단원 없이 기록하면 필수)">' : '') + '</td>' +
         '<td class="cen">' + (first ? '<input type="checkbox" id="ls_' + s.id + '" checked>' : '') + '</td>' +
         '<td>' + (first && done.length ? chip('오늘 ' + done.length + '건 저장됨', 'ok') : '') + '</td>' +
         '<td class="r">' + (first ? '<button class="btn xs" data-a="saveLog" data-id="' + s.id + '">저장</button>' : '') + '</td></tr>';
@@ -690,14 +690,15 @@ function addMember(b, sid, rel, phone, name, grade) {
 async function saveLogFor(sid, b) {
   const s = stu(sid); const g = id => (document.getElementById(id) || {}).value || '';
   const cm = g('lm_' + sid).trim(), sh = !!(document.getElementById('ls_' + sid) || {}).checked; const items = [];
-  const ks = logKeys(sid); ks.forEach(key => { const subj = g('lj_' + key) || '수학', course = g('lc_' + key), unit = g('lu_' + key), c = +g('lpc_' + key), p = +g('lpp_' + key), w = ks.length > 1 ? +g('lw_' + key) : 100; if (!unit) throw new Error(s.name + ': 단원을 골라 주세요'); items.push({ subj, course, unit, c, p, w }); });
+  const ks = logKeys(sid); ks.forEach(key => { const subj = g('lj_' + key) || '수학', course = g('lc_' + key), unit = g('lu_' + key), c = +g('lpc_' + key), p = +g('lpp_' + key), w = ks.length > 1 ? +g('lw_' + key) : 100; items.push({ subj, course, unit, c, p, w }); });
+  if (items.some(it => !it.unit) && !cm) throw new Error(s.name + ': 단원을 고르지 않았으면 특별 메모에 오늘 한 내용을 꼭 적어 주세요');
   if (items.length > 1 && items.reduce((a, it) => a + it.w, 0) !== 100) throw new Error(s.name + ': 항목 비중 합이 100%가 되게 맞춰 주세요');
   const r = (D.att[TODAY] || {})[sid]; const open = r && r.st !== '결석' && !r.out; const ts = now();
   items.forEach((it, k) => b.set(doc(collection(db, 'logs')), { sid, date: TODAY, subj: it.subj, course: it.course, unit: it.unit, c: it.c, p: it.p, w: it.w, cm: k ? '' : cm, sh, ts: ts + k }));
   const math = items.filter(it => it.subj === '수학').pop(); if (math && s.course !== math.course) b.update(doc(db, 'students', sid), { course: math.course });
   if (r) b.update(doc(db, 'att', TODAY + '_' + sid), { logged: true });
   if (open) b.set(doc(collection(db, 'msgs')), { th: sid + '|student', sid, f: 's', t: '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.', at: stamp(), ts: now(), r: false });
-  const txt = '[수업 기록] ' + fmtD(TODAY) + ' ' + items.map(it => courseLabel(it.course, it.subj) + ' ' + it.unit + ' (' + (items.length > 1 ? '비중 ' + it.w + '% · ' : '') + '개념 ' + it.c + '% / 문제풀이 ' + it.p + '%)').join(', ');
+  const txt = '[수업 기록] ' + fmtD(TODAY) + ' ' + items.map(it => courseLabel(it.course, it.subj) + (it.unit ? ' ' + it.unit : '') + ' (' + (items.length > 1 ? '비중 ' + it.w + '% · ' : '') + '개념 ' + it.c + '% / 문제풀이 ' + it.p + '%)').join(', ') + (cm ? ' · 메모: ' + cm : '');
   if (sh && !(D.cfg && D.cfg.autoNotify === false)) b.set(doc(collection(db, 'msgs')), { th: sid + '|parent', sid, f: 's', t: txt, at: stamp(), ts: now(), r: false });
   pendingPush.push(() => { if (open) push([sid + '|student'], '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.'); if (sh && !(D.cfg && D.cfg.autoNotify === false)) push([sid + '|parent'], txt); });
   if (V.logN) delete V.logN[sid];
@@ -824,7 +825,7 @@ app.addEventListener('change', async e => {
     }
     if (t.classList.contains('lc')) {
       const sid = t.dataset.sid, rs = realSid(sid); const us = unitsOf(rs, t.value); const sel = document.getElementById('lu_' + sid);
-      sel.innerHTML = us.map(u => opt(u, '', u)).join(''); const lt = sortLogs(D.logs.filter(l => l.sid === rs && l.course === t.value)).pop(); const nx = lt ? lt.unit : us[0]; if (nx) sel.value = nx;
+      sel.innerHTML = us.map(u => opt(u, '', u)).join('') + opt('', null, '단원 없이 (메모 필수)'); const lt = sortLogs(D.logs.filter(l => l.sid === rs && l.course === t.value && l.unit)).pop(); const nx = lt ? lt.unit : us[0]; if (nx) sel.value = nx;
       const ck = document.getElementById('lk_' + rs); if (ck) ck.checked = true; return;
     }
     if (t.classList.contains('lu')) { const sid = realSid(t.dataset.sid); const ck = document.getElementById('lk_' + sid); if (ck) ck.checked = true; return; }
