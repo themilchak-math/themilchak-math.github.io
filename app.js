@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } fro
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.9.6';
+const APP_VERSION = '1.9.7';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -484,6 +484,7 @@ function appView(){
 
 let dirty=false;
 function render(){
+  document.documentElement.classList.toggle('chat-open',!!U.chat);
   if(U.sheet==='scan'&&document.getElementById('reader')){dirty=true;return}
   // 입력 중인 값 보존
   const keep={},checks={};let focusId=null,selS=null,selE=null;
