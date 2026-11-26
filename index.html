@@ -9,6 +9,23 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="더밀착수학">
 <title>더밀착수학</title>
+<script>
+/* 카톡·네이버 등 앱 안 브라우저로 열리면 기본 브라우저로 넘기기 */
+(function(){
+  var ua=navigator.userAgent||'',url=location.href;
+  var isAndroid=/Android/i.test(ua);
+  if(/KAKAOTALK/i.test(ua)){
+    location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(url);
+    setTimeout(function(){window.__inapp='kakao';var o=document.getElementById('inapp');if(o)o.hidden=false},1500);
+    return;
+  }
+  var inapp=/NAVER\(inapp|Instagram|FBAN|FBAV|FB_IAB|Line\/|DaumApps|BAND\/|everytimeApp|whale\/.*inapp/i.test(ua);
+  if(!inapp)return;
+  if(isAndroid){location.href='intent://'+url.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end';}
+  window.__inapp='other';
+  document.addEventListener('DOMContentLoaded',function(){var o=document.getElementById('inapp');if(o)o.hidden=false});
+})();
+</script>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
@@ -160,6 +177,19 @@ html,body{height:100%;overflow:hidden}
 </head>
 <body>
 <div class="phone" id="app"><div class="hdr"><h2>더밀착수학</h2><div class="who">불러오는 중...</div></div></div>
+<div id="inapp" hidden style="position:fixed;inset:0;z-index:99;background:#2b44ff;color:#fff;display:flex;flex-direction:column;justify-content:center;padding:28px;font:16px/1.6 'Noto Sans KR',sans-serif">
+  <h2 style="font-size:24px;margin:0 0 12px">사파리·크롬에서 열어 주세요</h2>
+  <p style="margin:0 0 16px">지금은 다른 앱(카톡 등) 안에서 열려 있어서 앱 설치가 안 돼요.</p>
+  <p style="margin:0 0 6px"><b>아이폰:</b> 화면 아래·위의 <b>⋯</b> 또는 공유 버튼 → <b>Safari로 열기</b></p>
+  <p style="margin:0 0 20px"><b>안드로이드:</b> 오른쪽 위 <b>⋮</b> → <b>다른 브라우저로 열기</b></p>
+  <button id="inappCopy" style="height:50px;border:0;border-radius:12px;background:#fff;color:#2b44ff;font-weight:700;font-size:16px">주소 복사하기</button>
+  <p id="inappMsg" style="margin:10px 0 0;font-size:14px;opacity:.9">복사한 주소를 사파리·크롬 주소창에 붙여넣어도 돼요.</p>
+  <button id="inappClose" style="margin-top:18px;background:none;border:0;color:#fff;text-decoration:underline;font-size:14px">그냥 여기서 볼게요</button>
+</div>
+<script>
+document.getElementById('inappCopy').onclick=function(){var u=location.origin+'/';try{navigator.clipboard.writeText(u).then(function(){document.getElementById('inappMsg').textContent='복사됐어요! 사파리·크롬 주소창에 붙여넣으세요.'})}catch(e){prompt('주소를 복사하세요',u)}};
+document.getElementById('inappClose').onclick=function(){document.getElementById('inapp').hidden=true};
+</script>
 <noscript>자바스크립트를 켜야 앱을 쓸 수 있어요.</noscript>
 <script type="module" src="./app.js"></script>
 </body>
