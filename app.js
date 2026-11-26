@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel } from './subjects.j
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.8.3';
+const APP_VERSION = '1.8.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -178,6 +178,19 @@ function hwList(list,mode){
   }).join('');
 }
 
+/* ---------- 결석 미리 알리기 ---------- */
+const absOf=(sid,d)=>D.abs.find(x=>x.sid===sid&&x.date===d);
+const absUp=sid=>D.abs.filter(x=>x.date>=TODAY&&(!sid||x.sid===sid)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+const absChip=x=>x.ok?'<span class="chip c-ok">원장님 확인</span>':'<span class="chip c-warn">확인 대기</span>';
+function absCard(s){
+  const l=absUp(s.id);
+  return '<div class="card"><h3>결석 미리 알리기</h3>'+(l.length?l.map(x=>'<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+fmtD(x.date)+' 결석</div><div class="sub">'+esc(x.reason)+'</div></div>'+absChip(x)+'<button class="btn sm ghost" data-act="absDel" data-id="'+x.id+'">취소</button></div>').join(''):'<p class="sub" style="margin:0 0 10px">수업에 빠지는 날이 있으면 미리 알려 주세요. 원장님께 바로 알림이 가요.</p>')+'<button class="btn" style="width:100%;margin-top:8px" data-act="sheet" data-s="abs">결석 알리기</button></div>';
+}
+function absTeacherCard(){
+  const l=absUp();if(!l.length)return '';const n=l.filter(x=>!x.ok).length;
+  return '<div class="card"'+(n?' style="border-color:var(--acc)"':'')+'><h3>결석 통보 <small>'+(n?'확인 안 한 '+n+'건':'예정 '+l.length+'건')+'</small></h3>'+l.map(x=>{const st=stu(x.sid);return '<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(st?st.name:'?')+' · '+fmtD(x.date)+'</div><div class="sub">'+esc(x.reason)+(x.who?' · '+esc(x.who):'')+'</div></div>'+(x.ok?'<span class="chip c-ok">확인함</span>':'<button class="btn sm" data-act="absOk" data-id="'+x.id+'">확인</button>')+'</div>'}).join('')+'</div>';
+}
+
 /* ---------- screens ---------- */
 function tHome(){
   const a=D.att[TODAY]||{};
@@ -187,7 +200,7 @@ function tHome(){
   '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button><button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button><button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'시험기간</button></div>'+
   (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
-  (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+
+  (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+absTeacherCard()+
   '<div class="stats"><div><b>'+present+'/'+D.students.length+'</b><span>오늘 등원</span></div><div><b>'+toCheck.length+'</b><span>확인할 숙제</span></div><div><b>'+unreadTeacher()+'</b><span>새 메시지</span></div></div>'+
   '<div class="card"><h3>오늘 출결 <small>'+fmtD(TODAY)+'</small></h3>'+D.students.map(s=>'<div class="row"><div class="av">'+esc(s.name.slice(-2))+'</div><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(s.grade)+' · '+esc(curUnit(s))+'</div></div>'+attChip(a[s.id])+'</div>').join('')+'</div>'+
   '<div class="card"><h3>확인할 숙제</h3>'+hwList(toCheck,'teacher')+'</div>'+
@@ -200,14 +213,14 @@ function calCard(sid,teacher){
   for(let i=0;i<lead;i++)cells+='<div></div>';
   for(let d=1;d<=nd;d++){
     const ds=y+'-'+pad(m)+'-'+pad(d);const day=D.att[ds]||{};let cls='',sub='';
-    if(sid!=='all'){const r=day[sid];if(r){const k=isIn(r)?0:2;cnt[k]++;cls=' k'+k}}
+    if(sid!=='all'){const r=day[sid];if(r){const k=isIn(r)?0:2;cnt[k]++;cls=' k'+k}else if(absOf(sid,ds)&&ds>=TODAY){sub='<small>결석</small>'}}
     else{const rs=Object.values(day);if(rs.length){rs.forEach(r=>cnt[isIn(r)?0:2]++);const n=rs.filter(isIn).length;cls=n?' k0':' k2';sub='<small>'+n+'명</small>'}}
     cells+='<button data-act="calD" data-v="'+ds+'" class="'+cls+(ds===TODAY?' td':'')+(ds===U.calD?' sel':'')+(ds>TODAY?' fu':'')+'" aria-label="'+m+'월 '+d+'일">'+d+sub+'</button>';
   }
   const dd=U.calD;let det='';
   if(dd.slice(0,7)===U.calM){
     const day=D.att[dd]||{};
-    const line=x=>{const r=day[x.id];const lg=D.logs.filter(l=>l.sid===x.id&&l.date===dd&&(teacher||l.sh)).pop();return '<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(x.name)+'</div><div class="sub">'+(r?(r.st==='결석'?'결석':'등원 '+esc(r.at)+(r.out?' · 하원 '+esc(lateLabel(r.out)):dd===TODAY?' · 수업 중':' · 하원 기록 없음')):(dd>TODAY?'예정':'기록 없음'))+(lg?'<br>수업: '+esc(lg.course+' '+lg.unit)+' · 개념 '+lg.c+'% · 문제 '+lg.p+'%':'')+'</div></div>'+attChip(r)+'</div>'};
+    const line=x=>{const r=day[x.id];const lg=D.logs.filter(l=>l.sid===x.id&&l.date===dd&&(teacher||l.sh)).pop();return '<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(x.name)+'</div><div class="sub">'+(r?(r.st==='결석'?'결석':'등원 '+esc(r.at)+(r.out?' · 하원 '+esc(lateLabel(r.out)):dd===TODAY?' · 수업 중':' · 하원 기록 없음')):(absOf(x.id,dd)?'결석 통보 · '+esc(absOf(x.id,dd).reason):dd>TODAY?'예정':'기록 없음'))+(lg?'<br>수업: '+esc(lg.course+' '+lg.unit)+' · 개념 '+lg.c+'% · 문제 '+lg.p+'%':'')+'</div></div>'+attChip(r)+'</div>'};
     det='<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><b>'+fmtD(dd)+'</b>'+(sid==='all'?D.students.map(line).join(''):line(stu(sid)))+'</div>';
   }
   return '<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><button class="btn sm ghost" data-act="calM" data-v="-1" aria-label="이전 달">‹</button><h3 style="margin:0">'+y+'년 '+m+'월 출결</h3><button class="btn sm ghost" data-act="calM" data-v="1" aria-label="다음 달">›</button></div>'+
@@ -223,7 +236,7 @@ function tAtt(){
   '<div class="card"><label class="f"><span>날짜</span><input type="date" id="attDate" value="'+U.attDate+'"></label>'+(isOwnerMe()?'<div class="sw" style="margin:0"><span>등·하원 시 학부모님께 알림 자동 발송</span><input type="checkbox" id="autoN" '+(D.autoNotify?'checked':'')+'></div>':'')+'</div>'+
   '<div class="card"><h3>학생별 등·하원</h3>'+D.students.map(s=>{
     const r=a[s.id];const lg=loggedOn(s.id,U.attDate);
-    const line=!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+lateLabel(r.out):lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
+    const ab=absOf(s.id,U.attDate);const line=!r&&ab?'결석 통보 · '+ab.reason+(ab.ok?'':' (확인 전)'):!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+lateLabel(r.out):lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
     let act='';
     if(r&&r.st!=='결석'&&!r.out&&!lg&&isT)act='<button class="btn sm" data-act="logFor" data-id="'+s.id+'">오늘 학습 정리 올리기</button>';
     else if(!r)act='<button class="btn sm" data-act="forceIn" data-id="'+s.id+'">등원 처리</button><button class="btn sm ghost" data-act="absent" data-id="'+s.id+'">결석 처리</button>';
@@ -303,13 +316,13 @@ function pHome(){
   const hs=D.hw.filter(h=>h.sid===s.id);const doneRate=hs.length?Math.round(hs.filter(h=>h.st!=='todo').length/hs.length*100):0;
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
   return header(s.name+' 학부모님',s.grade+' · '+nowLabel(s))+'<div class="body">'+pushCard()+examCard(s)+
-  '<div class="card"><h3>오늘 출결 <small>'+fmtD(TODAY)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+attChip(a)+'</div></div>'+
+  '<div class="card"><h3>오늘 출결 <small>'+fmtD(TODAY)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(!a&&absOf(s.id,TODAY)?'<span class="chip c-bad">결석 통보</span>':attChip(a))+'</div></div>'+absCard(s)+
   '<div class="stats"><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
   '<div class="card"><h3>숙제 현황</h3>'+hwList(hs.slice(0,3),'parent')+'</div>'+
   '<div class="card"><h3>공지사항</h3>'+noticeList(2)+'</div></div>';
 }
-function pAtt(){const s=stu(U.me);return header('출결 달력',s.name)+'<div class="body">'+calCard(s.id,false)+'</div>'}
+function pAtt(){const s=stu(U.me);return header('출결 달력',s.name)+'<div class="body">'+absCard(s)+calCard(s.id,false)+'</div>'}
 function oComm(){
   let inner;
   if(U.comm==='notice')inner='<div class="card">'+noticeList()+'</div>';
@@ -325,6 +338,7 @@ function sheetHtml(){
   if(t==='stu')h='<h3>학생 등록</h3><label class="f"><span>학생 이름</span><input id="stN" autocomplete="off"></label><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>학년</span><select id="stG">'+['중1','중2','중3','고1','고2','고3'].map(g=>'<option>'+g+'</option>').join('')+'</select></label><label class="f"><span>수업 시작</span><input type="time" id="stT" value="16:00"></label></div><label class="f"><span>학교 (선택)</span><input id="stSc" list="stScL" placeholder="예: 동탄중" autocomplete="off"><datalist id="stScL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label><label class="f"><span>학생 휴대폰</span><input id="pS" inputmode="numeric" placeholder="010-0000-0000"></label><label class="f"><span>아버님 휴대폰</span><input id="pF" inputmode="numeric" placeholder="없으면 비워두세요"></label><label class="f"><span>어머님 휴대폰</span><input id="pM" inputmode="numeric" placeholder="없으면 비워두세요"></label><p class="sub" style="margin:0 0 10px">가족이 이 번호로 가입하면 원장님께 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 한 번 가입으로 함께 연결돼요.</p>';
   if(t==='staff')h='<h3>부원장 등록</h3><label class="f"><span>이름</span><input id="sfN" autocomplete="off" placeholder="예: 홍길동"></label><label class="f"><span>휴대폰 (로그인 아이디)</span><input id="sfP" inputmode="numeric" placeholder="010-0000-0000"></label><p class="sub" style="margin:0 0 10px">부원장님이 이 번호로 가입하면 원장님께 승인 요청이 와요. 승인하면 학생 관리·출결·숙제·기록·메시지를 원장님과 똑같이 쓸 수 있어요. (부원장 등록·앱 설정은 원장님만)</p>';
   if(t==='school'){const s=stu(U.schSid)||{};h='<h3>'+esc(s.name||'')+' 학교</h3><label class="f"><span>학교</span><input id="scIn" list="scInL" value="'+esc(s.school||'')+'" placeholder="예: 동탄중" autocomplete="off"><datalist id="scInL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>'}
+  if(t==='abs'){const s=stu(U.me)||{};h='<h3>'+esc(s.name||'')+' 결석 알리기</h3><label class="f"><span>결석하는 날</span><input type="date" id="abD" min="'+TODAY+'" value="'+TODAY+'"></label><label class="f"><span>사유</span><textarea id="abR" placeholder="예: 가족 행사, 병원 진료, 학교 행사"></textarea></label><p class="sub" style="margin:0 0 10px">저장하면 원장님과 선생님께 바로 알림이 가요. 날짜가 지나기 전에는 취소할 수 있어요.</p>'}
   if(t==='notice')h='<h3>공지 쓰기</h3><label class="f"><span>제목</span><input id="nT"></label><label class="f"><span>내용</span><textarea id="nB"></textarea></label><label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="nP">상단 고정</label>';
   if(t==='log'){
     const f=U.lf;const s=stu(f.sid);const us=unitsOf(f.sid,f.course);
@@ -347,7 +361,7 @@ function sheetHtml(){
 
 const app=document.getElementById('app');
 /* ================= 상태 ================= */
-const D={students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],autoNotify:true,cfg:null};
+const D={students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],autoNotify:true,cfg:null};
 const ME={uid:null,phone:'',sids:[],rels:{},ths:[]};
 const U={screen:'loading',authMsg:'',authTab:'login',busy:false,wait:[],update:null,
   calM:TODAY.slice(0,7),calS:'all',calD:TODAY,page:null,pc:{},lf:null,pushX:{},
@@ -509,7 +523,7 @@ const L=(q,fn)=>dataUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',
 const B=(q,fn)=>baseUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',e.code)));
 const sortMsgs=l=>l.sort((a,b)=>(a.ts||0)-(b.ts||0));
 const sortStu=()=>D.students.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
-function resetD(){Object.assign(D,{students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[]})}
+function resetD(){Object.assign(D,{students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[]})}
 
 function subTeacher(){
   resetD();
@@ -523,6 +537,7 @@ function subTeacher(){
   L(collection(db,'members'),s=>{D.members=docs(s);sr()});
   L(collection(db,'exams'),s=>{D.exams=docs(s);sr()});
   L(collection(db,'staff'),s=>{D.staff=docs(s);sr()});
+  L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
 }
 function subFamily(){
   resetD();const attBy={};
@@ -532,6 +547,7 @@ function subFamily(){
     L(query(collection(db,'att'),where('sid','==',sid)),s=>{attBy[sid]=docs(s);rebuildAtt();U.attReady=true;sr();setTimeout(autoCheckin,300)});
     L(query(collection(db,'hw'),where('sid','==',sid)),s=>{D.hw=D.hw.filter(h=>h.sid!==sid).concat(docs(s));sr()});
     L(query(collection(db,'logs'),where('sid','==',sid),where('sh','==',true)),s=>{D.logs=D.logs.filter(h=>h.sid!==sid).concat(docs(s));sr()});
+    L(query(collection(db,'abs'),where('sid','==',sid)),s=>{D.abs=D.abs.filter(x=>x.sid!==sid).concat(docs(s));sr()});
     L(query(collection(db,'reqs'),where('sid','==',sid),where('st','==','pending')),s=>{D.req=D.req.filter(h=>h.sid!==sid).concat(docs(s).filter(q=>q.date===TODAY));sr()});
   });
   ME.ths.forEach(th=>L(query(collection(db,'msgs'),where('th','==',th)),s=>{D.threads[th]=sortMsgs(docs(s));if(U.chat===th)markRead(th);sr()}));
@@ -749,6 +765,8 @@ app.addEventListener('click',async e=>{
   if(a==='wifiReg'){await registerWifi();return}
   if(a==='wifiTog'){await updateDoc(doc(db,'config','main'),{wifiAuto:!(D.cfg&&D.cfg.wifiAuto)});return toast(D.cfg&&D.cfg.wifiAuto?'와이파이 자동 등원을 껐어요':'와이파이 자동 등원을 켰어요')}
   if(a==='wifiClr'){if(!confirm('등록된 교습소 와이파이 주소를 지울까요?'))return;await updateDoc(doc(db,'config','main'),{wifiIps:[],wifiAuto:false});return toast('지웠어요')}
+  if(a==='absDel'){const x=D.abs.find(y=>y.id===id);if(!x||!confirm(fmtD(x.date)+' 결석 통보를 취소할까요?'))return;const s=stu(x.sid);await deleteDoc(doc(db,'abs',id));const tx='[결석 취소] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 취소했어요 (수업 참석)';push(['teacher'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'o',tx).catch(()=>{});return toast('결석 통보를 취소했어요')}
+  if(a==='absOk'){const x=D.abs.find(y=>y.id===id);if(!x)return;const s=stu(x.sid);await updateDoc(doc(db,'abs',id),{ok:true,okBy:TNAME()});const tx='[결석 확인] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 확인했어요.';push([x.sid+'|parent'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'s',tx).catch(()=>{});return toast(s.name+' 결석 확인 · 학부모님께 알렸어요')}
   if(a==='checkin'){const s=stu(U.me);if(myReq(s.id))return toast('이미 요청했어요');const t=hm();await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:t,date:TODAY,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생 '+t+' 등원 · 승인해 주세요',{tag:'req'});return toast('원장님께 등원 승인 요청을 보냈어요')}
   if(a==='forceIn'){const s=stu(id);const t=U.attDate===TODAY?hm():(s.time||'16:00');await setDoc(doc(db,'att',U.attDate+'_'+id),{sid:id,date:U.attDate,st:'출석',at:t,by:'teacher',logged:loggedOn(id,U.attDate)});const q=(D.req||[]).find(x=>x.sid===id&&x.st==='pending');if(q)updateDoc(doc(db,'reqs',q.id),{st:'ok'}).catch(()=>{});const noti=U.attDate===TODAY&&confirm(s.name+' 학생 등원 처리했어요.\n학부모님께 등원 알림을 보낼까요?');if(noti){const tx='[등원 알림] '+s.name+' 학생이 '+t+'에 등원했습니다.';push([id+'|parent'],tx);await msg(id+'|parent',id,'s',tx).catch(()=>{})}return toast(s.name+' 등원 처리 '+t+(noti?' · 학부모 알림 발송':''))}
   if(a==='cancelReq'){await deleteDoc(doc(db,'reqs',id));return toast('요청을 취소했어요')}
@@ -841,6 +859,16 @@ app.addEventListener('submit',async e=>{
     const due=g('hwD')||TODAY;const b=writeBatch(db);
     ids.forEach(sid=>{b.set(doc(collection(db,'hw')),{sid,title,range:g('hwR').trim()||'-',due,st:'todo',note:'',ts:now()});b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[새 숙제] '+title+' · 마감 '+fmtD(due),at:stamp(),ts:now(),r:false})});
     await b.commit();push(ids.map(x=>x+'|student'),'[새 숙제] '+title+' · 마감 '+fmtD(due));U.sheet=null;return toast(ids.length+'명에게 숙제를 냈어요');
+  }
+  if(U.sheet==='abs'){
+    const s=stu(U.me);const d=g('abD');const why=g('abR').trim();
+    if(!d||d<TODAY)return toast('오늘 이후 날짜를 골라 주세요');if(!why)return toast('사유를 적어 주세요');
+    if(absOf(s.id,d))return toast('이미 알린 날이에요. 바꾸려면 취소 후 다시 알려 주세요');
+    const who=s.name+' '+(REL[ME.rels[s.id]]||'학부모님');
+    await setDoc(doc(db,'abs',d+'_'+s.id),{sid:s.id,date:d,reason:why,uid:ME.uid,who,ts:now(),ok:false});
+    const tx='[결석 통보] '+s.name+' 학생 '+fmtD(d)+' 결석 · 사유: '+why;
+    push(['teacher'],tx,{title:who,tag:'abs'});msg(s.id+'|parent',s.id,'o',tx).catch(()=>{});
+    U.sheet=null;return toast('원장님께 결석을 알렸어요');
   }
   if(U.sheet==='notice'){
     if(!g('nT').trim())return toast('제목을 입력해 주세요');

@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.9.9';
+const ADMIN_VERSION = '2.0.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -38,7 +38,7 @@ const COURSES = Object.keys(BY_SUBJ['수학']);
 const PCT = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 /* ---------- 상태 ---------- */
-const D = { students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], fin: {}, finSet: null, sinfo: {}, cfg: null };
+const D = { students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], abs: [], fin: {}, finSet: null, sinfo: {}, cfg: null };
 const V = { screen: 'loading', page: 'dash', msg: '', busy: false, calM: TODAY.slice(0, 7), chat: null, hwF: 'all', modal: null, bulk: null, qr: null, toast: '' };
 const app = document.getElementById('app');
 const docs = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -79,7 +79,8 @@ const attChip = a => !a ? chip('미등원') : a.st === '결석' ? chip('결석',
 const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입');
 const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 'done' ? chip('제출함', 'pri') : h.due < TODAY ? chip('기한 지남', 'bad') : chip('진행 중', 'warn');
 
-const clsChip = (r, e) => r && r.st === '결석' ? chip('결석', 'bad') : r && r.out ? chip('완료', 'pri') : r ? chip('수업중', 'ok') : e ? chip('예정', 'warn') : chip('없음');
+const absOf = (sid, d) => D.abs.find(x => x.sid === sid && x.date === d);
+const clsChip = (r, e, ab) => r && r.st === '결석' ? chip('결석', 'bad') : r && r.out ? chip('완료', 'pri') : r ? chip('수업중', 'ok') : ab ? chip('결석 통보', 'bad') : e ? chip('예정', 'warn') : chip('없음');
 
 const NAV0 = [['dash', '대시보드'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['students', '학생·학부모'], ['roster', '학생명부'], ['school', '재학 학교'], ['fin', '정산'], ['exam', '시험기간'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
 const navList = () => NAV0.filter(([k]) => (k !== 'staff' && k !== 'fin') || isOwnerMe());
@@ -103,21 +104,28 @@ function expectedToday() {
   if (w === 0) return [];
   return active().filter(s => (m.rows || []).some(r => (r.sid === s.id || (!r.sid && r.name === s.name)) && (r.d || [])[w - 1])).map(s => s.id);
 }
+function absSection() {
+  const l = D.abs.filter(x => x.date >= TODAY).sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0); if (!l.length) return '';
+  const n = l.filter(x => !x.ok).length;
+  return '<section class="card' + (n ? ' hl' : '') + '"><h2>결석 통보 <span class="sub">학부모님이 미리 알린 결석' + (n ? ' · 확인 안 한 ' + n + '건' : '') + '</span></h2><table><tbody>' + l.map(x => { const s = stu(x.sid) || { name: '?' }; return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + fmtD(x.date) + (x.date === TODAY ? ' ' + chip('오늘', 'bad') : '') + '</td><td>' + esc(x.reason) + '</td><td class="sub">' + esc(x.who || '') + '</td><td class="r">' + (x.ok ? chip('확인함', 'ok') : '<button class="btn sm" data-a="absOk" data-id="' + x.id + '">확인</button>') + '</td></tr>'; }).join('') + '</tbody></table></section>';
+}
 function pDash() {
-  const a = D.att[TODAY] || {}; const st = active(); const exp = expectedToday(); const expSet = new Set(exp || []);
+  const a = D.att[TODAY] || {}; const st = active(); const exp0 = expectedToday(); const absT = new Set(D.abs.filter(x => x.date === TODAY).map(x => x.sid));
+  const exp = exp0 ? exp0.filter(id => !absT.has(id) || a[id]) : null; const expSet = new Set(exp || []); const absN = exp0 ? exp0.filter(id => absT.has(id) && !a[id]).length : 0;
   const isIn = s => a[s.id] && a[s.id].st !== '결석';
   const present = st.filter(isIn).length; const expIn = exp ? st.filter(s => expSet.has(s.id) && isIn(s)).length : 0;
   const notYet = exp ? st.filter(s => expSet.has(s.id) && !a[s.id]) : [];
   const toCheck = D.hw.filter(h => h.st === 'done');
-  const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>오늘 등원 (' + WD[new Date(TODAY + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>오늘 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
-  const order = exp ? [...st].sort((x, y) => (expSet.has(y.id) - expSet.has(x.id)) || x.name.localeCompare(y.name, 'ko')) : st;
+  const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>오늘 등원 (' + WD[new Date(TODAY + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (absN ? ' · 결석 통보 ' + absN + '명 제외' : '') + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>오늘 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
+  const rk = x => expSet.has(x.id) ? 2 : absT.has(x.id) ? 1 : 0; const order = exp ? [...st].sort((x, y) => (rk(y) - rk(x)) || x.name.localeCompare(y.name, 'ko')) : st;
   return '<h1>' + esc(TNAME()) + ' <span class="sub">오늘 ' + fmtD(TODAY) + '</span></h1>' +
     pushCard() + '<div class="kpis">' + kpi + '<div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
     (exp && notYet.length ? '<section class="card hl"><h2>아직 안 온 학생 <span class="sub">오늘 수업 예정</span></h2><p>' + notYet.map(s => '<b>' + esc(s.name) + '</b>').join(' · ') + '</p></section>' : '') +
     (isOwnerMe() && D.staff.some(x => x.st === 'pending') ? '<section class="card hl"><h2>부원장 가입 승인</h2><table><tbody>' + D.staff.filter(x => x.st === 'pending').map(x => '<tr><td><b>' + esc(x.name || '') + ' 부원장</b></td><td>' + esc(fmtP(x.phone)) + '</td><td class="r"><button class="btn sm ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn sm" data-a="stOk" data-id="' + x.id + '">승인</button></td></tr>').join('') + '</tbody></table></section>' : '') +
+    absSection() +
     '<div class="grid2"><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section><section class="card"><h2>가입 승인 대기</h2>' + joinRows() + '</section></div>' +
     '<section class="card"><h2>오늘 출결 <span class="sub">' + fmtD(TODAY) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th>' + (exp ? '<th>오늘 수업</th>' : '') + '<th>상태</th><th>오늘 기록</th></tr></thead><tbody>' +
-    order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === TODAY).pop(); const e = expSet.has(s.id); return '<tr' + (exp && !e && !a[s.id] ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + clsChip(a[s.id], e) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (lg ? esc(lg.unit) + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
+    order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === TODAY).pop(); const e = expSet.has(s.id); const ab = absT.has(s.id) && !a[s.id] ? absOf(s.id, TODAY) : null; return '<tr' + (exp && !e && !a[s.id] && !ab ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + clsChip(a[s.id], e, ab) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (ab ? '<span class="sub">결석 사유: ' + esc(ab.reason) + '</span>' : lg ? esc(lg.unit) + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
     '<section class="card"><h2>확인할 숙제</h2>' + hwTable(toCheck) + '</section>';
 }
 
@@ -154,19 +162,20 @@ function pAtt() {
     const c = [0, 0];
     const cells = days.map(d => {
       const r = (D.att[d] || {})[s.id]; if (r) c[isIn(r) ? 0 : 1]++;
-      const k = !r ? '' : !isIn(r) ? 'bad' : (r.out || d === TODAY ? 'ok' : 'warn');
-      const t = r ? (isIn(r) ? '등원 ' + (r.at || '') + (r.out ? ' / 하원 ' + lateLabel(r.out) : ' / 하원 기록 없음') : '결석') + ' · 눌러서 수정' : '눌러서 등·하원 입력';
-      return '<td class="c ' + k + (d === TODAY ? ' tdy' : '') + '" title="' + esc(t) + '" data-a="attEdit" data-id="' + s.id + '" data-v="' + d + '">' + (r ? (isIn(r) ? '●' : '결') : '') + '</td>';
+      const ab = !r && absOf(s.id, d);
+      const k = !r ? (ab ? 'bad' : '') : !isIn(r) ? 'bad' : (r.out || d === TODAY ? 'ok' : 'warn');
+      const t = !r && ab ? '결석 통보: ' + ab.reason + (ab.ok ? '' : ' (확인 전)') + ' · 눌러서 등·하원 입력' : r ? (isIn(r) ? '등원 ' + (r.at || '') + (r.out ? ' / 하원 ' + lateLabel(r.out) : ' / 하원 기록 없음') : '결석') + ' · 눌러서 수정' : '눌러서 등·하원 입력';
+      return '<td class="c ' + k + (d === TODAY ? ' tdy' : '') + '" title="' + esc(t) + '" data-a="attEdit" data-id="' + s.id + '" data-v="' + d + '">' + (r ? (isIn(r) ? '●' : '결') : ab ? '통' : '') + '</td>';
     }).join('');
     return '<tr><th class="nm">' + esc(s.name) + '</th>' + cells + '<td class="sum">' + c[0] + '</td><td class="sum">' + c[1] + '</td></tr>';
   }).join('');
   const today = D.att[TODAY] || {};
-  const todayRows = active().map(s => { const r = today[s.id]; return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + attChip(r) + '</td><td class="r"><button class="btn xs ghost" data-a="attEdit" data-id="' + s.id + '" data-v="' + TODAY + '">' + (r ? '수정' : '입력') + '</button></td></tr>'; }).join('');
+  const todayRows = active().map(s => { const r = today[s.id]; const ab = !r && absOf(s.id, TODAY); return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + (ab ? chip('결석 통보', 'bad') + ' <span class="sub">' + esc(ab.reason) + '</span>' : attChip(r)) + '</td><td class="r"><button class="btn xs ghost" data-a="attEdit" data-id="' + s.id + '" data-v="' + TODAY + '">' + (r ? '수정' : '입력') + '</button></td></tr>'; }).join('');
   return '<h1>출결 <span class="sub">칸을 누르면 등원·하원 시각을 직접 입력·수정·삭제할 수 있어요</span></h1>' +
     '<div class="grid2"><section class="card"><h2>오늘 등·하원 <span class="sub">' + fmtD(TODAY) + '</span></h2><table><tbody>' + (todayRows || '<tr><td class="empty">학생이 없어요</td></tr>') + '</tbody></table></section><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section></div>' +
     wifiSection() +
     '<div class="bar"><button class="btn sm ghost" data-a="calM" data-v="-1">‹ 이전 달</button><b class="mon">' + y + '년 ' + m + '월</b><button class="btn sm ghost" data-a="calM" data-v="1">다음 달 ›</button>' + (isOwnerMe() ? '<label class="sw"><input type="checkbox" id="autoN" ' + (D.cfg && D.cfg.autoNotify !== false ? 'checked' : '') + '> 등·하원 시 학부모님께 알림 자동 발송</label>' : '') + '</div>' +
-    '<section class="card scroll"><table class="att"><thead><tr><th class="nm">학생</th>' + head + '<th>등원</th><th>결석</th></tr></thead><tbody>' + (rows || '<tr><td class="empty">학생이 없어요</td></tr>') + '</tbody></table><p class="sub legend">' + chip('● 등원·하원', 'ok') + ' ' + chip('● 하원 기록 없음', 'warn') + ' ' + chip('결 결석', 'bad') + ' 칸에 마우스를 올리면 시각이 보여요.</p></section>';
+    '<section class="card scroll"><table class="att"><thead><tr><th class="nm">학생</th>' + head + '<th>등원</th><th>결석</th></tr></thead><tbody>' + (rows || '<tr><td class="empty">학생이 없어요</td></tr>') + '</tbody></table><p class="sub legend">' + chip('● 등원·하원', 'ok') + ' ' + chip('● 하원 기록 없음', 'warn') + ' ' + chip('결 결석', 'bad') + ' ' + chip('통 결석 통보', 'bad') + ' 칸에 마우스를 올리면 시각이 보여요.</p></section>';
 }
 async function myIp() {
   const t = (u, ms) => Promise.race([fetch(u, { cache: 'no-store' }), new Promise((_, j) => setTimeout(() => j(new Error('timeout')), ms))]);
@@ -632,6 +641,7 @@ function subscribe() {
   L(collection(db, 'members'), s => { D.members = docs(s); sr(); });
   L(collection(db, 'exams'), s => { D.exams = docs(s); sr(); });
   L(collection(db, 'staff'), s => { D.staff = docs(s); sr(); });
+  L(query(collection(db, 'abs'), where('date', '>=', off(-400))), s => { D.abs = docs(s); sr(); });
   L(collection(db, 'sinfo'), s => { D.sinfo = {}; s.docs.forEach(d => { D.sinfo[d.id] = d.data(); }); sr(); });
   if (isOwnerMe()) L(collection(db, 'fin'), s => { D.fin = {}; D.finSet = null; s.docs.forEach(d => { if (d.id === 'settings') D.finSet = d.data(); else if (d.id.startsWith('m_')) D.fin[d.id.slice(2)] = d.data(); }); if (V.ym && !V.finDirty) V.finEdit = D.fin[V.ym] ? clone(D.fin[V.ym]) : (V.finEdit && V.finEdit.ym === V.ym ? V.finEdit : null); sr(); });
 }
@@ -754,6 +764,7 @@ app.addEventListener('click', async e => {
       await b.commit(); V.modal = null; V.editId = null; V.confirmLeave = null; return toast(s.name + ' 퇴원 처리했어요. 가족 계정의 이 학생 연결도 끊었어요.');
     }
     if (a === 'rejoin') { await updateDoc(doc(db, 'students', id), { left: false }); return toast('복귀 처리했어요. 가족 연결은 학생 관리에서 차단 해제해 주세요.'); }
+    if (a === 'absOk') { const x = D.abs.find(y => y.id === id); if (!x) return; const s = stu(x.sid) || { name: '' }; await updateDoc(doc(db, 'abs', id), { ok: true, okBy: TNAME() }); const tx = '[결석 확인] ' + s.name + ' 학생 ' + fmtD(x.date) + ' 결석 통보를 확인했어요.'; push([x.sid + '|parent'], tx, { tag: 'abs' }); await msg(x.sid + '|parent', x.sid, 's', tx).catch(() => { }); return toast(s.name + ' 결석 확인 · 학부모님께 알렸어요'); }
     if (a === 'ok' || a === 'rej') {
       const q = D.req.find(x => x.id === id); if (!q) return; const s = stu(q.sid);
       if (a === 'rej') { await updateDoc(doc(db, 'reqs', q.id), { st: 'rej' }); await msg(q.sid + '|student', q.sid, 's', '[등원 요청 반려] 선생님께 직접 말씀드려 주세요.'); push([q.sid + '|student'], '[등원 요청 반려] 선생님께 직접 말씀드려 주세요.'); return toast(s.name + ' 등원 요청을 거절했어요'); }

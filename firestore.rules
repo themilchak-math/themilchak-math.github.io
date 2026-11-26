@@ -113,6 +113,16 @@ service cloud.firestore {
       // 학생명부 상세(생년월일·첫 등록일·메모·연락처): 원장님·부원장만
       allow read, write: if isTeacher();
     }
+    match /abs/{id} {
+      // 결석 미리 알리기: 학부모가 날짜·사유를 올리고, 원장님·부원장이 확인. 올린 학부모는 취소 가능
+      allow read: if isTeacher() || linked(resource.data.sid);
+      allow create: if linked(request.resource.data.sid) && me().rels[request.resource.data.sid] != 'student'
+        && id == request.resource.data.date + '_' + request.resource.data.sid
+        && request.resource.data.uid == request.auth.uid && request.resource.data.ok == false
+        && request.resource.data.keys().hasOnly(['sid', 'date', 'reason', 'uid', 'who', 'ts', 'ok']);
+      allow update: if isTeacher();
+      allow delete: if isTeacher() || (linked(resource.data.sid) && resource.data.uid == request.auth.uid);
+    }
     match /fin/{id} {
       // 정산(원비·식대): 원장님만
       allow read, write: if isOwner();
