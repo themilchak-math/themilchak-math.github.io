@@ -250,6 +250,8 @@ html.ios-pwa,html.ios-pwa body{background:var(--scr)}
 html.ios-pwa .phone{bottom:auto;top:var(--app-top,0px);height:var(--app-h,100%)}
 html.ios-pwa .send{padding-bottom:max(10px,env(safe-area-inset-bottom))}
 html.ios-pwa.kb .send{padding-bottom:10px}
+html.ios-pwa.short .tabs{padding-bottom:2px}
+html.ios-pwa.short .send{padding-bottom:10px}
 /* 대화방: 아이폰이 실제로 그려 주는 높이(innerHeight)에 맞춰 입력칸이 잘리지 않게 */
 html.ios-pwa.chat-open:not(.kb) .phone{height:var(--in-h,100%)}
 html.ios-pwa.chat-open:not(.kb) .send{padding-bottom:10px}
@@ -261,7 +263,9 @@ if(!ios||!sa)return;var r=document.documentElement;r.classList.add('ios-pwa');
 function fit(){var land=Math.abs(window.orientation||0)===90||(screen.orientation&&/landscape/.test(screen.orientation.type));var h=Math.max(land?Math.min(screen.width,screen.height):Math.max(screen.width,screen.height),window.innerHeight);
  /* 키보드가 열리면 보이는 영역에 맞춰 입력칸이 키보드 바로 위에 오게, 닫히면 화면 전체로 */
  var vv=window.visualViewport,kb=!!(vv&&h-vv.height>150);r.classList.toggle('kb',kb);
- r.style.setProperty('--app-h',(kb?vv.height:h)+'px');r.style.setProperty('--in-h',Math.min(window.innerHeight,vv?vv.height+vv.offsetTop:window.innerHeight)+'px');r.style.setProperty('--app-top',(kb?vv.offsetTop:0)+'px')}
+ var short=!kb&&h-window.innerHeight>20;r.classList.toggle('short',short);
+ /* iOS가 화면 아래(홈 막대 영역)를 앱 영역에서 빼고 그리는 경우: 실제 높이에 맞추고 아래 여백은 iOS 배경이 대신 */
+ r.style.setProperty('--app-h',(kb?vv.height:short?window.innerHeight:h)+'px');r.style.setProperty('--in-h',Math.min(window.innerHeight,vv?vv.height+vv.offsetTop:window.innerHeight)+'px');r.style.setProperty('--app-top',(kb?vv.offsetTop:0)+'px')}
 fit();window.addEventListener('resize',fit);window.addEventListener('orientationchange',function(){setTimeout(fit,300)});
 if(window.visualViewport){visualViewport.addEventListener('resize',fit);visualViewport.addEventListener('scroll',fit)}
 /* 키보드를 닫은 뒤 iOS가 화면을 위로 밀어 둔 채 남겨 두는 문제 → 원위치 */
