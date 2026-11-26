@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.2.9';
+const APP_VERSION = '1.3.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
