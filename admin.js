@@ -5,7 +5,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { pushState, enablePush, sendPush, pushErrorText } from './push.js';
 
-const ADMIN_VERSION = '1.2.2';
+const ADMIN_VERSION = '1.2.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -69,7 +69,7 @@ function inviteText(m) {
   const who = m.rel === 'student' ? nm + ' 학생' : nm + ' ' + REL[m.rel];
   const tn = (D.cfg && D.cfg.teacher) || '';
   return '[더밀착수학] 안녕하세요, ' + who + '. ' + (tn ? tn + ' 선생님' : '더밀착수학') + '입니다.\n' + (m.rel === 'student' ? '출결·숙제·수업 기록' : '출결·수업 기록·숙제·공지') + '을 확인하는 교습소 앱 안내드려요.\n\n'
-    + '1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 삼성 인터넷)\n' + APP_URL + '\n'
+    + '1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\n' + APP_URL + '\n'
     + '2) [처음이에요 · 가입하기] → 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호 입력\n'
     + '3) 선생님 승인 후 이용 가능\n'
     + '4) 홈 화면에 추가(설치) → 앱에서 [알림 받기] 누르기' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');

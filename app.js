@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.2.8';
+const APP_VERSION = '1.2.9';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -84,7 +84,7 @@ const mLabel=m=>{const s=stu(m.sid);return (s?s.name:(m.name||''))+' '+REL[m.rel
 const mChip=m=>m.st==='ok'?'<span class="chip c-ok">연결됨</span>':m.st==='pending'?'<span class="chip c-warn">승인 대기</span>':m.st==='block'?'<span class="chip c-bad">차단</span>':'<span class="chip">미가입</span>';
 function mReqRows(){const l=mPending();if(!l.length)return '<div class="empty">가입 승인 대기가 없어요</div>';return l.map(m=>'<div class="row" style="flex-wrap:wrap"><div class="av'+(m.rel!=='student'?' p':'')+'">'+(m.rel==='student'?'학생':REL[m.rel].slice(0,2))+'</div><div class="grow"><div class="nm">'+esc(mLabel(m))+'</div><div class="sub">'+esc(maskP(m.phone))+' · 등록 번호 일치</div></div><div style="display:flex;gap:6px"><button class="btn sm ghost" data-act="mRej" data-id="'+m.id+'">거절</button><button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button></div></div>').join('')}
 function inviteText(m){const s=stu(m.sid);const nm=s?s.name:(m.name||'');const who=m.rel==='student'?nm+' 학생':nm+' '+REL[m.rel];const tn=(D.cfg&&D.cfg.teacher)||'';
-  return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?tn+' 선생님':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 삼성 인터넷)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호 입력\n3) 선생님 승인 후 이용 가능\n4) 홈 화면에 추가(설치) → 앱에서 [알림 받기] 누르기'+(m.rel==='student'&&m.grade==='중1'?'\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.':'')}
+  return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?tn+' 선생님':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호 입력\n3) 선생님 승인 후 이용 가능\n4) 홈 화면에 추가(설치) → 앱에서 [알림 받기] 누르기'+(m.rel==='student'&&m.grade==='중1'?'\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.':'')}
 const smsHref=m=>'sms:'+m.phone+(pushIOS()?'&':'?')+'body='+encodeURIComponent(inviteText(m));
 function mngView(){
   return header('학생·학부모 관리','등록한 번호로만 가입할 수 있어요',true)+'<div class="body">'+
@@ -329,13 +329,14 @@ function header(title,sub,back){
 }
 function authHeader(t,s){return '<div class="hdr"><div class="sb"><span>더밀착수학</span><span>v'+APP_VERSION+'</span></div><h2>'+esc(t)+'</h2>'+(s?'<div class="who">'+esc(s)+'</div>':'')+'</div>'}
 const isSamsung=()=>/SamsungBrowser/i.test(navigator.userAgent);
+const CHROME_URL='intent://themilchak-math.github.io/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.android.chrome;end';
 const isIOS=()=>/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const shareIco='<svg viewBox="0 0 24 24" width="20" height="20" style="vertical-align:-4px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v8h14v-8"/></svg>';
 function installSteps(){
   if(isIOS()){const chrome=/CriOS/i.test(navigator.userAgent);return '<ol class="ist"><li>'+(chrome?'오른쪽 위 공유 버튼 '+shareIco+' 누르기':'화면 아래 가운데 공유 버튼 '+shareIco+' 누르기')+'</li><li>목록을 조금 올려서 <b>홈 화면에 추가</b> 누르기</li><li>오른쪽 위 <b>추가</b> 누르기</li></ol>'}
   const sam='<ol class="ist"><li>화면 오른쪽 아래 <b>메뉴(≡)</b> 누르기</li><li><b>현재 페이지 추가</b> 누르기</li><li><b>홈 화면</b> 선택 → <b>추가</b> 누르기</li></ol><p class="sub" style="margin:6px 0 0">주소창에 <b>설치(⬇) 아이콘</b>이 보이면 그걸 눌러도 돼요.</p>';
   const chr='<ol class="ist"><li>오른쪽 위 <b>⋮</b> 누르기</li><li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b> 누르기</li></ol>';
-  if(isSamsung())return sam;
+  if(isSamsung())return '<p style="margin:0 0 8px"><b>갤럭시는 크롬으로 설치해 주세요.</b> 삼성 인터넷으로 설치하면 알림이 오지 않아요.</p><a class="btn" style="display:flex;align-items:center;justify-content:center;text-decoration:none" href="'+CHROME_URL+'">크롬에서 열기</a><p class="sub" style="margin:8px 0 0">크롬이 열리면 오른쪽 위 <b>⋮ → 홈 화면에 추가 → 설치</b>. 삼성 인터넷으로 만든 아이콘은 지워 주세요.</p>';
   if(/Chrome/i.test(navigator.userAgent))return chr;
   return '<p style="margin:0 0 4px;font-weight:700">삼성 인터넷</p>'+sam+'<p style="margin:10px 0 4px;font-weight:700">크롬</p>'+chr;
 }
@@ -549,7 +550,7 @@ function pushHelp(){
   const sysPath='휴대폰 <b>설정 → 애플리케이션 → '+(isSamsung()?'삼성 인터넷':'사용 중인 인터넷 앱')+' → 알림 → 알림 허용</b>이 켜져 있는지도 확인해 주세요.';
   const samPath='삼성 인터넷 <b>메뉴(≡) → 설정 → 사이트 및 다운로드 → 사이트 알림</b>에서 알림을 켜고, 오른쪽 위 <b>⋮ → 허용 또는 차단된 사이트</b>에 더밀착수학이 차단돼 있으면 허용으로 바꿔 주세요.';
   const chrPath='크롬은 주소창 왼쪽 <b>자물쇠(또는 종) → 권한 → 알림 → 허용</b>.';
-  if(android&&isStandalone()&&isSamsung())return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>갤럭시 설치 앱은 허용 창이 안 뜰 때가 있어요</b><br>삼성 인터넷(브라우저 화면)에서 한 번만 허용하면 이 앱에도 적용돼요.<a class="btn" style="display:flex;align-items:center;justify-content:center;margin-top:8px;text-decoration:none" href="intent://themilchak-math.github.io/?push=1#Intent;scheme=https;package=com.sec.android.app.sbrowser;end">삼성 인터넷에서 열기</a><span class="sub" style="display:block;margin-top:8px">열리면 로그인 → [알림 받기] → <b>허용</b>. 그 다음 이 앱을 닫았다 다시 열면 끝!<br>버튼이 안 되면: <b>삼성 인터넷 앱</b>을 직접 열고 주소창에 <b>themilchak-math.github.io</b> 입력 후 같은 순서로 해 주세요.</span></div>';
+  if(android&&isSamsung())return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>갤럭시는 크롬 앱으로 써야 알림이 와요</b><br>삼성 인터넷은 이 앱의 알림 허용 창을 띄우지 못해요.<a class="btn" style="display:flex;align-items:center;justify-content:center;margin-top:8px;text-decoration:none" href="'+CHROME_URL+'">크롬에서 열기</a><span class="sub" style="display:block;margin-top:8px">① 크롬에서 로그인 → [알림 받기] → <b>허용</b><br>② 크롬 오른쪽 위 <b>⋮ → 홈 화면에 추가 → 설치</b><br>③ 삼성 인터넷으로 만든 예전 아이콘은 길게 눌러 삭제</span></div>';
   if(android&&isStandalone())return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>허용 창이 안 보이나요?</b><br>설치한 앱은 앱 자체의 알림이 켜져 있어야 해요.<br>① 홈 화면의 <b>더밀착수학 아이콘을 길게 누르기</b> → <b>ⓘ 앱 정보</b><br>② <b>알림</b> → <b>알림 허용</b> 켜기<br>③ 앱을 닫았다가 다시 열고 [알림 받기] 누르기</div>';
   if(android)return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>허용 창이 안 보이나요?</b><br>'+(isSamsung()?samPath:(/Chrome/i.test(navigator.userAgent)?chrPath+' ⋮ → 설정 → 사이트 설정 → 알림에서 <b>조용한 메시지 사용</b>을 끄면 다음부터 창이 떠요.':samPath+' '+chrPath))+'<br>'+sysPath+' 바꾼 뒤 이 화면을 새로고침하고 다시 눌러 주세요.</div>';
   return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>허용 창이 안 보이나요?</b><br>아이폰 <b>설정 → 알림 → 더밀착수학</b>에서 알림 허용을 켠 뒤 앱을 다시 열어 눌러 주세요.</div>';
@@ -560,7 +561,7 @@ function pushCard(){
   if(st==='ios-install')inner='<p class="sub" style="margin:0">아이폰은 <b>홈 화면에 설치한 앱</b>에서만 알림을 받을 수 있어요. 공유 버튼 → 홈 화면에 추가 후, 설치된 앱에서 다시 열어 주세요.</p>';
   else if(st==='unsupported')inner='<p class="sub" style="margin:0">이 브라우저는 알림을 지원하지 않아요. '+(pushIOS()?'iOS 16.4 이상으로 업데이트해 주세요.':'삼성 인터넷 또는 크롬을 최신으로 업데이트해 주세요.')+'</p>';
   else if(st==='denied')inner=(/Android/i.test(navigator.userAgent)&&isStandalone())?'<p class="sub" style="margin:0">이 앱의 알림이 꺼져 있어요.<br>① 홈 화면의 <b>더밀착수학 아이콘을 길게 누르기</b> → <b>ⓘ 앱 정보</b><br>② <b>알림</b> 누르기 → <b>알림 허용</b> 켜기<br>③ 앱을 닫았다가 다시 열고 [알림 받기] 누르기</p><button class="btn" style="width:100%;margin-top:10px" data-act="pushOn">다시 시도</button>':'<p class="sub" style="margin:0">알림이 차단돼 있어요. 휴대폰 <b>설정 → 알림</b>(또는 브라우저 사이트 설정)에서 더밀착수학 알림을 허용해 주세요.</p>';
-  else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+(U.pushHint?pushHelp():'')+'';
+  else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+((U.pushHint||(/Android/i.test(navigator.userAgent)&&isSamsung()))?pushHelp():'')+'';
   let pm='?';try{pm=Notification.permission}catch(e){pm='없음'}
   const ua=navigator.userAgent;const br=/SamsungBrowser\/([\d.]+)/.exec(ua);const ch=/Chrome\/(\d+)/.exec(ua);
   inner+='<p style="margin:10px 0 0;font-size:12px;color:#888">진단: v'+APP_VERSION+' · 권한 '+pm+' · '+(br?'삼성인터넷 '+br[1]:ch?'크롬 '+ch[1]:'기타')+' · '+(isStandalone()?'설치앱':'브라우저')+(U.pushAutoErr?' · 자동등록 실패: '+esc(U.pushAutoErr):'')+'</p>';
