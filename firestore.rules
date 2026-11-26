@@ -49,7 +49,12 @@ service cloud.firestore {
     }
     match /att/{id} {
       allow read: if isTeacher() || linked(resource.data.sid);
-      allow create, delete: if isTeacher();
+      // 학생: 교습소 와이파이에서 앱을 열면 자기 오늘 등원만 자동 기록
+      allow create: if isTeacher() || (isStudentOf(request.resource.data.sid)
+        && id == request.resource.data.date + '_' + request.resource.data.sid
+        && request.resource.data.st == '출석' && request.resource.data.by == 'wifi' && request.resource.data.logged == false
+        && request.resource.data.keys().hasOnly(['sid', 'date', 'st', 'at', 'by', 'logged', 'ts']) && request.resource.data.ts == request.time);
+      allow delete: if isTeacher();
       allow update: if isTeacher() || (isStudentOf(resource.data.sid) && resource.data.logged == true
         && resource.data.st != '결석' && !('out' in resource.data) && onlyKeys(['out']));
     }

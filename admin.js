@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.8.1';
+const ADMIN_VERSION = '1.9.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -147,8 +147,22 @@ function pAtt() {
   const todayRows = active().map(s => { const r = today[s.id]; return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + attChip(r) + '</td><td class="r"><button class="btn xs ghost" data-a="attEdit" data-id="' + s.id + '" data-v="' + TODAY + '">' + (r ? '수정' : '입력') + '</button></td></tr>'; }).join('');
   return '<h1>출결 <span class="sub">칸을 누르면 등원·하원 시각을 직접 입력·수정·삭제할 수 있어요</span></h1>' +
     '<div class="grid2"><section class="card"><h2>오늘 등·하원 <span class="sub">' + fmtD(TODAY) + '</span></h2><table><tbody>' + (todayRows || '<tr><td class="empty">학생이 없어요</td></tr>') + '</tbody></table></section><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section></div>' +
+    wifiSection() +
     '<div class="bar"><button class="btn sm ghost" data-a="calM" data-v="-1">‹ 이전 달</button><b class="mon">' + y + '년 ' + m + '월</b><button class="btn sm ghost" data-a="calM" data-v="1">다음 달 ›</button>' + (isOwnerMe() ? '<label class="sw"><input type="checkbox" id="autoN" ' + (D.cfg && D.cfg.autoNotify !== false ? 'checked' : '') + '> 등·하원 시 학부모님께 알림 자동 발송</label>' : '') + '</div>' +
     '<section class="card scroll"><table class="att"><thead><tr><th class="nm">학생</th>' + head + '<th>등원</th><th>결석</th></tr></thead><tbody>' + (rows || '<tr><td class="empty">학생이 없어요</td></tr>') + '</tbody></table><p class="sub legend">' + chip('● 등원·하원', 'ok') + ' ' + chip('● 하원 기록 없음', 'warn') + ' ' + chip('결 결석', 'bad') + ' 칸에 마우스를 올리면 시각이 보여요.</p></section>';
+}
+async function myIp() {
+  const t = (u, ms) => Promise.race([fetch(u, { cache: 'no-store' }), new Promise((_, j) => setTimeout(() => j(new Error('timeout')), ms))]);
+  try { const r = await t('https://api.ipify.org?format=json', 5000); const j = await r.json(); if (j && j.ip) return j.ip; } catch (e) { }
+  try { const r = await t('https://ipv4.icanhazip.com', 5000); return (await r.text()).trim(); } catch (e) { }
+  return '';
+}
+function wifiSection() {
+  if (!isOwnerMe()) return ''; const c = D.cfg || {}; const ips = c.wifiIps || []; const on = !!(c.wifiAuto && ips.length);
+  return '<section class="card"><h2>와이파이 자동 등원 ' + (on ? chip('켜짐', 'ok') : chip('꺼짐')) + '</h2><p class="sub">학생이 교습소 와이파이에 연결된 상태로 앱을 열면 승인 없이 바로 등원돼요 (원장님께 알림). 와이파이가 아니면 지금처럼 [등원하기] → 승인. 하원은 기존 방식 그대로예요.</p>' +
+    (ips.length ? '<p>등록된 교습소 인터넷 주소: <b>' + ips.map(esc).join(', ') + '</b></p>' : '') +
+    '<div class="bar"><button class="btn sm" data-a="wifiReg">이 PC가 연결된 인터넷을 교습소로 등록</button>' + (ips.length ? '<button class="btn sm ghost" data-a="wifiTog">' + (c.wifiAuto ? '끄기' : '켜기') + '</button><button class="btn sm ghost" data-a="wifiClr">등록 지우기</button>' : '') + '</div>' +
+    '<p class="sub">교습소 와이파이(같은 공유기)에 연결된 PC에서 누르세요. 학생 폰과 PC가 같은 공유기를 쓰면 주소가 같아요. 인터넷 회사 사정으로 주소가 바뀌면 다시 한 번 누르면 돼요.</p></section>';
 }
 function attModal() {
   const s = stu(V.attSid) || {}; const d = V.attDate; const r = (D.att[d] || {})[V.attSid];
@@ -660,6 +674,9 @@ app.addEventListener('click', async e => {
     if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(pushErrorText(e)); } return render(); }
     if (a === 'pushHide') { V.pushHide = true; return render(); }
     if (a === 'logout') { qrStop(); await signOut(auth); return; }
+    if (a === 'wifiReg') { const ip = await myIp(); if (!ip) return toast('인터넷 주소를 확인하지 못했어요. 잠시 후 다시 눌러 주세요'); const l = [...new Set([...((D.cfg && D.cfg.wifiIps) || []), ip])]; await updateDoc(doc(db, 'config', 'main'), { wifiIps: l, wifiAuto: true }); return toast('교습소 인터넷 주소(' + ip + ')를 등록했어요 · 자동 등원 켜짐'); }
+    if (a === 'wifiTog') { const on = !(D.cfg && D.cfg.wifiAuto); await updateDoc(doc(db, 'config', 'main'), { wifiAuto: on }); return toast('와이파이 자동 등원 ' + (on ? '켬' : '끔')); }
+    if (a === 'wifiClr') { if (!confirm('등록된 교습소 인터넷 주소를 지울까요?')) return; await updateDoc(doc(db, 'config', 'main'), { wifiIps: [], wifiAuto: false }); return toast('지웠어요'); }
     if (a === 'attEdit') { V.attSid = id; V.attDate = v; V.modal = 'att'; return render(); }
     if (a === 'attDel') { if (!confirm('이 날 출결 기록을 삭제할까요?')) return; await deleteDoc(doc(db, 'att', V.attDate + '_' + V.attSid)); V.modal = null; return toast('출결 기록을 삭제했어요'); }
     if (a === 'finYm') { e.preventDefault(); if (V.finDirty) return toast('저장 중이에요. 잠시 후 다시 눌러 주세요'); finOpen(v); return render(); }

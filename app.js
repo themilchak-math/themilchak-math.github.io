@@ -2,12 +2,12 @@
 // 개발 노트는 개발노트.md 참고
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel } from './subjects.js';
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.8.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -216,7 +216,7 @@ function tAtt(){
   const isT=U.attDate===TODAY;const a=D.att[U.attDate]||{};
   return header('출결 관리',fmtD(U.attDate)+(isT?' · 오늘':''))+'<div class="body">'+
   '<div class="card"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>'+
-  '<div class="card"><h3>출결 규칙</h3><p class="sub" style="margin:0">학생이 앱에서 [등원하기]를 누르면 원장님께 승인 요청이 와요. 승인해야 등원이 기록되고, 하원은 그날 학습 정리를 올린 뒤에만 열려요. 시각 수정·삭제는 PC 관리자 [출결]에서 할 수 있어요.</p></div>'+
+  '<div class="card"><h3>출결 규칙</h3><p class="sub" style="margin:0">학생이 앱에서 [등원하기]를 누르면 원장님께 승인 요청이 와요. 승인해야 등원이 기록되고, 하원은 그날 학습 정리를 올린 뒤에만 열려요. 시각 수정·삭제는 PC 관리자 [출결]에서 할 수 있어요.</p></div>'+wifiCard()+
   '<div class="card"><label class="f"><span>날짜</span><input type="date" id="attDate" value="'+U.attDate+'"></label>'+(isOwnerMe()?'<div class="sw" style="margin:0"><span>등·하원 시 학부모님께 알림 자동 발송</span><input type="checkbox" id="autoN" '+(D.autoNotify?'checked':'')+'></div>':'')+'</div>'+
   '<div class="card"><h3>학생별 등·하원</h3>'+D.students.map(s=>{
     const r=a[s.id];const lg=loggedOn(s.id,U.attDate);
@@ -235,10 +235,11 @@ function checkCard(s){
   let m;
   const q=myReq(s.id);
   if(!r&&q)m='<p style="margin:0 0 6px;font-weight:700">원장님 승인 대기 중</p><p class="sub" style="margin:0 0 10px">'+esc(q.at)+'에 등원 요청을 보냈어요. 원장님이 승인하면 등원이 기록돼요.</p><button class="btn ghost" style="width:100%" data-act="cancelReq" data-id="'+q.id+'">요청 취소</button>';
-  else if(!r)m='<p class="sub" style="margin:0 0 10px">교습소에 도착하면 눌러 주세요 · 원장님이 승인하면 등원이 기록돼요</p><button class="btn" style="width:100%;min-height:52px;font-size:17px" data-act="checkin">등원하기</button>';
+  else if(!r&&U.wifiState==='checking')m='<p style="margin:0">교습소 와이파이 확인 중...</p>';
+  else if(!r)m='<p class="sub" style="margin:0 0 10px">'+(wifiOn()?'교습소 와이파이에 연결된 채로 앱을 열면 자동으로 등원돼요. 안 되면 아래 버튼을 눌러 주세요 (원장님 승인).':'교습소에 도착하면 눌러 주세요 · 원장님이 승인하면 등원이 기록돼요')+'</p><button class="btn" style="width:100%;min-height:52px;font-size:17px" data-act="checkin">등원하기</button>';
   else if(r.st==='결석')m='<p style="margin:0">오늘은 결석으로 처리되었어요.</p>';
   else if(r.out)m='<p style="margin:0">오늘 수업 끝! 수고했어요.</p>';
-  else m='<p class="sub" style="margin:0 0 10px">'+(lg?'선생님이 오늘 학습 정리를 올렸어요. 하원 체크를 해주세요.':'선생님이 오늘 학습 정리를 올리면 하원할 수 있어요.')+'</p><button class="btn" style="width:100%;min-height:52px;font-size:17px" data-act="checkout"'+(lg?'':' disabled')+'>'+(lg?'하원 체크':'하원 잠김 · 학습 정리 대기')+'</button>';
+  else m='<p class="sub" style="margin:0 0 10px">'+(lg?'원장님이 오늘 학습 정리를 올렸어요. 하원 체크를 해주세요.':'원장님이 오늘 학습 정리를 올리면 하원할 수 있어요.')+'</p><button class="btn" style="width:100%;min-height:52px;font-size:17px" data-act="checkout"'+(lg?'':' disabled')+'>'+(lg?'하원 체크':'하원 잠김 · 학습 정리 대기')+'</button>';
   return '<div class="card"><h3>오늘 등·하원 '+attChip(r)+'</h3>'+m+'</div>';
 }
 
@@ -524,7 +525,7 @@ function subFamily(){
   const rebuildAtt=()=>{D.att={};Object.values(attBy).flat().forEach(x=>{(D.att[x.date]||(D.att[x.date]={}))[x.sid]=x})};
   ME.sids.forEach(sid=>{
     L(doc(db,'students',sid),d=>{D.students=D.students.filter(x=>x.id!==sid);if(d.exists())D.students.push({id:d.id,...d.data()});sortStu();sr()});
-    L(query(collection(db,'att'),where('sid','==',sid)),s=>{attBy[sid]=docs(s);rebuildAtt();sr()});
+    L(query(collection(db,'att'),where('sid','==',sid)),s=>{attBy[sid]=docs(s);rebuildAtt();U.attReady=true;sr();setTimeout(autoCheckin,300)});
     L(query(collection(db,'hw'),where('sid','==',sid)),s=>{D.hw=D.hw.filter(h=>h.sid!==sid).concat(docs(s));sr()});
     L(query(collection(db,'logs'),where('sid','==',sid),where('sh','==',true)),s=>{D.logs=D.logs.filter(h=>h.sid!==sid).concat(docs(s));sr()});
     L(query(collection(db,'reqs'),where('sid','==',sid),where('st','==','pending')),s=>{D.req=D.req.filter(h=>h.sid!==sid).concat(docs(s).filter(q=>q.date===TODAY));sr()});
@@ -537,7 +538,7 @@ function famRole(){U.role=ME.rels[U.me]==='student'?'student':'parent'}
 
 /* ================= 로그인 흐름 ================= */
 onAuthStateChanged(auth,user=>{
-  stopAll();U.staffSub=false;U.isStaff=false;U.staffDoc=null;U.famStarted=false;U.famSig=null;U.claimed=false;U.comm='msg';U.hwF='all';U.calS='all';U.pushX={};U.me=null;U.logS=null;U.ret=null;U.lf=null;qrStop();ME.uid=null;U.sheet=null;U.chat=null;U.page=null;U.tab='home';
+  stopAll();U.attReady=false;U.wifiState=null;U.staffSub=false;U.isStaff=false;U.staffDoc=null;U.famStarted=false;U.famSig=null;U.claimed=false;U.comm='msg';U.hwF='all';U.calS='all';U.pushX={};U.me=null;U.logS=null;U.ret=null;U.lf=null;qrStop();ME.uid=null;U.sheet=null;U.chat=null;U.page=null;U.tab='home';
   if(!user){U.screen='auth';render();return}
   ME.uid=user.uid;ME.phone=phoneOf(user);U.screen='loading';render();
   B(doc(db,'config','main'),d=>{
@@ -617,6 +618,36 @@ function pushCard(){
   return '<div class="card" style="border-color:var(--pri)"><h3>알림 받기 <button class="btn sm ghost" data-act="pushHide" aria-label="닫기">나중에</button></h3>'+inner+'</div>';
 }
 // 알림이 허용돼 있으면 버튼 없이 자동 등록 (업데이트·재설치·자녀 추가 후에도 유지)
+/* ===== 교습소 와이파이 자동 등원 ===== */
+async function myIp(){
+  const t=(u,ms)=>Promise.race([fetch(u,{cache:'no-store'}),new Promise((_,j)=>setTimeout(()=>j(new Error('timeout')),ms))]);
+  try{const r=await t('https://api.ipify.org?format=json',5000);const j=await r.json();if(j&&j.ip)return j.ip}catch(e){}
+  try{const r=await t('https://ipv4.icanhazip.com',5000);return (await r.text()).trim()}catch(e){}
+  return '';
+}
+const wifiOn=()=>!!(D.cfg&&D.cfg.wifiAuto&&(D.cfg.wifiIps||[]).length);
+async function autoCheckin(){
+  if(U.role!=='student'||!wifiOn()||U.wifiBusy)return;const s=stu(U.me);if(!s||!U.attReady)return;
+  if((D.att[TODAY]||{})[s.id])return;
+  U.wifiBusy=true;U.wifiState='checking';sr();
+  try{const ip=await myIp();
+    if(ip&&(D.cfg.wifiIps||[]).includes(ip)&&!(D.att[TODAY]||{})[s.id]){
+      const t=hm();await setDoc(doc(db,'att',TODAY+'_'+s.id),{sid:s.id,date:TODAY,st:'출석',at:t,by:'wifi',logged:false,ts:serverTimestamp()});
+      const q=myReq(s.id);if(q)deleteDoc(doc(db,'reqs',q.id)).catch(()=>{});
+      push(['teacher'],'[등원] '+s.name+' 학생 '+t+' 등원 (교습소 와이파이)',{tag:'att'});
+      notifyParent(s.id,'[등원 알림] '+s.name+' 학생이 '+t+'에 등원했습니다.').catch(()=>{});
+      U.wifiState='ok';toast('교습소 와이파이 확인 · 등원 완료!');
+    }else U.wifiState=ip?'no':'err';
+  }catch(e){console.warn('autoCheckin',e);U.wifiState='err'}
+  U.wifiBusy=false;sr();
+}
+async function registerWifi(){const ip=await myIp();if(!ip)return toast('인터넷 주소를 확인하지 못했어요. 잠시 후 다시 눌러 주세요');const l=[...new Set([...(D.cfg.wifiIps||[]),ip])];await updateDoc(doc(db,'config','main'),{wifiIps:l,wifiAuto:true});toast('이 와이파이('+ip+')를 교습소로 등록했어요')}
+function wifiCard(){
+  if(!isOwnerMe())return '';const c=D.cfg||{};const ips=c.wifiIps||[];
+  return '<div class="card"><h3>와이파이 자동 등원 '+(wifiOn()?'<span class="chip c-ok">켜짐</span>':'<span class="chip">꺼짐</span>')+'</h3><p class="sub" style="margin:0 0 10px">학생이 교습소 와이파이에 연결된 상태로 앱을 열면 승인 없이 바로 등원돼요. 와이파이가 아니면 지금처럼 [등원하기] → 승인.</p>'+
+  (ips.length?'<div class="sub" style="margin-bottom:8px">등록된 교습소 인터넷 주소: '+ips.map(esc).join(', ')+'</div>':'')+
+  '<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="wifiReg">지금 연결된 와이파이를 교습소로 등록</button>'+(ips.length?'<button class="btn sm ghost" data-act="wifiTog">'+(c.wifiAuto?'끄기':'켜기')+'</button><button class="btn sm ghost" data-act="wifiClr">등록 지우기</button>':'')+'</div><p class="sub" style="margin:8px 0 0">교습소 와이파이에 연결된 이 폰에서 눌러 주세요. 인터넷 회사 사정으로 주소가 바뀌면 자동 등원이 안 될 수 있어요 → 다시 한 번 누르면 돼요.</p></div>';
+}
 function autoPush(){
   try{if(!('Notification' in window)||Notification.permission!=='granted'||!ME.uid)return}catch(e){return}
   const tg=U.role==='teacher'?['teacher']:ME.ths;if(!tg||!tg.length)return;
@@ -710,6 +741,9 @@ app.addEventListener('click',async e=>{
     await notifyParent(q.sid,'[등원 알림] '+s.name+' 학생이 '+q.at+'에 등원했습니다.');
     return toast(s.name+' 등원 승인'+(D.autoNotify?' · 학부모 알림 발송':''));
   }
+  if(a==='wifiReg'){await registerWifi();return}
+  if(a==='wifiTog'){await updateDoc(doc(db,'config','main'),{wifiAuto:!(D.cfg&&D.cfg.wifiAuto)});return toast(D.cfg&&D.cfg.wifiAuto?'와이파이 자동 등원을 껐어요':'와이파이 자동 등원을 켰어요')}
+  if(a==='wifiClr'){if(!confirm('등록된 교습소 와이파이 주소를 지울까요?'))return;await updateDoc(doc(db,'config','main'),{wifiIps:[],wifiAuto:false});return toast('지웠어요')}
   if(a==='checkin'){const s=stu(U.me);if(myReq(s.id))return toast('이미 요청했어요');const t=hm();await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:t,date:TODAY,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생 '+t+' 등원 · 승인해 주세요',{tag:'req'});return toast('원장님께 등원 승인 요청을 보냈어요')}
   if(a==='forceIn'){const s=stu(id);const t=U.attDate===TODAY?hm():(s.time||'16:00');await setDoc(doc(db,'att',U.attDate+'_'+id),{sid:id,date:U.attDate,st:'출석',at:t,by:'teacher',logged:loggedOn(id,U.attDate)});const q=(D.req||[]).find(x=>x.sid===id&&x.st==='pending');if(q)updateDoc(doc(db,'reqs',q.id),{st:'ok'}).catch(()=>{});const noti=U.attDate===TODAY&&confirm(s.name+' 학생 등원 처리했어요.\n학부모님께 등원 알림을 보낼까요?');if(noti){const tx='[등원 알림] '+s.name+' 학생이 '+t+'에 등원했습니다.';push([id+'|parent'],tx);await msg(id+'|parent',id,'s',tx).catch(()=>{})}return toast(s.name+' 등원 처리 '+t+(noti?' · 학부모 알림 발송':''))}
   if(a==='cancelReq'){await deleteDoc(doc(db,'reqs',id));return toast('요청을 취소했어요')}
@@ -736,7 +770,7 @@ app.addEventListener('click',async e=>{
 app.addEventListener('change',async e=>{
   const t=e.target;
   try{
-  if(t.id==='whoSel'){U.me=t.value;famRole();U.chat=null;U.tab='home';return render()}
+  if(t.id==='whoSel'){U.me=t.value;famRole();U.chat=null;U.tab='home';U.wifiState=null;setTimeout(autoCheckin,300);return render()}
   if(t.id==='attDate'&&t.value){U.attDate=t.value;return render()}
   if(t.id==='autoN'){await updateDoc(doc(db,'config','main'),{autoNotify:t.checked});return toast(t.checked?'자동 알림 켬':'자동 알림 끔')}
   if(t.id==='lfCourse'){U.lf.course=t.value;U.lf.unit=null;lfStash();return render()}
@@ -857,6 +891,6 @@ if('serviceWorker' in navigator){
 try{U.noInstall=localStorage.getItem('tmm-noinst')==='1'}catch(e){}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();U.bip=e;render()});
 window.addEventListener('appinstalled',()=>{U.bip=null;toast('설치됐어요! 홈 화면에서 열어 주세요')});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)return location.reload();if(document.visibilityState==='visible'){U.fresh=Date.now();if(U.reg)U.reg.update().catch(()=>{});if(U.chat)markRead(U.chat);autoPush();if(isOwnerMe())announceUpdate(db,auth)}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)return location.reload();if(document.visibilityState==='visible'){U.fresh=Date.now();U.wifiState=null;setTimeout(autoCheckin,500);if(U.reg)U.reg.update().catch(()=>{});if(U.chat)markRead(U.chat);autoPush();if(isOwnerMe())announceUpdate(db,auth)}});
 window.addEventListener('focus',()=>{if(U.chat)markRead(U.chat)});
 render();
