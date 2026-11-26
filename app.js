@@ -5,7 +5,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWith
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -465,7 +465,7 @@ function resetD(){Object.assign(D,{students:[],att:{},threads:{},hw:[],logs:[],n
 
 function subTeacher(){
   resetD();
-  L(collection(db,'students'),s=>{D.students=docs(s);sortStu();if(!stu(U.logS))U.logS=D.students[0]?D.students[0].id:null;sr()});
+  L(collection(db,'students'),s=>{D.students=docs(s).filter(x=>!x.left);sortStu();if(!stu(U.logS))U.logS=D.students[0]?D.students[0].id:null;sr()});
   L(query(collection(db,'att'),where('date','>=',off(-200))),s=>{D.att={};docs(s).forEach(x=>{(D.att[x.date]||(D.att[x.date]={}))[x.sid]=x});sr()});
   L(query(collection(db,'msgs'),where('ts','>=',now()-150*864e5)),s=>{D.threads={};docs(s).forEach(m=>(D.threads[m.th]||(D.threads[m.th]=[])).push(m));Object.values(D.threads).forEach(sortMsgs);if(U.chat)markRead(U.chat);sr()});
   L(collection(db,'hw'),s=>{D.hw=docs(s);sr()});
