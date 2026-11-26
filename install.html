@@ -82,6 +82,15 @@ b.k{background:var(--soft);border-radius:6px;padding:1px 6px;font-weight:700}
       <p class="hint" id="hint"></p>
     </div>
     <p class="note">교습소에 등록된 휴대폰 번호로 가입 · 선생님 승인 후 이용<br>가입 후 <b>알림 받기</b>를 꼭 눌러 주세요</p>
+    <div class="card" id="sA2" hidden style="margin-top:12px">
+      <b>알림음을 학교 종소리로 (선택)</b>
+      <a class="go" href="./sounds/school-bell.mp3" download="더밀착_학교종.mp3" style="margin-top:10px">종소리 받기</a>
+      <ol class="steps">
+        <li>위 버튼으로 종소리 파일 저장</li>
+        <li>설정 → 애플리케이션 → <b class="k">더밀착수학</b> → 알림</li>
+        <li><b class="k">알림음</b>에서 받은 종소리 고르기</li>
+      </ol>
+    </div>
   </section>
 
   <section class="pc">
@@ -101,7 +110,7 @@ b.k{background:var(--soft);border-radius:6px;padding:1px 6px;font-weight:700}
   var go=document.getElementById('go'),hint=document.getElementById('hint');
   function show(os){
     document.querySelectorAll('.seg button').forEach(function(b){b.classList.toggle('on',b.dataset.os===os)});
-    document.getElementById('sI').hidden=os!=='ios';document.getElementById('sA').hidden=os!=='and';
+    document.getElementById('sI').hidden=os!=='ios';document.getElementById('sA').hidden=os!=='and';document.getElementById('sA2').hidden=os!=='and';
     if(os==='and'){go.href=and?CHROME:APP;go.textContent='크롬에서 앱 열기';hint.textContent='크롬이 없으면 플레이스토어에서 크롬을 먼저 받아 주세요';}
     else{go.href=APP;go.textContent='앱 열기';hint.textContent=ios&&/CriOS|FxiOS|NAVER|KAKAOTALK|Instagram|FBAN/i.test(ua)?'지금은 사파리가 아니에요 · 주소를 사파리에 붙여넣어 열어 주세요':'';}
   }
