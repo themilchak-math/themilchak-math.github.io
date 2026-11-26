@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel } from './subjects.j
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.6.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -702,7 +702,7 @@ app.addEventListener('click',async e=>{
     return toast(s.name+' 등원 승인'+(D.autoNotify?' · 학부모 알림 발송':''));
   }
   if(a==='checkin'){const s=stu(U.me);if(myReq(s.id))return toast('이미 요청했어요');const t=hm();await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:t,date:TODAY,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생 '+t+' 등원 · 승인해 주세요',{tag:'req'});return toast('원장님께 등원 승인 요청을 보냈어요')}
-  if(a==='forceIn'){const s=stu(id);const t=U.attDate===TODAY?hm():(s.time||'16:00');await setDoc(doc(db,'att',U.attDate+'_'+id),{sid:id,date:U.attDate,st:'출석',at:t,by:'teacher',logged:loggedOn(id,U.attDate)});const q=(D.req||[]).find(x=>x.sid===id&&x.st==='pending');if(q)updateDoc(doc(db,'reqs',q.id),{st:'ok'}).catch(()=>{});if(U.attDate===TODAY)await notifyParent(id,'[등원 알림] '+s.name+' 학생이 '+t+'에 등원했습니다.');return toast(s.name+' 등원 처리 '+t)}
+  if(a==='forceIn'){const s=stu(id);const t=U.attDate===TODAY?hm():(s.time||'16:00');await setDoc(doc(db,'att',U.attDate+'_'+id),{sid:id,date:U.attDate,st:'출석',at:t,by:'teacher',logged:loggedOn(id,U.attDate)});const q=(D.req||[]).find(x=>x.sid===id&&x.st==='pending');if(q)updateDoc(doc(db,'reqs',q.id),{st:'ok'}).catch(()=>{});const noti=U.attDate===TODAY&&confirm(s.name+' 학생 등원 처리했어요.\n학부모님께 등원 알림을 보낼까요?');if(noti){const tx='[등원 알림] '+s.name+' 학생이 '+t+'에 등원했습니다.';push([id+'|parent'],tx);await msg(id+'|parent',id,'s',tx).catch(()=>{})}return toast(s.name+' 등원 처리 '+t+(noti?' · 학부모 알림 발송':''))}
   if(a==='cancelReq'){await deleteDoc(doc(db,'reqs',id));return toast('요청을 취소했어요')}
   if(a==='checkout'){
     const s=stu(U.me);const r=(D.att[TODAY]||{})[s.id];if(!r||!r.logged)return toast('아직 하원할 수 없어요');
