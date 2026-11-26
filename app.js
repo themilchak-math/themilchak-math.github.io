@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.2.6';
+const APP_VERSION = '1.2.7';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -560,6 +560,9 @@ function pushCard(){
   else if(st==='unsupported')inner='<p class="sub" style="margin:0">이 브라우저는 알림을 지원하지 않아요. '+(pushIOS()?'iOS 16.4 이상으로 업데이트해 주세요.':'삼성 인터넷 또는 크롬을 최신으로 업데이트해 주세요.')+'</p>';
   else if(st==='denied')inner=(/Android/i.test(navigator.userAgent)&&isStandalone())?'<p class="sub" style="margin:0">이 앱의 알림이 꺼져 있어요.<br>① 홈 화면의 <b>더밀착수학 아이콘을 길게 누르기</b> → <b>ⓘ 앱 정보</b><br>② <b>알림</b> 누르기 → <b>알림 허용</b> 켜기<br>③ 앱을 닫았다가 다시 열고 [알림 받기] 누르기</p><button class="btn" style="width:100%;margin-top:10px" data-act="pushOn">다시 시도</button>':'<p class="sub" style="margin:0">알림이 차단돼 있어요. 휴대폰 <b>설정 → 알림</b>(또는 브라우저 사이트 설정)에서 더밀착수학 알림을 허용해 주세요.</p>';
   else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+(U.pushHint?pushHelp():'')+'';
+  let pm='?';try{pm=Notification.permission}catch(e){pm='없음'}
+  const ua=navigator.userAgent;const br=/SamsungBrowser\/([\d.]+)/.exec(ua);const ch=/Chrome\/(\d+)/.exec(ua);
+  inner+='<p style="margin:10px 0 0;font-size:12px;color:#888">진단: v'+APP_VERSION+' · 권한 '+pm+' · '+(br?'삼성인터넷 '+br[1]:ch?'크롬 '+ch[1]:'기타')+' · '+(isStandalone()?'설치앱':'브라우저')+(U.pushAutoErr?' · 자동등록 실패: '+esc(U.pushAutoErr):'')+'</p>';
   return '<div class="card" style="border-color:var(--pri)"><h3>알림 받기 <button class="btn sm ghost" data-act="pushHide" aria-label="닫기">나중에</button></h3>'+inner+'</div>';
 }
 // 알림이 허용돼 있으면 버튼 없이 자동 등록 (업데이트·재설치·자녀 추가 후에도 유지)
