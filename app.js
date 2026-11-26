@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel } from './subjects.j
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.8.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -155,7 +155,7 @@ function progressCard(s){
 
 const splitBar=c=>'<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--soft)"><i style="width:'+c+'%;background:var(--pri)"></i><i style="width:'+(100-c)+'%;background:var(--acc)"></i></div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:3px"><span style="color:var(--pri);font-weight:700">개념 '+c+'%</span><span style="color:var(--acc);font-weight:700">문제풀이 '+(100-c)+'%</span></div>';
 function logBody(x){
-  return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><b>'+fmtD(x.date)+' · '+esc(x.unit)+'</b><span class="chip">'+esc(courseLabel(x.course,subjOf(x)))+'</span></div><div style="margin-top:8px">'+splitBar(ratioOf(x))+'</div>'+(x.cm?'<p class="sub" style="margin-top:6px">원장님 메모: '+esc(x.cm)+'</p>':'');
+  return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><b>'+fmtD(x.date)+' · '+esc(x.unit)+'</b><span style="display:flex;gap:4px">'+(x.w&&x.w<100?'<span class="chip c-pri">그날 수업의 '+x.w+'%</span>':'')+'<span class="chip">'+esc(courseLabel(x.course,subjOf(x)))+'</span></span></div><div style="margin-top:8px">'+splitBar(ratioOf(x))+'</div>'+(x.cm?'<p class="sub" style="margin-top:6px">원장님 메모: '+esc(x.cm)+'</p>':'');
 }
 
 function logList(sid,onlyShared){
@@ -329,11 +329,11 @@ function sheetHtml(){
     const prev=f.unit&&f.unit!=='__x'?lastOf(f.sid,f.course,f.unit):null;
     h='<h3>수업 기록 <small class="sub" style="font-weight:400">'+fmtD(TODAY)+'</small></h3>'+
     '<div class="f"><span>학생</span><div class="pills" style="margin:0">'+D.students.map(x=>'<button type="button" data-act="lfS" data-v="'+x.id+'" class="'+(x.id===f.sid?'on':'')+'">'+esc(x.name)+'</button>').join('')+'</div></div>'+
-    (()=>{const its=f.items||[];const lab=it=>{const u=it.unit==='__x'?(it.ux||'직접 입력'):it.unit;return it.subj+(u?' · '+u:'')};return '<div class="f"><span>오늘 한 공부 <small class="sub" style="font-weight:400">단원·과목을 여러 개 기록할 수 있어요</small></span><div class="pills" style="margin:0;flex-wrap:wrap;overflow:visible">'+its.map((it,k)=>'<button type="button" data-act="lfItem" data-v="'+k+'" class="'+(k===(f.idx||0)?'on':'')+'">'+(k+1)+'. '+esc(lab(it))+'</button>').join('')+'<button type="button" data-act="lfAdd">+ 단원·과목 추가</button></div>'+(its.length>1?'<button type="button" class="btn sm ghost" style="margin-top:6px" data-act="lfDelItem">'+((f.idx||0)+1)+'번 항목 빼기</button>':'')+'</div>'})()+
+    (()=>{const its=f.items||[];const lab=it=>{const u=it.unit==='__x'?(it.ux||'직접 입력'):it.unit;return it.subj+(u?' · '+u:'')};return '<div class="f"><span>오늘 한 공부 <small class="sub" style="font-weight:400">단원·과목을 여러 개 기록할 수 있어요</small></span><div class="pills" style="margin:0;flex-wrap:wrap;overflow:visible">'+its.map((it,k)=>'<button type="button" data-act="lfItem" data-v="'+k+'" class="'+(k===(f.idx||0)?'on':'')+'">'+(k+1)+'. '+esc(lab(it))+(its.length>1?' · '+(it.w||0)+'%':'')+'</button>').join('')+'<button type="button" data-act="lfAdd">+ 단원·과목 추가</button></div>'+(its.length>1?'<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;margin-top:8px">'+its.map((it,k)=>'<i style="width:'+(it.w||0)+'%;background:'+['#2b44ff','#f2522e','#0f8f47','#b86e00','#7a3cff'][k%5]+'"></i>').join('')+'</div><div class="sub" style="font-size:12px;margin-top:3px">오늘 수업 비중 합계 '+its.reduce((a,it)=>a+(+it.w||0),0)+'%</div>':'')+(its.length>1?'<button type="button" class="btn sm ghost" style="margin-top:6px" data-act="lfDelItem">'+((f.idx||0)+1)+'번 항목 빼기</button>':'')+'</div>'})()+
     '<div class="f"><span>과목 <small class="sub" style="font-weight:400">'+((f.items||[]).length>1?((f.idx||0)+1)+'번 항목의 과목':'오늘 수업한 과목')+'</small></span><div class="pills" style="margin:0">'+SUBJS.map(x=>'<button type="button" data-act="lfSj" data-v="'+x+'" class="'+(x===f.subj?'on':'')+'">'+x+'</button>').join('')+'</div></div>'+
     '<label class="f"><span>① 진도 과정 <small class="sub" style="font-weight:400">'+esc(s.grade)+' 학생</small></span><select id="lfCourse">'+GROUPS[f.subj].map(([g,cs])=>'<optgroup label="'+g+'">'+cs.map(c=>'<option'+(c===f.course?' selected':'')+'>'+c+'</option>').join('')+'</optgroup>').join('')+'</select></label>'+
     '<div class="f"><span>② 단원</span><div class="ck">'+us.map(u=>{const l=lastOf(f.sid,f.course,u);return '<button type="button" class="uc'+(f.unit===u?' on':'')+'" data-act="lfU" data-v="'+esc(u)+'">'+(l?'• ':'')+esc(u)+'</button>'}).join('')+'<button type="button" class="uc'+(f.unit==='__x'?' on':'')+'" data-act="lfU" data-v="__x">+ 직접 입력</button></div>'+(f.unit==='__x'?'<input id="lfUx" style="margin-top:8px" placeholder="단원명 입력" value="'+esc(f.ux||'')+'">':'')+'</div>'+
-    (f.unit?'<div class="f"><span>③ 오늘 수업 비중 <small class="sub" style="font-weight:400">개념을 고르면 문제풀이는 자동</small></span>'+chips('lfC',f.c)+(f.c!=null?'<div style="margin-top:8px">'+splitBar(f.c)+'</div>':'')+'</div>':'<p class="sub" style="margin:0 0 12px">단원을 고르면 오늘 개념·문제풀이 비중을 고를 수 있어요.</p>')+
+    (f.unit?'<div class="f"><span>③ 오늘 수업 비중 <small class="sub" style="font-weight:400">개념을 고르면 문제풀이는 자동</small></span>'+chips('lfC',f.c)+(f.c!=null?'<div style="margin-top:8px">'+splitBar(f.c)+'</div>':'')+'</div>'+((f.items||[]).length>1?'<div class="f"><span>④ 오늘 전체 수업 중 이 항목 비중 <small class="sub" style="font-weight:400">모든 항목 합 100%</small></span>'+'<div class="pg">'+[10,20,30,40,50,60,70,80,90].map(v=>'<button type="button" data-act="lfW" data-v="'+v+'" class="'+(f.w===v?'on':'')+'">'+v+'</button>').join('')+'</div></div>':''):'<p class="sub" style="margin:0 0 12px">단원을 고르면 오늘 개념·문제풀이 비중을 고를 수 있어요.</p>')+
     (f.showCm?'<label class="f"><span>특별 메모 (선택)</span><textarea id="lgM" placeholder="결석 보충, 컨디션, 시험 대비 등 특별한 일만">'+esc(f.cm||'')+'</textarea></label>':'<button type="button" class="btn sm ghost" style="margin-bottom:12px" data-act="lfCm">+ 특별한 일이 있으면 메모 추가</button>')+
     '<label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="lgSh" '+(f.sh?'checked':'')+'>학부모·학생에게 공유</label>';
   }
@@ -703,8 +703,9 @@ app.addEventListener('click',async e=>{
   if(a==='lfS'){initLf(v,U.lf&&U.lf.subj);return render()}
   if(a==='lfSj'){const f=U.lf;const st=stu(f.sid);const l=latestIn(f.sid,v);f.subj=v;f.course=l?l.course:curCourse(st,v);f.unit=l?l.unit:null;f.c=l?ratioOf(l):50;f.ux='';lfStash();return render()}
   if(a==='lfItem'){lfOpen(+v);return render()}
-  if(a==='lfAdd'){lfStash();const f=U.lf;const it={subj:f.subj,course:f.course,unit:null,c:50,ux:''};f.items.push(it);lfOpen(f.items.length-1);return render()}
-  if(a==='lfDelItem'){const f=U.lf;lfStash();if(f.items.length<2)return;f.items.splice(f.idx,1);f.idx=Math.min(f.idx,f.items.length-1);Object.assign(f,f.items[f.idx]);return render()}
+  if(a==='lfW'){const f=U.lf;lfStash();const n=f.items.length;const i=f.idx||0;const t=i===n-1?0:n-1;const others=f.items.reduce((a,it,k)=>k===i||k===t?a:a+(+it.w||0),0);const rest=100-(+v)-others;if(rest<0)return toast('비중 합이 100%를 넘어요. 다른 항목 비중을 먼저 줄여 주세요');f.items[i].w=+v;f.items[t].w=rest;f.w=+v;return render()}
+  if(a==='lfAdd'){lfStash();const f=U.lf;const it={subj:f.subj,course:f.course,unit:null,c:50,ux:'',w:0};f.items.push(it);lfOpen(f.items.length-1);lfEven();return render()}
+  if(a==='lfDelItem'){const f=U.lf;lfStash();if(f.items.length<2)return;f.items.splice(f.idx,1);f.idx=Math.min(f.idx,f.items.length-1);Object.assign(f,f.items[f.idx]);lfEven();return render()}
   if(a==='psj'){U.psj=U.psj||{};U.psj[id]=v;delete U.pc[id];return render()}
   if(a==='lfU'){U.lf.unit=v;lfStash();return render()}
   if(a==='lfC'){U.lf.c=+v;U.lf.p=100-(+v);lfStash();return render()}
@@ -778,11 +779,12 @@ app.addEventListener('change',async e=>{
   }catch(err){fail(err)}
 });
 app.addEventListener('input',e=>{if(!U.lf)return;if(e.target.id==='lgM')U.lf.cm=e.target.value;if(e.target.id==='lfUx'){U.lf.ux=e.target.value;lfStash()}});
-const LF_KEYS=['subj','course','unit','c','ux'];
+const LF_KEYS=['subj','course','unit','c','ux','w'];
+function lfEven(){const f=U.lf;const n=f.items.length;const b=Math.floor(100/n/10)*10;f.items.forEach((it,k)=>it.w=b);f.items[n-1].w=100-b*(n-1);f.w=f.items[f.idx||0].w}
 const lfPick=f=>{const o={};LF_KEYS.forEach(k=>o[k]=f[k]);return o};
 function lfStash(){const f=U.lf;if(!f)return;f.items=f.items||[lfPick(f)];f.items[f.idx||0]=lfPick(f)}
 function lfOpen(i){const f=U.lf;lfStash();f.idx=i;Object.assign(f,f.items[i])}
-function initLf(sid,sj){const s=stu(sid);if(!sj){const l0=latest(sid);sj=l0?subjOf(l0):'수학'}const l=latestIn(sid,sj);const course=l?l.course:curCourse(s,sj);const unit=l?l.unit:null;const c=l?ratioOf(l):50;const keep=U.lf&&U.lf.sid===sid?{cm:U.lf.cm,showCm:U.lf.showCm,sh:U.lf.sh}:{cm:'',showCm:false,sh:true};U.lf=Object.assign({sid,subj:sj,course,unit,c,p:100-c,ux:'',idx:0},keep);U.lf.items=[lfPick(U.lf)];U.logS=sid}
+function initLf(sid,sj){const s=stu(sid);if(!sj){const l0=latest(sid);sj=l0?subjOf(l0):'수학'}const l=latestIn(sid,sj);const course=l?l.course:curCourse(s,sj);const unit=l?l.unit:null;const c=l?ratioOf(l):50;const keep=U.lf&&U.lf.sid===sid?{cm:U.lf.cm,showCm:U.lf.showCm,sh:U.lf.sh}:{cm:'',showCm:false,sh:true};U.lf=Object.assign({sid,subj:sj,course,unit,c,p:100-c,ux:'',w:100,idx:0},keep);U.lf.items=[lfPick(U.lf)];U.logS=sid}
 
 const authErr=c=>({'auth/email-already-in-use':'이미 가입된 번호예요. 로그인해 주세요.','auth/invalid-credential':'번호나 비밀번호가 맞지 않아요.','auth/wrong-password':'번호나 비밀번호가 맞지 않아요.','auth/user-not-found':'가입되지 않은 번호예요.','auth/weak-password':'비밀번호는 6자리 이상이에요.','auth/too-many-requests':'잠시 후 다시 시도해 주세요.','auth/network-request-failed':'인터넷 연결을 확인해 주세요.'}[c]||'문제가 생겼어요 ('+c+')');
 
@@ -844,16 +846,16 @@ app.addEventListener('submit',async e=>{
   if(U.sheet==='log'){
     const f=U.lf;lfStash();
     const items=f.items.map(it=>Object.assign({},it,{unit:it.unit==='__x'?(it.ux||'').trim():it.unit}));
-    const bad=items.findIndex(it=>!it.unit);if(bad>=0){lfOpen(bad);render();return toast((items.length>1?(bad+1)+'번 항목: ':'')+'단원을 선택해 주세요')}
+    const bad=items.findIndex(it=>!it.unit);if(items.length>1&&items.reduce((a,it)=>a+(+it.w||0),0)!==100)return toast('항목 비중 합이 100%가 되게 맞춰 주세요');if(bad>=0){lfOpen(bad);render();return toast((items.length>1?(bad+1)+'번 항목: ':'')+'단원을 선택해 주세요')}
     const sid=f.sid;const s=stu(sid);const r=(D.att[TODAY]||{})[sid];const open=r&&r.st!=='결석'&&!r.out;
     const b=writeBatch(db);const ts=now();
-    items.forEach((it,k)=>{const c=it.c==null?50:it.c;b.set(doc(collection(db,'logs')),{sid,date:TODAY,subj:it.subj,course:it.course,unit:it.unit,c,p:100-c,cm:k===0?(f.cm||'').trim():'',sh:f.sh,ts:ts+k})});
+    items.forEach((it,k)=>{const c=it.c==null?50:it.c;b.set(doc(collection(db,'logs')),{sid,date:TODAY,subj:it.subj,course:it.course,unit:it.unit,c,p:100-c,w:items.length>1?(+it.w||0):100,cm:k===0?(f.cm||'').trim():'',sh:f.sh,ts:ts+k})});
     const math=items.filter(it=>it.subj==='수학').pop();if(math&&s.course!==math.course)b.update(doc(db,'students',sid),{course:math.course});
     if(r)b.update(doc(db,'att',TODAY+'_'+sid),{logged:true});
     if(open)b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.',at:stamp(),ts:now(),r:false});
     await b.commit();
     if(open)push([sid+'|student'],'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.');
-    if(f.sh)await notifyParent(sid,'[수업 기록] '+fmtD(TODAY)+' '+items.map(it=>courseLabel(it.course,it.subj)+' '+it.unit+' (개념 '+(it.c==null?50:it.c)+'% / 문제풀이 '+(100-(it.c==null?50:it.c))+'%)').join(', '));
+    if(f.sh)await notifyParent(sid,'[수업 기록] '+fmtD(TODAY)+' '+items.map(it=>courseLabel(it.course,it.subj)+' '+it.unit+' ('+(items.length>1?'비중 '+(+it.w||0)+'% · ':'')+'개념 '+(it.c==null?50:it.c)+'% / 문제풀이 '+(100-(it.c==null?50:it.c))+'%)').join(', '));
     const last=items[items.length-1];U.psj=U.psj||{};U.psj[sid]=last.subj;U.pc[sid]=last.course;U.logS=sid;U.sheet=null;U.lf=null;U.tab=U.ret||'log';U.ret=null;return toast((items.length>1?items.length+'개 항목 · ':'')+(open?'정리 완료 · 하원이 열렸어요':'기록을 저장했어요'));
   }
 
