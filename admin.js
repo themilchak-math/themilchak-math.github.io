@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.7.1';
+const ADMIN_VERSION = '1.8.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -161,14 +161,12 @@ function attModal() {
     '<div class="mf">' + (r ? '<button type="button" class="btn ghost danger" data-a="attDel">기록 삭제</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit">저장</button></div></form></div>';
 }
 
+const ratioOf = l => { const c = +l.c || 0, p = +l.p || 0, t = c + p; return t ? Math.round(c / t * 100) : 50; };
 function defaultsFor(s, sj) {
   if (!sj) { const l0 = latest(s.id); sj = l0 ? subjOf(l0) : '수학'; }
   const l = latestIn(s.id, sj); const course = l ? l.course : (sj === '수학' ? s.course : defCourse(s.grade, sj));
-  let unit = null;
-  if (l && !(l.c === 100 && l.p === 100)) unit = l.unit;
-  else unit = unitsOf(s.id, course).find(u => { const x = lastOf(s.id, course, u); return !x || x.c < 100 || x.p < 100; }) || unitsOf(s.id, course)[0];
-  const p = unit ? lastOf(s.id, course, unit) : null;
-  return { subj: sj, course, unit, c: p ? p.c : 0, pp: p ? p.p : 0 };
+  const unit = l ? l.unit : (unitsOf(s.id, course)[0] || null); const c = l ? ratioOf(l) : 50;
+  return { subj: sj, course, unit, c, pp: 100 - c };
 }
 const opt = (v, cur, label) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label ?? v) + '</option>';
 function pLog() {
@@ -179,7 +177,7 @@ function pLog() {
     return '<tr class="' + (came ? 'came' : '') + '"><td><input type="checkbox" id="lk_' + s.id + '" ' + (came && !done.length ? 'checked' : '') + '></td><td><b>' + esc(s.name) + '</b><div class="sub">' + esc(s.grade) + ' · ' + (a[s.id] ? esc(a[s.id].st) : '미등원') + '</div></td>' +
       '<td><select id="lj_' + s.id + '" data-sid="' + s.id + '" class="lj" style="min-width:78px">' + SUBJS.map(x => opt(x, d.subj)).join('') + '</select></td>' +
       '<td><select id="lc_' + s.id + '" data-sid="' + s.id + '" class="lc">' + courseOpts(d.subj, d.course) + '</select></td>' +
-      '<td><select id="lu_' + s.id + '" data-sid="' + s.id + '" class="lu">' + unitsOf(s.id, d.course).map(u => { const x = lastOf(s.id, d.course, u); return opt(u, d.unit, (x && x.c === 100 && x.p === 100 ? '✓ ' : '') + u); }).join('') + '</select></td>' +
+      '<td><select id="lu_' + s.id + '" data-sid="' + s.id + '" class="lu">' + unitsOf(s.id, d.course).map(u => { const x = lastOf(s.id, d.course, u); return opt(u, d.unit, (x ? '• ' : '') + u); }).join('') + '</select></td>' +
       '<td><select id="lpc_' + s.id + '">' + PCT.map(v => opt(String(v), String(d.c), v + '%')).join('') + '</select></td>' +
       '<td><select id="lpp_' + s.id + '">' + PCT.map(v => opt(String(v), String(d.pp), v + '%')).join('') + '</select></td>' +
       '<td><input id="lm_' + s.id + '" placeholder="특별한 일만"></td>' +
@@ -187,9 +185,9 @@ function pLog() {
       '<td>' + (done.length ? chip('오늘 ' + done.length + '건 저장됨', 'ok') : '') + '</td>' +
       '<td class="r"><button class="btn xs" data-a="saveLog" data-id="' + s.id + '">저장</button></td></tr>';
   }).join('');
-  return '<h1>수업 기록 <span class="sub">' + fmtD(TODAY) + ' · 등원한 학생은 미리 체크돼 있어요 · 오늘 다른 과목을 했으면 과목만 바꾸세요</span></h1>' +
+  return '<h1>수업 기록 <span class="sub">' + fmtD(TODAY) + ' · 등원한 학생은 미리 체크돼 있어요 · 오늘 다른 과목을 했으면 과목만 바꾸세요 · 개념 비중을 고르면 문제풀이는 자동(합 100%)</span></h1>' +
     '<div class="bar"><button class="btn" data-a="saveChecked">체크한 학생 한꺼번에 저장</button><span class="sub">저장하면 그 학생의 하원 버튼이 열리고, 공유를 켜 둔 기록은 학부모님께 알림이 가요</span></div>' +
-    '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>개념</th><th>문제풀이</th><th>특별 메모</th><th>공유</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="11" class="empty">학생이 없어요</td></tr>') + '</tbody></table></section>' +
+    '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>오늘 개념 비중</th><th>문제풀이 비중</th><th>특별 메모</th><th>공유</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="11" class="empty">학생이 없어요</td></tr>') + '</tbody></table></section>' +
     '<section class="card"><h2>최근 기록</h2>' + recentLogs() + '</section>';
 }
 function recentLogs() {
@@ -627,8 +625,8 @@ async function saveLogFor(sid, b) {
   if (subj === '수학' && s.course !== course) b.update(doc(db, 'students', sid), { course });
   if (r) b.update(doc(db, 'att', TODAY + '_' + sid), { logged: true });
   if (open) b.set(doc(collection(db, 'msgs')), { th: sid + '|student', sid, f: 's', t: '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.', at: stamp(), ts: now(), r: false });
-  if (sh && !(D.cfg && D.cfg.autoNotify === false)) b.set(doc(collection(db, 'msgs')), { th: sid + '|parent', sid, f: 's', t: '[수업 기록] ' + fmtD(TODAY) + ' ' + courseLabel(course, subj) + ' ' + unit + ' · 개념 ' + c + '% · 문제풀이 ' + p + '%', at: stamp(), ts: now(), r: false });
-  pendingPush.push(() => { if (open) push([sid + '|student'], '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.'); if (sh && !(D.cfg && D.cfg.autoNotify === false)) push([sid + '|parent'], '[수업 기록] ' + fmtD(TODAY) + ' ' + courseLabel(course, subj) + ' ' + unit + ' · 개념 ' + c + '% · 문제풀이 ' + p + '%'); });
+  if (sh && !(D.cfg && D.cfg.autoNotify === false)) b.set(doc(collection(db, 'msgs')), { th: sid + '|parent', sid, f: 's', t: '[수업 기록] ' + fmtD(TODAY) + ' ' + courseLabel(course, subj) + ' ' + unit + ' · 개념 ' + c + '% / 문제풀이 ' + p + '%', at: stamp(), ts: now(), r: false });
+  pendingPush.push(() => { if (open) push([sid + '|student'], '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.'); if (sh && !(D.cfg && D.cfg.autoNotify === false)) push([sid + '|parent'], '[수업 기록] ' + fmtD(TODAY) + ' ' + courseLabel(course, subj) + ' ' + unit + ' · 개념 ' + c + '% / 문제풀이 ' + p + '%'); });
   return s.name;
 }
 let pendingPush = [];
@@ -739,10 +737,11 @@ app.addEventListener('change', async e => {
     }
     if (t.classList.contains('lc')) {
       const sid = t.dataset.sid; const us = unitsOf(sid, t.value); const sel = document.getElementById('lu_' + sid);
-      sel.innerHTML = us.map(u => opt(u, '', u)).join(''); const nx = us.find(u => { const x = lastOf(sid, t.value, u); return !x || x.c < 100 || x.p < 100; }) || us[0]; if (nx) sel.value = nx; setPrev(sid, t.value, sel.value);
+      sel.innerHTML = us.map(u => opt(u, '', u)).join(''); const lt = sortLogs(D.logs.filter(l => l.sid === sid && l.course === t.value)).pop(); const nx = lt ? lt.unit : us[0]; if (nx) sel.value = nx;
       const ck = document.getElementById('lk_' + sid); if (ck) ck.checked = true; return;
     }
-    if (t.classList.contains('lu')) { const sid = t.dataset.sid; setPrev(sid, document.getElementById('lc_' + sid).value, t.value); const ck = document.getElementById('lk_' + sid); if (ck) ck.checked = true; return; }
+    if (t.classList.contains('lu')) { const sid = t.dataset.sid; const ck = document.getElementById('lk_' + sid); if (ck) ck.checked = true; return; }
+    if (/^l(pc|pp)_/.test(t.id)) { const sid = t.id.split('_')[1]; const other = document.getElementById((t.id.startsWith('lpc') ? 'lpp_' : 'lpc_') + sid); if (other) other.value = String(100 - +t.value); }
     if (/^l(pc|pp|m)_/.test(t.id)) { const ck = document.getElementById('lk_' + t.id.split('_')[1]); if (ck) ck.checked = true; }
   } catch (err) { fail(err); }
 });

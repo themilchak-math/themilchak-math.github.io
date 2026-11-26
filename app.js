@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel } from './subjects.j
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.7.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -133,7 +133,10 @@ const curCourse=(s,sj)=>{const l=latestIn(s.id,sj);return l?l.course:(sj==='수�
 const subjsOf=s=>{const has=new Set(D.logs.filter(l=>l.sid===s.id).map(subjOf));return SUBJS.filter(x=>has.has(x)).length?SUBJS.filter(x=>has.has(x)):['수학']};
 const nowCourse=s=>{const l=latest(s.id);return l?l.course:s.course};
 const nowLabel=s=>{const l=latest(s.id);return l?courseLabel(l.course,subjOf(l)):s.course};
-const curUnit=s=>{const l=latest(s.id);return l?subjOf(l)+' '+l.unit+' (개념 '+l.c+'% · 문제 '+l.p+'%)':'기록 없음'};
+const curUnit=s=>{const l=latest(s.id);return l?subjOf(l)+' '+l.unit:'기록 없음'};
+const monthLogs=(sid,shared)=>D.logs.filter(l=>l.sid===sid&&l.date.slice(0,7)===TODAY.slice(0,7)&&(!shared||l.sh));
+const ratioOf=l=>{const c=+l.c||0,p=+l.p||0,t=c+p;return t?Math.round(c/t*100):50};
+const unitStat=(sid,course,u)=>{const l=D.logs.filter(x=>x.sid===sid&&x.course===course&&x.unit===u);return {n:l.length,last:sortLogs(l).pop()}};
 function coursePct(sid,course){const us=unitsOf(sid,course);if(!us.length)return 0;let t=0;us.forEach(u=>{const l=lastOf(sid,course,u);if(l)t+=(l.c+l.p)/2});return Math.round(t/us.length)}
 const mini=(lab,v,col)=>'<div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="width:52px;color:var(--mut)">'+lab+'</span><div class="bar" style="flex:1;margin:0;height:7px"><i style="width:'+v+'%;background:'+col+'"></i></div><span style="width:34px;text-align:right;font-variant-numeric:tabular-nums">'+v+'%</span></div>';
 
@@ -142,15 +145,17 @@ function progressCard(s){
   const sj=sjs.includes(U.psj[s.id])?U.psj[s.id]:(lt?subjOf(lt):sjs[0]);
   const base=curCourse(s,sj);const courses=[...new Set([base,...D.logs.filter(l=>l.sid===s.id&&subjOf(l)===sj).map(l=>l.course)])];
   const cur=courses.includes(U.pc[s.id])?U.pc[s.id]:base;
-  const pct=coursePct(s.id,cur);const us=unitsOf(s.id,cur);
-  const done=us.filter(u=>{const l=lastOf(s.id,cur,u);return l&&l.c===100&&l.p===100}).length;
-  return '<div class="card"><h3>'+esc(s.name)+' 진도 <small>'+esc(s.grade)+'</small></h3>'+(sjs.length>1?'<div class="pills">'+sjs.map(x=>'<button data-act="psj" data-id="'+s.id+'" data-v="'+x+'" class="'+(x===sj?'on':'')+'">'+x+'</button>').join('')+'</div>':'')+(courses.length>1?'<div class="pills">'+courses.map(c=>'<button data-act="pc" data-id="'+s.id+'" data-v="'+esc(c)+'" class="'+(c===cur?'on':'')+'">'+esc(c)+'</button>').join('')+'</div>':'')+'<div style="display:flex;justify-content:space-between;align-items:baseline"><span class="big">'+pct+'%</span><span class="sub">'+esc(courseLabel(cur,sj))+' · 완료 '+done+' / '+us.length+' 단원</span></div><div class="bar"><i style="width:'+pct+'%"></i></div><div class="units">'+us.map((u,i)=>{const l=lastOf(s.id,cur,u);const fin=l&&l.c===100&&l.p===100;return '<div class="'+(fin?'d':l?'n':'')+'" style="flex-wrap:wrap"><b>'+(fin?'✓':i+1)+'</b><span style="flex:1">'+esc(u)+'</span>'+(l&&!fin?'<span class="sub" style="font-size:12px">개념 '+l.c+'% · 문제 '+l.p+'%</span>':'')+'</div>'}).join('')+'</div></div>';
+  const us=unitsOf(s.id,cur);const lastC=sortLogs(D.logs.filter(l=>l.sid===s.id&&l.course===cur)).pop();
+  const ml=D.logs.filter(l=>l.sid===s.id&&subjOf(l)===sj&&l.date.slice(0,7)===TODAY.slice(0,7)&&(U.role==='teacher'||l.sh));const mr=ml.length?Math.round(ml.reduce((a,l)=>a+ratioOf(l),0)/ml.length):null;
+  return '<div class="card"><h3>'+esc(s.name)+' 학습 단원 <small>'+esc(s.grade)+'</small></h3>'+(sjs.length>1?'<div class="pills">'+sjs.map(x=>'<button data-act="psj" data-id="'+s.id+'" data-v="'+x+'" class="'+(x===sj?'on':'')+'">'+x+'</button>').join('')+'</div>':'')+(courses.length>1?'<div class="pills">'+courses.map(c=>'<button data-act="pc" data-id="'+s.id+'" data-v="'+esc(c)+'" class="'+(c===cur?'on':'')+'">'+esc(c)+'</button>').join('')+'</div>':'')+
+  '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><span style="font-weight:700;font-size:17px">'+(lastC?'지금 '+esc(lastC.unit):'아직 수업 기록이 없어요')+'</span><span class="sub">'+esc(courseLabel(cur,sj))+'</span></div>'+
+  (mr!=null?'<div style="margin-top:10px"><div class="sub" style="margin-bottom:4px">이번 달 '+sj+' 수업 '+ml.length+'회 · 평균 비중</div>'+splitBar(mr)+'</div>':'')+
+  '<div class="units" style="margin-top:10px">'+us.map((u,i)=>{const st=unitStat(s.id,cur,u);const now=lastC&&lastC.unit===u;return '<div class="'+(now?'n':st.n?'d':'')+'" style="flex-wrap:wrap"><b>'+(i+1)+'</b><span style="flex:1">'+esc(u)+(now?' <span class="chip c-pri" style="font-size:11px">지금</span>':'')+'</span>'+(st.n?'<span class="sub" style="font-size:12px">'+st.n+'회 · 최근 '+fmtD(st.last.date)+'</span>':'')+'</div>'}).join('')+'</div></div>';
 }
 
+const splitBar=c=>'<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--soft)"><i style="width:'+c+'%;background:var(--pri)"></i><i style="width:'+(100-c)+'%;background:var(--acc)"></i></div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:3px"><span style="color:var(--pri);font-weight:700">개념 '+c+'%</span><span style="color:var(--acc);font-weight:700">문제풀이 '+(100-c)+'%</span></div>';
 function logBody(x){
-  const prev=sortLogs(D.logs.filter(l=>l.sid===x.sid&&l.course===x.course&&l.unit===x.unit&&(l.date<x.date||(l.date===x.date&&D.logs.indexOf(l)<D.logs.indexOf(x))))).pop();
-  const d=(a,b)=>a===b?' 유지':' +'+(a-b)+'%';
-  return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><b>'+fmtD(x.date)+' · '+esc(x.unit)+'</b><span class="chip">'+esc(courseLabel(x.course,subjOf(x)))+'</span></div><div style="margin-top:6px;display:grid;gap:4px">'+mini('개념',x.c,'var(--pri)')+mini('문제풀이',x.p,'var(--acc)')+'</div>'+((prev&&(x.c>prev.c||x.p>prev.p))?'<div class="sub" style="margin-top:4px">지난 수업 대비 개념'+d(x.c,prev.c)+' · 문제풀이'+d(x.p,prev.p)+'</div>':'')+(x.cm?'<p class="sub" style="margin-top:6px">선생님 메모: '+esc(x.cm)+'</p>':'');
+  return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><b>'+fmtD(x.date)+' · '+esc(x.unit)+'</b><span class="chip">'+esc(courseLabel(x.course,subjOf(x)))+'</span></div><div style="margin-top:8px">'+splitBar(ratioOf(x))+'</div>'+(x.cm?'<p class="sub" style="margin-top:6px">원장님 메모: '+esc(x.cm)+'</p>':'');
 }
 
 function logList(sid,onlyShared){
@@ -282,7 +287,7 @@ function sHome(){
   const todo=D.hw.filter(h=>h.sid===s.id&&h.st==='todo');
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
   return header(s.name+' 학생',s.grade+' · '+nowLabel(s))+'<div class="body">'+pushCard()+checkCard(s)+examCard(s)+
-  '<div class="stats"><div><b>'+todo.length+'</b><span>남은 숙제</span></div><div><b>'+coursePct(s.id,nowCourse(s))+'%</b><span>진도율</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
+  '<div class="stats"><div><b>'+todo.length+'</b><span>남은 숙제</span></div><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   '<div class="card"><h3>해야 할 숙제</h3>'+hwList(todo,'student')+'</div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
   '<div class="card"><h3>공지사항</h3>'+noticeList(2)+'</div></div>';
@@ -295,7 +300,7 @@ function pHome(){
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
   return header(s.name+' 학부모님',s.grade+' · '+nowLabel(s))+'<div class="body">'+pushCard()+examCard(s)+
   '<div class="card"><h3>오늘 출결 <small>'+fmtD(TODAY)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+attChip(a)+'</div></div>'+
-  '<div class="stats"><div><b>'+coursePct(s.id,nowCourse(s))+'%</b><span>진도율</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
+  '<div class="stats"><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
   '<div class="card"><h3>숙제 현황</h3>'+hwList(hs.slice(0,3),'parent')+'</div>'+
   '<div class="card"><h3>공지사항</h3>'+noticeList(2)+'</div></div>';
@@ -325,8 +330,8 @@ function sheetHtml(){
     '<div class="f"><span>학생</span><div class="pills" style="margin:0">'+D.students.map(x=>'<button type="button" data-act="lfS" data-v="'+x.id+'" class="'+(x.id===f.sid?'on':'')+'">'+esc(x.name)+'</button>').join('')+'</div></div>'+
     '<div class="f"><span>과목 <small class="sub" style="font-weight:400">오늘 수업한 과목</small></span><div class="pills" style="margin:0">'+SUBJS.map(x=>'<button type="button" data-act="lfSj" data-v="'+x+'" class="'+(x===f.subj?'on':'')+'">'+x+'</button>').join('')+'</div></div>'+
     '<label class="f"><span>① 진도 과정 <small class="sub" style="font-weight:400">'+esc(s.grade)+' 학생</small></span><select id="lfCourse">'+GROUPS[f.subj].map(([g,cs])=>'<optgroup label="'+g+'">'+cs.map(c=>'<option'+(c===f.course?' selected':'')+'>'+c+'</option>').join('')+'</optgroup>').join('')+'</select></label>'+
-    '<div class="f"><span>② 단원</span><div class="ck">'+us.map(u=>{const l=lastOf(f.sid,f.course,u);const fin=l&&l.c===100&&l.p===100;return '<button type="button" class="uc'+(f.unit===u?' on':'')+'" data-act="lfU" data-v="'+esc(u)+'">'+(fin?'✓ ':'')+esc(u)+'</button>'}).join('')+'<button type="button" class="uc'+(f.unit==='__x'?' on':'')+'" data-act="lfU" data-v="__x">+ 직접 입력</button></div>'+(f.unit==='__x'?'<input id="lfUx" style="margin-top:8px" placeholder="단원명 입력" value="'+esc(f.ux||'')+'">':'')+'</div>'+
-    (f.unit?'<div class="f"><span>③ 개념 진행률'+(prev?' <small class="sub" style="font-weight:400">지난번 '+prev.c+'%</small>':'')+'</span>'+chips('lfC',f.c)+'</div><div class="f"><span>④ 문제풀이 진행률'+(prev?' <small class="sub" style="font-weight:400">지난번 '+prev.p+'%</small>':'')+'</span>'+chips('lfP',f.p)+'</div>':'<p class="sub" style="margin:0 0 12px">단원을 고르면 진행률을 선택할 수 있어요.</p>')+
+    '<div class="f"><span>② 단원</span><div class="ck">'+us.map(u=>{const l=lastOf(f.sid,f.course,u);return '<button type="button" class="uc'+(f.unit===u?' on':'')+'" data-act="lfU" data-v="'+esc(u)+'">'+(l?'• ':'')+esc(u)+'</button>'}).join('')+'<button type="button" class="uc'+(f.unit==='__x'?' on':'')+'" data-act="lfU" data-v="__x">+ 직접 입력</button></div>'+(f.unit==='__x'?'<input id="lfUx" style="margin-top:8px" placeholder="단원명 입력" value="'+esc(f.ux||'')+'">':'')+'</div>'+
+    (f.unit?'<div class="f"><span>③ 오늘 수업 비중 <small class="sub" style="font-weight:400">개념을 고르면 문제풀이는 자동</small></span>'+chips('lfC',f.c)+(f.c!=null?'<div style="margin-top:8px">'+splitBar(f.c)+'</div>':'')+'</div>':'<p class="sub" style="margin:0 0 12px">단원을 고르면 오늘 개념·문제풀이 비중을 고를 수 있어요.</p>')+
     (f.showCm?'<label class="f"><span>특별 메모 (선택)</span><textarea id="lgM" placeholder="결석 보충, 컨디션, 시험 대비 등 특별한 일만">'+esc(f.cm||'')+'</textarea></label>':'<button type="button" class="btn sm ghost" style="margin-bottom:12px" data-act="lfCm">+ 특별한 일이 있으면 메모 추가</button>')+
     '<label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="lgSh" '+(f.sh?'checked':'')+'>학부모·학생에게 공유</label>';
   }
@@ -666,8 +671,8 @@ app.addEventListener('click',async e=>{
   if(a==='lfS'){initLf(v,U.lf&&U.lf.subj);return render()}
   if(a==='lfSj'){initLf(U.lf.sid,v);return render()}
   if(a==='psj'){U.psj=U.psj||{};U.psj[id]=v;delete U.pc[id];return render()}
-  if(a==='lfU'){U.lf.unit=v;if(v!=='__x'){const l=lastOf(U.lf.sid,U.lf.course,v);U.lf.c=l?l.c:null;U.lf.p=l?l.p:null}return render()}
-  if(a==='lfC'){U.lf.c=+v;return render()}
+  if(a==='lfU'){U.lf.unit=v;return render()}
+  if(a==='lfC'){U.lf.c=+v;U.lf.p=100-(+v);return render()}
   if(a==='lfP'){U.lf.p=+v;return render()}
   if(a==='lfCm'){U.lf.showCm=true;return render()}
   if(a==='logFor'){U.logS=id;U.sheet='log';U.ret='att';initLf(id);return render()}
@@ -730,12 +735,12 @@ app.addEventListener('change',async e=>{
   if(t.id==='whoSel'){U.me=t.value;famRole();U.chat=null;U.tab='home';return render()}
   if(t.id==='attDate'&&t.value){U.attDate=t.value;return render()}
   if(t.id==='autoN'){await updateDoc(doc(db,'config','main'),{autoNotify:t.checked});return toast(t.checked?'자동 알림 켬':'자동 알림 끔')}
-  if(t.id==='lfCourse'){U.lf.course=t.value;U.lf.unit=null;U.lf.c=null;U.lf.p=null;return render()}
+  if(t.id==='lfCourse'){U.lf.course=t.value;U.lf.unit=null;return render()}
   if(t.id==='lgSh'&&U.lf)U.lf.sh=t.checked;
   }catch(err){fail(err)}
 });
 app.addEventListener('input',e=>{if(!U.lf)return;if(e.target.id==='lgM')U.lf.cm=e.target.value;if(e.target.id==='lfUx')U.lf.ux=e.target.value});
-function initLf(sid,sj){const s=stu(sid);if(!sj){const l0=latest(sid);sj=l0?subjOf(l0):'수학'}const l=latestIn(sid,sj);const course=l?l.course:curCourse(s,sj);let unit=null,c=null,p=null;if(l&&!(l.c===100&&l.p===100)){unit=l.unit;c=l.c;p=l.p}else if(l){const nx=unitsOf(sid,course).find(u=>{const x=lastOf(sid,course,u);return !x||x.c<100||x.p<100});if(nx){unit=nx;const x=lastOf(sid,course,nx);c=x?x.c:null;p=x?x.p:null}}const keep=U.lf&&U.lf.sid===sid?{cm:U.lf.cm,showCm:U.lf.showCm,sh:U.lf.sh}:{cm:'',showCm:false,sh:true};U.lf=Object.assign({sid,subj:sj,course,unit,c,p,ux:''},keep);U.logS=sid}
+function initLf(sid,sj){const s=stu(sid);if(!sj){const l0=latest(sid);sj=l0?subjOf(l0):'수학'}const l=latestIn(sid,sj);const course=l?l.course:curCourse(s,sj);const unit=l?l.unit:null;const c=l?ratioOf(l):50;const keep=U.lf&&U.lf.sid===sid?{cm:U.lf.cm,showCm:U.lf.showCm,sh:U.lf.sh}:{cm:'',showCm:false,sh:true};U.lf=Object.assign({sid,subj:sj,course,unit,c,p:100-c,ux:''},keep);U.logS=sid}
 
 const authErr=c=>({'auth/email-already-in-use':'이미 가입된 번호예요. 로그인해 주세요.','auth/invalid-credential':'번호나 비밀번호가 맞지 않아요.','auth/wrong-password':'번호나 비밀번호가 맞지 않아요.','auth/user-not-found':'가입되지 않은 번호예요.','auth/weak-password':'비밀번호는 6자리 이상이에요.','auth/too-many-requests':'잠시 후 다시 시도해 주세요.','auth/network-request-failed':'인터넷 연결을 확인해 주세요.'}[c]||'문제가 생겼어요 ('+c+')');
 
@@ -797,7 +802,7 @@ app.addEventListener('submit',async e=>{
   if(U.sheet==='log'){
     const f=U.lf;const unit=f.unit==='__x'?(f.ux||'').trim():f.unit;
     if(!unit)return toast('단원을 선택해 주세요');
-    if(f.c==null||f.p==null)return toast('개념·문제풀이 진행률을 선택해 주세요');
+    if(f.c==null)return toast('오늘 개념·문제풀이 비중을 골라 주세요');f.p=100-f.c;
     const sid=f.sid;const s=stu(sid);const r=(D.att[TODAY]||{})[sid];const open=r&&r.st!=='결석'&&!r.out;
     const b=writeBatch(db);
     b.set(doc(collection(db,'logs')),{sid,date:TODAY,subj:f.subj,course:f.course,unit,c:f.c,p:f.p,cm:(f.cm||'').trim(),sh:f.sh,ts:now()});
@@ -806,7 +811,7 @@ app.addEventListener('submit',async e=>{
     if(open)b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.',at:stamp(),ts:now(),r:false});
     await b.commit();
     if(open)push([sid+'|student'],'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.');
-    if(f.sh)await notifyParent(sid,'[수업 기록] '+fmtD(TODAY)+' '+courseLabel(f.course,f.subj)+' '+unit+' · 개념 '+f.c+'% · 문제풀이 '+f.p+'%');
+    if(f.sh)await notifyParent(sid,'[수업 기록] '+fmtD(TODAY)+' '+courseLabel(f.course,f.subj)+' '+unit+' · 개념 '+f.c+'% / 문제풀이 '+(100-f.c)+'%');
     U.psj=U.psj||{};U.psj[sid]=f.subj;U.pc[sid]=f.course;U.logS=sid;U.sheet=null;U.lf=null;U.tab=U.ret||'log';U.ret=null;return toast(open?'정리 완료 · 하원이 열렸어요':'기록을 저장했어요');
   }
   if(U.sheet==='stu'){
