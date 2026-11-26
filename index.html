@@ -237,9 +237,19 @@ button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}
  .hdr .who{display:none}
  .upd{bottom:calc(54px + env(safe-area-inset-bottom))}
 }
+/* iOS 26 홈 화면 앱 버그: 화면 높이가 상태바만큼 짧게 계산돼 아래 메뉴가 떠 보임 → 실제 화면 크기로 높이 고정 */
+html.ios-pwa,html.ios-pwa body{background:var(--scr)}
+html.ios-pwa .phone{bottom:auto;height:var(--app-h,100%)}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+<script>
+/* 아이폰 홈 화면 앱: 화면 실제 높이로 맞추기 */
+(function(){var ua=navigator.userAgent;var ios=/iPhone|iPod/.test(ua)||(/iPad/.test(ua));var sa=window.navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+if(!ios||!sa)return;var r=document.documentElement;r.classList.add('ios-pwa');
+function fit(){var land=Math.abs(window.orientation||0)===90||(screen.orientation&&/landscape/.test(screen.orientation.type));var h=land?Math.min(screen.width,screen.height):Math.max(screen.width,screen.height);r.style.setProperty('--app-h',Math.max(h,window.innerHeight)+'px')}
+fit();window.addEventListener('resize',fit);window.addEventListener('orientationchange',function(){setTimeout(fit,300)});})();
+</script>
 </head>
 <body>
 <div class="phone" id="app"><div class="hdr"><h2>더밀착수학</h2><div class="who">불러오는 중...</div></div></div>
