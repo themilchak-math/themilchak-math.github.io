@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.6.0';
+const ADMIN_VERSION = '1.6.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -61,10 +61,9 @@ function inviteText(m) {
   const who = m.rel === 'student' ? nm + ' 학생' : nm + ' ' + REL[m.rel];
   const tn = (D.cfg && D.cfg.teacher) || '';
   return '[더밀착수학] 안녕하세요, ' + who + '. ' + (tn ? tn + ' 선생님' : '더밀착수학') + '입니다.\n' + (m.rel === 'student' ? '출결·숙제·수업 기록' : '출결·수업 기록·숙제·공지') + '을 확인하는 교습소 앱 안내드려요.\n\n'
-    + '1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\n' + APP_URL + '\n'
-    + '2) [처음이에요 · 가입하기] → 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호 입력\n'
-    + '3) 선생님 승인 후 이용 가능\n'
-    + '4) 홈 화면에 추가(설치) → 앱에서 [알림 받기] 누르기' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');
+    + '▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\n' + APP_URL + '/install.html\n\n'
+    + '가입할 때 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호를 넣어 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'
+    + '설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');
 }
 const smsHref = (m) => 'sms:' + m.phone + (isIOSdev() ? '&' : '?') + 'body=' + encodeURIComponent(inviteText(m));
 const thOf = (sid, rel) => sid + '|' + (rel === 'student' ? 'student' : 'parent');
@@ -453,7 +452,7 @@ function monthSheet(m, set) {
 }
 
 /* ---------- 부원장 (원장님만) ---------- */
-const staffInvite = x => '[더밀착수학] ' + (x.name || '') + ' 선생님, 더밀착수학 관리 앱 부원장 계정 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호(' + fmtP(x.phone) + ')와 원하는 비밀번호 입력\n3) 원장님 승인 후 이용 가능\nPC 관리자 페이지: https://themilchak-math.github.io/admin.html';
+const staffInvite = x => '[더밀착수학] ' + (x.name || '') + ' 선생님, 더밀착수학 관리 앱 부원장 계정 안내드려요.\n\n▶ 설치 안내: https://themilchak-math.github.io/install.html\n가입할 때 이 번호(' + fmtP(x.phone) + ')와 원하는 비밀번호 입력 → 원장님 승인 후 이용\nPC 관리자 페이지: https://themilchak-math.github.io/admin.html';
 function pStaff() {
   if (!isOwnerMe()) return '<h1>부원장</h1><section class="card"><p class="empty">원장님만 볼 수 있어요</p></section>';
   const l = D.staff;
@@ -520,7 +519,7 @@ function render() {
     if ((V.page === 'staff' || V.page === 'fin') && !isOwnerMe()) V.page = 'dash';
     try { page = ({ dash: pDash, qr: pQR, students: pStudents, att: pAtt, log: pLog, hw: pHw, exam: pExam, school: pSchool, fin: pFin, roster: pRoster, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
     catch (e) { console.error(e); page = '<section class="card"><p class="err">화면 오류: ' + esc(e.message) + '</p></section>'; }
-    html = '<aside><div class="brand">더밀착수학<small>관리자</small></div><nav>' + navList().map(([k, l]) => '<button data-a="go" data-v="' + k + '" class="' + (V.page === k ? 'on' : '') + '">' + l + navBadge(k) + '</button>').join('') + '</nav><div class="foot"><a href="./" target="_blank">폰 앱 열기</a><button data-a="logout">로그아웃</button><small>v' + ADMIN_VERSION + '</small></div></aside><main>' + page + '</main>' + modalHtml();
+    html = '<aside><div class="brand">더밀착수학<small>관리자</small></div><nav>' + navList().map(([k, l]) => '<button data-a="go" data-v="' + k + '" class="' + (V.page === k ? 'on' : '') + '">' + l + navBadge(k) + '</button>').join('') + '</nav><div class="foot"><a href="./" target="_blank">폰 앱 열기</a><a href="./install.html" target="_blank">설치 안내 페이지</a><button data-a="logout">로그아웃</button><small>v' + ADMIN_VERSION + '</small></div></aside><main>' + page + '</main>' + modalHtml();
   }
   if (V.toast) html += '<div class="toast">' + esc(V.toast) + '</div>';
   const same = app.dataset.p === V.page + V.screen;

@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel } from './subjects.j
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.5.3';
+const APP_VERSION = '1.5.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -72,7 +72,7 @@ const mLabel=m=>{const s=stu(m.sid);return (s?s.name:(m.name||''))+' '+REL[m.rel
 const mChip=m=>m.st==='ok'?'<span class="chip c-ok">연결됨</span>':m.st==='pending'?'<span class="chip c-warn">승인 대기</span>':m.st==='block'?'<span class="chip c-bad">차단</span>':'<span class="chip">미가입</span>';
 function mReqRows(){const l=mPending();if(!l.length)return '<div class="empty">가입 승인 대기가 없어요</div>';return l.map(m=>'<div class="row" style="flex-wrap:wrap"><div class="av'+(m.rel!=='student'?' p':'')+'">'+(m.rel==='student'?'학생':REL[m.rel].slice(0,2))+'</div><div class="grow"><div class="nm">'+esc(mLabel(m))+'</div><div class="sub">'+esc(maskP(m.phone))+' · 등록 번호 일치</div></div><div style="display:flex;gap:6px"><button class="btn sm ghost" data-act="mRej" data-id="'+m.id+'">거절</button><button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button></div></div>').join('')}
 function inviteText(m){const s=stu(m.sid);const nm=s?s.name:(m.name||'');const who=m.rel==='student'?nm+' 학생':nm+' '+REL[m.rel];const tn=(D.cfg&&D.cfg.teacher)||'';
-  return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?tn+' 선생님':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호 입력\n3) 선생님 승인 후 이용 가능\n4) 홈 화면에 추가(설치) → 앱에서 [알림 받기] 누르기'+(m.rel==='student'&&m.grade==='중1'?'\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.':'')}
+  return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?tn+' 선생님':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\nhttps://themilchak-math.github.io/install.html\n\n가입할 때 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호를 넣어 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.'+(m.rel==='student'&&m.grade==='중1'?'\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.':'')}
 const smsHref=m=>'sms:'+m.phone+(pushIOS()?'&':'?')+'body='+encodeURIComponent(inviteText(m));
 /* ===== 학교별 시험기간 ===== */
 const EXAM_T=['1학기 중간고사','1학기 기말고사','2학기 중간고사','2학기 기말고사'];
@@ -95,7 +95,7 @@ function examView(){
 /* ===== 부원장 ===== */
 const isOwnerMe=()=>!!(D.cfg&&D.cfg.owner===ME.uid);
 const stPending=()=>(D.staff||[]).filter(x=>x.st==='pending');
-const staffInvite=x=>'[더밀착수학] '+(x.name||'')+' 선생님, 더밀착수학 관리 앱 부원장 계정 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 갤럭시는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호('+fmtP(x.phone)+')와 원하는 비밀번호 입력\n3) 원장님 승인 후 이용 가능 (PC는 https://themilchak-math.github.io/admin.html)';
+const staffInvite=x=>'[더밀착수학] '+(x.name||'')+' 선생님, 더밀착수학 관리 앱 부원장 계정 안내드려요.\n\n▶ 설치 안내: https://themilchak-math.github.io/install.html\n가입할 때 이 번호('+fmtP(x.phone)+')와 원하는 비밀번호 입력 → 원장님 승인 후 이용 (PC는 https://themilchak-math.github.io/admin.html)';
 const staffChip=x=>x.st==='ok'?'<span class="chip c-ok">사용 중</span>':x.st==='pending'?'<span class="chip c-warn">승인 대기</span>':'<span class="chip">미가입</span>';
 function staffRows(){const l=D.staff||[];if(!l.length)return '<div class="empty">등록된 부원장이 없어요</div>';return l.map(x=>'<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(x.name||'')+' 부원장</div><div class="sub">'+esc(fmtP(x.phone))+'</div></div>'+staffChip(x)+(x.st==='pending'?'<button class="btn sm ghost" data-act="stRej" data-id="'+x.id+'">거절</button><button class="btn sm" data-act="stOk" data-id="'+x.id+'">승인</button>':x.st==='none'?'<a class="btn sm" style="display:inline-flex;align-items:center;text-decoration:none" href="'+esc('sms:'+x.phone+(pushIOS()?'&':'?')+'body='+encodeURIComponent(staffInvite(x)))+'">안내 문자</a>':'')+'<button class="btn sm ghost" data-act="stDel" data-id="'+x.id+'">삭제</button></div>').join('')}
 function staffWaitView(){const x=U.staffDoc||{};return authHeader('부원장 가입 확인','원장님이 승인하면 바로 이용할 수 있어요')+'<div class="body"><div class="card"><h3>'+esc(fmtP(ME.phone))+'</h3><div class="row"><div class="grow nm">'+esc(x.name||'')+' 부원장</div><span class="chip c-warn">원장님 승인 대기</span></div></div><div class="card"><p class="sub" style="margin:0">이 화면을 닫아도 괜찮아요. 승인되면 다음에 열 때 바로 들어가져요.</p></div>'+installTip()+'<button class="btn ghost" style="width:100%" data-act="logout">로그아웃</button></div>'}
