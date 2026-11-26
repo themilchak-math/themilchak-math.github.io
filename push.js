@@ -2,7 +2,7 @@
 // 알림 서버 주소: Cloudflare Worker (push-worker/worker.js)
 import { doc, getDoc, setDoc, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-export const PUSH_URL = '';
+export const PUSH_URL = 'https://themilchak-push.djkim0075.workers.dev';
 
 const ub64u = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s); const o = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; };
 export const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
