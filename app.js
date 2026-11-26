@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } fro
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.9.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -195,18 +195,47 @@ function absTeacherCard(){
   return '<div class="card"'+(n?' style="border-color:var(--acc)"':'')+'><h3>결석 통보 <small>'+(n?'확인 안 한 '+n+'건':'예정 '+l.length+'건')+'</small></h3>'+l.map(x=>{const st=stu(x.sid);return '<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(st?st.name:'?')+' · '+fmtD(x.date)+'</div><div class="sub">'+esc(x.reason)+(x.who?' · '+esc(x.who):'')+'</div></div>'+(x.ok?'<span class="chip c-ok">확인함</span>':'<button class="btn sm" data-act="absOk" data-id="'+x.id+'">확인</button>')+'</div>'}).join('')+'</div>';
 }
 
+/* ---------- 날짜별 수업 계획 (PC 대시보드와 같은 기준) ---------- */
+const evKind=e=>e.kind||'exam';const onDay=(e,d)=>e.start<=d&&(e.end||e.start)>=d;
+// 기본 날짜: 새벽 3시 기준 영업일. 자정이 지났고 그날 등원생이 모두 하원했으면 달력상 오늘
+function homeDefault(){const biz=off(0),cal=ds(new Date());if(cal===biz)return biz;const rs=Object.values(D.att[biz]||{}).filter(r=>r.st!=='결석');return rs.every(r=>r.out)?cal:biz}
+const curDay=()=>U.dayPick||homeDefault();
+function regOf(day){ // 정산 등원 요일(원장님만) → 정규 예정 학생 id
+  if((D.exams||[]).some(e=>evKind(e)==='off'&&onDay(e,day)))return [];
+  const m=(D.fin||{})[day.slice(0,7)];if(!m||!(m.rows||[]).length)return null;const w=new Date(day+'T00:00').getDay();if(w===0)return [];
+  return D.students.filter(s=>(m.rows||[]).some(r=>(r.sid===s.id||(!r.sid&&r.name===s.name))&&(r.d||[])[w-1])).map(s=>s.id)}
+function dayPlan(day){
+  const a=D.att[day]||{};const reg=regOf(day);const ex=((D.extra[day]||{}).sids||[]).filter(id=>stu(id)&&!(reg||[]).includes(id));
+  const exSet=new Set(ex),regSet=new Set(reg||[]),absD=new Set(D.abs.filter(x=>x.date===day).map(x=>x.sid));
+  const rk=x=>regSet.has(x.id)&&!(absD.has(x.id)&&!a[x.id])?3:exSet.has(x.id)?2:absD.has(x.id)?1:0;
+  const order=[...D.students].sort((x,y)=>(rk(y)-rk(x))||(exSet.has(x.id)&&exSet.has(y.id)?ex.indexOf(x.id)-ex.indexOf(y.id):x.name.localeCompare(y.name,'ko')));
+  const plan=!!(reg||ex.length);const exp=D.students.filter(x=>rk(x)>=2);
+  const tag=x=>{const r=a[x.id];const C=(t,c)=>'<span class="chip '+(c||'')+'">'+t+'</span>';
+    if(exSet.has(x.id))return !r?C('보충 예정','c-pri'):r.st==='결석'?C('결석','c-bad'):r.out?C('완료','c-pri'):C('학습중','c-ok');
+    if(r&&r.st==='결석')return C('결석','c-bad');if(r&&r.out)return C('완료','c-pri');if(r)return C('수업중','c-ok');
+    if(absD.has(x.id))return C('결석 통보','c-bad');return regSet.has(x.id)?C('예정','c-warn'):C('없음')};
+  return {a,reg,ex,exSet,regSet,absD,rk,order,plan,exp,tag,ev:(D.exams||[]).filter(e=>onDay(e,day))};
+}
+function dayNav(day){const lbl=day===off(0)||day===ds(new Date())?'오늘':fmtD(day);return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><button class="btn sm ghost" data-act="dayM" data-v="-1">‹</button><b style="flex:1;text-align:center">'+lbl+(lbl==='오늘'?' · '+fmtD(day):'')+'</b><button class="btn sm ghost" data-act="dayM" data-v="1">›</button>'+(U.dayPick?'<button class="btn sm" data-act="dayT">오늘로</button>':'')+'</div>'}
+
 /* ---------- screens ---------- */
 function tHome(){
-  const a=D.att[TODAY]||{};
-  const present=D.students.filter(s=>a[s.id]&&a[s.id].st!=='결석').length;
+  const day=curDay();const P=dayPlan(day);const a=P.a;
+  const present=D.students.filter(s=>a[s.id]&&a[s.id].st!=='결석').length;const expIn=P.exp.filter(x=>a[x.id]&&a[x.id].st!=='결석').length;
+  const notYet=P.exp.filter(x=>!a[x.id]);const rg=notYet.filter(x=>!P.exSet.has(x.id)),sp=notYet.filter(x=>P.exSet.has(x.id));
+  const cand=D.students.filter(x=>P.rk(x)<2&&!(a[x.id]&&a[x.id].st!=='결석'));
   const toCheck=D.hw.filter(h=>h.st==='done');
-  return header(TNAME(),'오늘 '+fmtD(TODAY))+'<div class="body">'+pushCard()+
+  return header(TNAME(),'오늘 '+fmtD(TODAY)+(day!==off(0)&&!U.dayPick?' · 모두 하원해서 다음 날 기준':''))+'<div class="body">'+pushCard()+
   '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button>'+(isOwnerMe()?'<button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button>':'')+''+(isOwnerMe()?'<button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'일정 등록</button>':'')+'</div>'+
   (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
   (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+absTeacherCard()+
-  '<div class="stats"><div><b>'+present+'/'+D.students.length+'</b><span>오늘 등원</span></div><div><b>'+toCheck.length+'</b><span>확인할 숙제</span></div><div><b>'+unreadTeacher()+'</b><span>새 메시지</span></div></div>'+
-  '<div class="card"><h3>오늘 출결 <small>'+fmtD(TODAY)+'</small></h3>'+D.students.map(s=>'<div class="row"><div class="av">'+esc(s.name.slice(-2))+'</div><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(s.grade)+' · '+esc(curUnit(s))+'</div></div>'+attChip(a[s.id])+'</div>').join('')+'</div>'+
+  '<div class="stats"><div><b>'+(P.plan?expIn+'/'+P.exp.length:present+'/'+D.students.length)+'</b><span>'+(P.plan?'예정 등원'+(P.ex.length?' (보충 '+P.ex.length+')':''):'등원')+'</span></div><div><b>'+toCheck.length+'</b><span>확인할 숙제</span></div><div><b>'+unreadTeacher()+'</b><span>새 메시지</span></div></div>'+
+  (P.ev.length?'<div class="card"'+(P.ev.some(e=>evKind(e)==='off')?' style="border-color:var(--acc)"':'')+'><h3>일정</h3>'+P.ev.map(e=>examRow(e,false)).join('')+'</div>':'')+
+  '<div class="card"><h3>출결</h3>'+dayNav(day)+
+  (P.plan||P.ex.length?'<div style="margin:0 0 10px;padding:10px;border-radius:12px;background:var(--bg2,#f4f5fb)"><div class="sub" style="font-weight:700;margin-bottom:4px">아직 안 온 학생</div>'+(notYet.length?rg.map(x=>'<b>'+esc(x.name)+'</b>').join(' · ')+(sp.length?(rg.length?' &nbsp; ':'')+'<span class="chip c-pri">보충</span> '+sp.map(x=>'<b>'+esc(x.name)+'</b> <button class="btn sm ghost" style="padding:2px 8px" data-act="exDel" data-id="'+x.id+'">×</button>').join(' · '):''):'<span class="sub">'+(P.reg&&!P.reg.length&&P.ev.some(e=>evKind(e)==='off')?'교습소 휴무일이에요':'예정된 학생이 모두 왔어요')+'</span>')+'</div>':'')+
+  (cand.length?'<div style="display:flex;gap:6px;margin-bottom:10px"><select id="exSel" style="flex:1"><option value="">보충 올 학생 선택</option>'+cand.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')+'</select><button class="btn sm" data-act="exAdd">+ 보충</button></div>':'')+
+  P.order.map(s=>{const g=P.rk(s);return '<div class="row"'+(P.plan&&g===0&&!a[s.id]?' style="opacity:.5"':'')+'><div class="av">'+esc(s.name.slice(-2))+'</div><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(s.grade)+' · '+esc(curUnit(s))+'</div></div>'+(P.plan?P.tag(s)+' ':'')+attChip(a[s.id])+'</div>'}).join('')+'</div>'+
   '<div class="card"><h3>확인할 숙제</h3>'+hwList(toCheck,'teacher')+'</div>'+
   '<div class="card"><h3>최근 공지 <button class="btn sm ghost" data-act="go" data-tab="comm" data-comm="notice">전체</button></h3>'+noticeList(1)+'</div></div>';
 }
@@ -233,19 +262,19 @@ function calCard(sid,teacher){
 }
 
 function tAtt(){
-  const isT=U.attDate===TODAY;const a=D.att[U.attDate]||{};
-  return header('출결 관리',fmtD(U.attDate)+(isT?' · 오늘':''))+'<div class="body">'+
+  const isT=curDay()===TODAY;const a=D.att[curDay()]||{};
+  return header('출결 관리',fmtD(curDay())+(isT?' · 오늘':''))+'<div class="body">'+
   '<div class="card"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>'+
   '<div class="card"><h3>출결 규칙</h3><p class="sub" style="margin:0">학생이 앱에서 [등원하기]를 누르면 원장님께 승인 요청이 와요. 승인해야 등원이 기록되고, 하원은 그날 학습 정리를 올린 뒤에만 열려요. 시각 수정·삭제는 PC 관리자 [출결]에서 할 수 있어요.</p></div>'+wifiCard()+
-  '<div class="card"><label class="f"><span>날짜</span><input type="date" id="attDate" value="'+U.attDate+'"></label>'+(isOwnerMe()?'<div class="sw" style="margin:0"><span>등·하원 시 학부모님께 알림 자동 발송</span><input type="checkbox" id="autoN" '+(D.autoNotify?'checked':'')+'></div>':'')+'</div>'+
-  '<div class="card"><h3>학생별 등·하원</h3>'+D.students.map(s=>{
-    const r=a[s.id];const lg=loggedOn(s.id,U.attDate);
-    const ab=absOf(s.id,U.attDate);const line=!r&&ab?'결석 통보 · '+ab.reason+(ab.ok?'':' (확인 전)'):!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+lateLabel(r.out):lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
+  '<div class="card"><label class="f"><span>날짜</span><input type="date" id="attDate" value="'+curDay()+'"></label>'+(isOwnerMe()?'<div class="sw" style="margin:0"><span>등·하원 시 학부모님께 알림 자동 발송</span><input type="checkbox" id="autoN" '+(D.autoNotify?'checked':'')+'></div>':'')+'</div>'+
+  (()=>{const P=dayPlan(curDay());return '<div class="card"><h3>학생별 등·하원</h3>'+dayNav(curDay())+P.order.map(s=>{const g=P.rk(s);
+    const r=a[s.id];const lg=loggedOn(s.id,curDay());
+    const ab=absOf(s.id,curDay());const line=!r&&ab?'결석 통보 · '+ab.reason+(ab.ok?'':' (확인 전)'):!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+lateLabel(r.out):lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
     let act='';
     if(r&&r.st!=='결석'&&!r.out&&!lg&&isT)act='<button class="btn sm" data-act="logFor" data-id="'+s.id+'">오늘 학습 정리 올리기</button>';
     else if(!r)act='<button class="btn sm" data-act="forceIn" data-id="'+s.id+'">등원 처리</button><button class="btn sm ghost" data-act="absent" data-id="'+s.id+'">결석 처리</button>';
     else if(r.st==='결석')act='<button class="btn sm ghost" data-act="unabsent" data-id="'+s.id+'">결석 취소</button>';
-    return '<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(line)+'</div></div>'+attChip(r)+(act?'<div style="width:100%;display:flex;justify-content:flex-end">'+act+'</div>':'')+'</div>'}).join('')+'</div>'+
+    return '<div class="row" style="flex-wrap:wrap'+(P.plan&&g===0&&!r?';opacity:.5':'')+'"><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(line)+'</div></div>'+(P.plan?P.tag(s)+' ':'')+attChip(r)+(act?'<div style="width:100%;display:flex;justify-content:flex-end">'+act+'</div>':'')+'</div>'}).join('')+'</div>'})()+
   calCard(D.students.some(x=>x.id===U.calS)?U.calS:'all',true)+
   '<div class="card"><h3>최근 2주 출결 요약</h3>'+D.students.map(s=>{let c=[0,0];Object.keys(D.att).filter(d=>d>=off(-14)).forEach(d=>{const r=D.att[d][s.id];if(r)c[isIn(r)?0:1]++});return '<div class="row" style="flex-wrap:wrap"><div class="grow nm">'+esc(s.name)+'</div><span class="chip c-ok">등원 '+c[0]+'</span><span class="chip c-bad">결석 '+c[1]+'</span></div>'}).join('')+'</div></div>';
 }
@@ -348,8 +377,8 @@ function sheetHtml(){
     const f=U.lf;const s=stu(f.sid);const us=unitsOf(f.sid,f.course);
     const chips=(act,val)=>'<div class="pg">'+PCT.map(v=>'<button type="button" data-act="'+act+'" data-v="'+v+'" class="'+(val===v?'on':'')+'">'+v+'</button>').join('')+'</div>';
     const prev=f.unit&&f.unit!=='__x'?lastOf(f.sid,f.course,f.unit):null;
-    h='<h3>수업 기록 <small class="sub" style="font-weight:400">'+fmtD(TODAY)+'</small></h3>'+
-    '<div class="f"><span>학생 <small class="sub" style="font-weight:400">오늘 등원한 학생</small></span><div class="pills" style="margin:0">'+D.students.filter(x=>x.id===f.sid||isIn((D.att[TODAY]||{})[x.id])||D.logs.some(l=>l.sid===x.id&&l.date===TODAY)).map(x=>'<button type="button" data-act="lfS" data-v="'+x.id+'" class="'+(x.id===f.sid?'on':'')+'">'+esc(x.name)+'</button>').join('')+'</div></div>'+
+    h='<h3>수업 기록 <small class="sub" style="font-weight:400">'+fmtD(curDay())+'</small></h3>'+
+    '<div class="f"><span>학생 <small class="sub" style="font-weight:400">오늘 등원한 학생</small></span><div class="pills" style="margin:0">'+D.students.filter(x=>x.id===f.sid||isIn((D.att[curDay()]||{})[x.id])||D.logs.some(l=>l.sid===x.id&&l.date===curDay())).map(x=>'<button type="button" data-act="lfS" data-v="'+x.id+'" class="'+(x.id===f.sid?'on':'')+'">'+esc(x.name)+'</button>').join('')+'</div></div>'+
     (()=>{const its=f.items||[];const lab=it=>{const u=it.unit==='__x'?(it.ux||'직접 입력'):it.unit==='__none'?'단원 없음':it.unit;return it.subj+(u?' · '+u:'')};return '<div class="f"><span>오늘 한 공부 <small class="sub" style="font-weight:400">단원·과목을 여러 개 기록할 수 있어요</small></span><div class="pills" style="margin:0;flex-wrap:wrap;overflow:visible">'+its.map((it,k)=>'<button type="button" data-act="lfItem" data-v="'+k+'" class="'+(k===(f.idx||0)?'on':'')+'">'+(k+1)+'. '+esc(lab(it))+(its.length>1?' · '+(it.w||0)+'%':'')+'</button>').join('')+'<button type="button" data-act="lfAdd">+ 단원·과목 추가</button></div>'+(its.length>1?'<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;margin-top:8px">'+its.map((it,k)=>'<i style="width:'+(it.w||0)+'%;background:'+['#2b44ff','#f2522e','#0f8f47','#b86e00','#7a3cff'][k%5]+'"></i>').join('')+'</div><div class="sub" style="font-size:12px;margin-top:3px">오늘 수업 비중 합계 '+its.reduce((a,it)=>a+(+it.w||0),0)+'%</div>':'')+(its.length>1?'<button type="button" class="btn sm ghost" style="margin-top:6px" data-act="lfDelItem">'+((f.idx||0)+1)+'번 항목 빼기</button>':'')+'</div>'})()+
     '<div class="f"><span>과목 <small class="sub" style="font-weight:400">'+((f.items||[]).length>1?((f.idx||0)+1)+'번 항목의 과목':'오늘 수업한 과목')+'</small></span><div class="pills" style="margin:0">'+SUBJS.map(x=>'<button type="button" data-act="lfSj" data-v="'+x+'" class="'+(x===f.subj?'on':'')+'">'+x+'</button>').join('')+'</div></div>'+
     '<label class="f"><span>① 진도 과정 <small class="sub" style="font-weight:400">'+esc(s.grade)+' 학생</small></span><select id="lfCourse">'+GROUPS[f.subj].map(([g,cs])=>'<optgroup label="'+g+'">'+cs.map(c=>'<option'+(c===f.course?' selected':'')+'>'+c+'</option>').join('')+'</optgroup>').join('')+'</select></label>'+
@@ -365,7 +394,7 @@ function sheetHtml(){
 
 const app=document.getElementById('app');
 /* ================= 상태 ================= */
-const D={students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],autoNotify:true,cfg:null};
+const D={students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{},autoNotify:true,cfg:null};
 const ME={uid:null,phone:'',sids:[],rels:{},ths:[]};
 const U={screen:'loading',authMsg:'',authTab:'login',busy:false,wait:[],update:null,
   calM:TODAY.slice(0,7),calS:'all',calD:TODAY,page:null,pc:{},lf:null,pushX:{},
@@ -528,7 +557,7 @@ const L=(q,fn)=>dataUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',
 const B=(q,fn)=>baseUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',e.code)));
 const sortMsgs=l=>l.sort((a,b)=>(a.ts||0)-(b.ts||0));
 const sortStu=()=>D.students.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
-function resetD(){Object.assign(D,{students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[]})}
+function resetD(){Object.assign(D,{students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{}})}
 
 function subTeacher(){
   resetD();
@@ -543,6 +572,8 @@ function subTeacher(){
   L(collection(db,'exams'),s=>{D.exams=docs(s);sr()});
   L(collection(db,'staff'),s=>{D.staff=docs(s);sr()});
   L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
+  L(query(collection(db,'extra'),where('date','>=',off(-60))),s=>{D.extra={};s.docs.forEach(d=>{D.extra[d.id]=d.data()});sr()});
+  if(isOwnerMe())L(collection(db,'fin'),s=>{D.fin={};s.docs.forEach(d=>{if(d.id.startsWith('m_'))D.fin[d.id.slice(2)]=d.data()});sr()});
 }
 function subFamily(){
   resetD();const attBy={};
@@ -718,7 +749,7 @@ app.addEventListener('click',async e=>{
   if(a==='open'){U.chat=el.dataset.k;markRead(U.chat);return render()}
   if(a==='sheet'){
     if(el.dataset.s==='log'||el.dataset.s==='hw'){if(!D.students.length)return toast('학생을 먼저 등록해 주세요');}
-    U.sheet=el.dataset.s;if(U.sheet==='log'){const c=D.students.filter(x=>isIn((D.att[TODAY]||{})[x.id]));initLf((c.find(x=>x.id===U.logS)||c[0]||stu(U.logS)||D.students[0]).id)}if(U.sheet==='qr')qrStart();return render()}
+    U.sheet=el.dataset.s;if(U.sheet==='log'){const c=D.students.filter(x=>isIn((D.att[curDay()]||{})[x.id]));initLf((c.find(x=>x.id===U.logS)||c[0]||stu(U.logS)||D.students[0]).id)}if(U.sheet==='qr')qrStart();return render()}
   if(a==='close'){if(U.sheet==='qr')qrStop();if(U.sheet==='scan')stopScan();U.sheet=null;U.ret=null;U.lf=null;return render()}
   if(a==='comm'){U.comm=v;return render()}
   if(a==='hwF'){U.hwF=v;return render()}
@@ -772,9 +803,12 @@ app.addEventListener('click',async e=>{
   if(a==='wifiTog'){await updateDoc(doc(db,'config','main'),{wifiAuto:!(D.cfg&&D.cfg.wifiAuto)});return toast(D.cfg&&D.cfg.wifiAuto?'와이파이 자동 등원을 껐어요':'와이파이 자동 등원을 켰어요')}
   if(a==='wifiClr'){if(!confirm('등록된 교습소 와이파이 주소를 지울까요?'))return;await updateDoc(doc(db,'config','main'),{wifiIps:[],wifiAuto:false});return toast('지웠어요')}
   if(a==='absDel'){const x=D.abs.find(y=>y.id===id);if(!x||!confirm(fmtD(x.date)+' 결석 통보를 취소할까요?'))return;const s=stu(x.sid);await deleteDoc(doc(db,'abs',id));const tx='[결석 취소] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 취소했어요 (수업 참석)';push(['teacher'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'o',tx).catch(()=>{});return toast('결석 통보를 취소했어요')}
+  if(a==='dayM'){const d=new Date(curDay()+'T00:00');d.setDate(d.getDate()+(+v));const n=ds(d);U.dayPick=n===homeDefault()?null:n;U.calM=curDay().slice(0,7);return render()}
+  if(a==='dayT'){U.dayPick=null;U.calM=curDay().slice(0,7);return render()}
+  if(a==='exAdd'||a==='exDel'){const day=curDay();const sid=a==='exAdd'?(document.getElementById('exSel')||{}).value:id;if(!sid)return toast('보충 올 학생을 골라 주세요');await setDoc(doc(db,'extra',day),{date:day,sids:a==='exAdd'?arrayUnion(sid):arrayRemove(sid)},{merge:true});return toast((stu(sid)||{}).name+(a==='exAdd'?' 보충 추가':' 보충 취소'))}
   if(a==='absOk'){const x=D.abs.find(y=>y.id===id);if(!x)return;const s=stu(x.sid);await updateDoc(doc(db,'abs',id),{ok:true,okBy:TNAME()});const tx='[결석 확인] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 확인했어요.';push([x.sid+'|parent'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'s',tx).catch(()=>{});return toast(s.name+' 결석 확인 · 학부모님께 알렸어요')}
   if(a==='checkin'){const s=stu(U.me);if(myReq(s.id))return toast('이미 요청했어요');const t=hm();await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:t,date:TODAY,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생 '+t+' 등원 · 승인해 주세요',{tag:'req'});return toast('원장님께 등원 승인 요청을 보냈어요')}
-  if(a==='forceIn'){const s=stu(id);const t=U.attDate===TODAY?hm():(s.time||'16:00');await setDoc(doc(db,'att',U.attDate+'_'+id),{sid:id,date:U.attDate,st:'출석',at:t,by:'teacher',logged:loggedOn(id,U.attDate)});const q=(D.req||[]).find(x=>x.sid===id&&x.st==='pending');if(q)updateDoc(doc(db,'reqs',q.id),{st:'ok'}).catch(()=>{});const noti=U.attDate===TODAY&&confirm(s.name+' 학생 등원 처리했어요.\n학부모님께 등원 알림을 보낼까요?');if(noti){const tx='[등원 알림] '+s.name+' 학생이 '+t+'에 등원했습니다.';push([id+'|parent'],tx);await msg(id+'|parent',id,'s',tx).catch(()=>{})}return toast(s.name+' 등원 처리 '+t+(noti?' · 학부모 알림 발송':''))}
+  if(a==='forceIn'){const s=stu(id);const t=curDay()===TODAY?hm():(s.time||'16:00');await setDoc(doc(db,'att',curDay()+'_'+id),{sid:id,date:curDay(),st:'출석',at:t,by:'teacher',logged:loggedOn(id,curDay())});const q=(D.req||[]).find(x=>x.sid===id&&x.st==='pending');if(q)updateDoc(doc(db,'reqs',q.id),{st:'ok'}).catch(()=>{});const noti=curDay()===TODAY&&confirm(s.name+' 학생 등원 처리했어요.\n학부모님께 등원 알림을 보낼까요?');if(noti){const tx='[등원 알림] '+s.name+' 학생이 '+t+'에 등원했습니다.';push([id+'|parent'],tx);await msg(id+'|parent',id,'s',tx).catch(()=>{})}return toast(s.name+' 등원 처리 '+t+(noti?' · 학부모 알림 발송':''))}
   if(a==='cancelReq'){await deleteDoc(doc(db,'reqs',id));return toast('요청을 취소했어요')}
   if(a==='checkout'){
     const s=stu(U.me);const r=(D.att[TODAY]||{})[s.id];if(!r||!r.logged)return toast('아직 하원할 수 없어요');
@@ -782,8 +816,8 @@ app.addEventListener('click',async e=>{
     await notifyParent(s.id,'[하원 알림] '+s.name+' 학생이 '+lateLabel(out)+'에 하원했습니다.'+(sm?'\n'+sm:''));
     return toast('하원 완료! 수고했어요');
   }
-  if(a==='absent'){const s=stu(id);await setDoc(doc(db,'att',U.attDate+'_'+id),{sid:id,date:U.attDate,st:'결석',at:'',by:'teacher'});if(U.attDate===TODAY)await notifyParent(id,'[출결 알림] '+s.name+' 학생이 오늘 결석으로 처리되었습니다.');return toast('결석 처리했어요')}
-  if(a==='unabsent'){await deleteDoc(doc(db,'att',U.attDate+'_'+id));return toast('결석을 취소했어요')}
+  if(a==='absent'){const s=stu(id);await setDoc(doc(db,'att',curDay()+'_'+id),{sid:id,date:curDay(),st:'결석',at:'',by:'teacher'});if(curDay()===TODAY)await notifyParent(id,'[출결 알림] '+s.name+' 학생이 오늘 결석으로 처리되었습니다.');return toast('결석 처리했어요')}
+  if(a==='unabsent'){await deleteDoc(doc(db,'att',curDay()+'_'+id));return toast('결석을 취소했어요')}
 
   // 숙제·기록·공지
   if(a==='hwCheck'){await updateDoc(doc(db,'hw',id),{st:'checked'});return toast('숙제 확인 완료')}
@@ -800,7 +834,7 @@ app.addEventListener('change',async e=>{
   const t=e.target;
   try{
   if(t.id==='whoSel'){U.me=t.value;famRole();U.chat=null;U.tab='home';U.wifiState=null;setTimeout(autoCheckin,300);return render()}
-  if(t.id==='attDate'&&t.value){U.attDate=t.value;return render()}
+  if(t.id==='attDate'&&t.value){U.dayPick=t.value===homeDefault()?null:t.value;U.calM=curDay().slice(0,7);return render()}
   if(t.id==='autoN'){await updateDoc(doc(db,'config','main'),{autoNotify:t.checked});return toast(t.checked?'자동 알림 켬':'자동 알림 끔')}
   if(t.id==='lfCourse'){U.lf.course=t.value;U.lf.unit=null;lfStash();return render()}
   if(t.id==='lgSh'&&U.lf)U.lf.sh=t.checked;
@@ -883,19 +917,19 @@ app.addEventListener('submit',async e=>{
     U.sheet=null;U.tab='comm';U.comm='notice';return toast('공지를 올렸어요');
   }
   if(U.sheet==='log'){
-    const f=U.lf;lfStash();
+    const f=U.lf;lfStash();const LD=curDay();
     const items=f.items.map(it=>Object.assign({},it,{none:it.unit==='__none',unit:it.unit==='__x'?(it.ux||'').trim():it.unit==='__none'?'':it.unit}));
     const bad=items.findIndex(it=>!it.unit&&!it.none);if(items.length>1&&items.reduce((a,it)=>a+(+it.w||0),0)!==100)return toast('항목 비중 합이 100%가 되게 맞춰 주세요');if(bad>=0){lfOpen(bad);render();return toast((items.length>1?(bad+1)+'번 항목: ':'')+'단원을 선택해 주세요')}
     if(items.some(it=>it.none)&&!(f.cm||'').trim()){f.showCm=true;render();return toast('단원 없이 기록하려면 메모에 오늘 한 내용을 꼭 적어 주세요')}
-    const sid=f.sid;const s=stu(sid);const r=(D.att[TODAY]||{})[sid];const open=r&&r.st!=='결석'&&!r.out;
+    const sid=f.sid;const s=stu(sid);const r=(D.att[LD]||{})[sid];const open=r&&r.st!=='결석'&&!r.out&&LD===off(0);
     const b=writeBatch(db);const ts=now();
-    items.forEach((it,k)=>{const c=it.c==null?50:it.c;b.set(doc(collection(db,'logs')),{sid,date:TODAY,subj:it.subj,course:it.course,unit:it.unit,c,p:100-c,w:items.length>1?(+it.w||0):100,cm:k===0?(f.cm||'').trim():'',sh:f.sh,ts:ts+k})});
+    items.forEach((it,k)=>{const c=it.c==null?50:it.c;b.set(doc(collection(db,'logs')),{sid,date:LD,subj:it.subj,course:it.course,unit:it.unit,c,p:100-c,w:items.length>1?(+it.w||0):100,cm:k===0?(f.cm||'').trim():'',sh:f.sh,ts:ts+k})});
     const math=items.filter(it=>it.subj==='수학').pop();if(math&&s.course!==math.course)b.update(doc(db,'students',sid),{course:math.course});
-    if(r)b.update(doc(db,'att',TODAY+'_'+sid),{logged:true});
+    if(r)b.update(doc(db,'att',LD+'_'+sid),{logged:true});
     if(open)b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.',at:stamp(),ts:now(),r:false});
     await b.commit();
     if(open)push([sid+'|student'],'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.');
-    if(f.sh)await notifyParent(sid,'[수업 기록] '+fmtD(TODAY)+' '+items.map(it=>courseLabel(it.course,it.subj)+(it.unit?' '+it.unit:'')+' ('+(items.length>1?'비중 '+(+it.w||0)+'% · ':'')+'개념 '+(it.c==null?50:it.c)+'% / 문제풀이 '+(100-(it.c==null?50:it.c))+'%)').join(', ')+((f.cm||'').trim()?' · 메모: '+f.cm.trim():''));
+    if(f.sh)await notifyParent(sid,'[수업 기록] '+fmtD(LD)+' '+items.map(it=>courseLabel(it.course,it.subj)+(it.unit?' '+it.unit:'')+' ('+(items.length>1?'비중 '+(+it.w||0)+'% · ':'')+'개념 '+(it.c==null?50:it.c)+'% / 문제풀이 '+(100-(it.c==null?50:it.c))+'%)').join(', ')+((f.cm||'').trim()?' · 메모: '+f.cm.trim():''));
     const last=items[items.length-1];U.psj=U.psj||{};U.psj[sid]=last.subj;U.pc[sid]=last.course;U.logS=sid;U.sheet=null;U.lf=null;U.tab=U.ret||'log';U.ret=null;return toast((items.length>1?items.length+'개 항목 · ':'')+(open?'정리 완료 · 하원이 열렸어요':'기록을 저장했어요'));
   }
 
