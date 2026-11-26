@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } fro
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.8.9';
+const APP_VERSION = '1.9.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -201,7 +201,7 @@ function tHome(){
   const present=D.students.filter(s=>a[s.id]&&a[s.id].st!=='결석').length;
   const toCheck=D.hw.filter(h=>h.st==='done');
   return header(TNAME(),'오늘 '+fmtD(TODAY))+'<div class="body">'+pushCard()+
-  '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button>'+(isOwnerMe()?'<button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button>':'')+'<button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'일정 등록</button></div>'+
+  '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button>'+(isOwnerMe()?'<button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button>':'')+''+(isOwnerMe()?'<button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'일정 등록</button>':'')+'</div>'+
   (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
   (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+absTeacherCard()+
@@ -446,6 +446,7 @@ function updBar(){return U.update?'<div class="upd"><span>새 버전이 있어�
 function appView(){
   if(U.role!=='teacher'&&!stu(U.me))return header('불러오는 중','')+'<div class="body"><div class="empty">잠시만요...</div></div>';
   if(U.chat)return chatView();
+  if((U.page==='mng'||U.page==='exam')&&!isOwnerMe())U.page=null;
   if(U.page==='mng')return mngView();
   if(U.page==='exam')return examView();
   const map={teacher:{home:tHome,att:tAtt,hw:tHw,log:tLog,comm:tComm},student:{home:sHome,hw:sHw,log:myLog,comm:oComm},parent:{home:pHome,att:pAtt,log:myLog,comm:oComm}}[U.role];
@@ -710,7 +711,7 @@ app.addEventListener('click',async e=>{
   if(a==='reclaim'){await claim(U.wait);return toast('다시 요청했어요')}
   if(a==='go'){U.tab=el.dataset.tab;if(el.dataset.comm)U.comm=el.dataset.comm;U.chat=null;U.page=null;return render()}
   if(a==='back'){U.chat=null;U.page=null;return render()}
-  if(a==='page'){U.page=v;return render()}
+  if(a==='page'){if((v==='mng'||v==='exam')&&!isOwnerMe())return toast('원장님만 쓸 수 있는 메뉴예요');U.page=v;return render()}
   if(a==='calM'){let [y,m]=U.calM.split('-').map(Number);m+=+v;if(m<1){m=12;y--}if(m>12){m=1;y++}U.calM=y+'-'+pad(m);return render()}
   if(a==='calD'){U.calD=v;return render()}
   if(a==='calS'){U.calS=v;return render()}
