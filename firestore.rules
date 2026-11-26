@@ -123,6 +123,10 @@ service cloud.firestore {
       allow update: if isTeacher();
       allow delete: if isTeacher() || (linked(resource.data.sid) && resource.data.uid == request.auth.uid);
     }
+    match /extra/{date} {
+      // 날짜별 보충 학생: 원장님·부원장만
+      allow read, write: if isTeacher();
+    }
     match /fin/{id} {
       // 정산(원비·식대): 원장님만
       allow read, write: if isOwner();
