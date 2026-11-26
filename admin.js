@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.0.9';
+const ADMIN_VERSION = '2.1.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -82,7 +82,7 @@ const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 
 const absOf = (sid, d) => D.abs.find(x => x.sid === sid && x.date === d);
 const clsChip = (r, e, ab) => r && r.st === '결석' ? chip('결석', 'bad') : r && r.out ? chip('완료', 'pri') : r ? chip('수업중', 'ok') : ab ? chip('결석 통보', 'bad') : e ? chip('예정', 'warn') : chip('없음');
 
-const NAV0 = [['dash', '대시보드'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['students', '학생·학부모'], ['roster', '학생명부'], ['school', '재학 학교'], ['fin', '정산'], ['exam', '시험기간'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
+const NAV0 = [['dash', '대시보드'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['students', '학생·학부모'], ['roster', '학생명부'], ['school', '재학 학교'], ['fin', '정산'], ['exam', '일정 등록'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
 const navList = () => NAV0.filter(([k]) => (k !== 'staff' && k !== 'fin') || isOwnerMe());
 function navBadge(k) {
   const n = k === 'dash' ? mPending().length + pending().length : k === 'students' ? mPending().length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : k === 'staff' ? D.staff.filter(x => x.st === 'pending').length : k === 'school' ? active().filter(s => !s.school).length : 0;
@@ -101,6 +101,7 @@ function reqRows() {
 // 정산 메뉴의 등원 요일(이번 달)로 오늘 올 학생 계산. 정산 자료가 없으면 null
 function expectedToday(day) {
   day = day || TODAY;
+  if (D.exams.some(e => evKind(e) === 'off' && onDay(e, day))) return [];
   const w = new Date(day + 'T00:00').getDay(); const m = (D.fin || {})[ymOf(day)]; if (!m || !(m.rows || []).length) return null;
   if (w === 0) return [];
   return active().filter(s => (m.rows || []).some(r => (r.sid === s.id || (!r.sid && r.name === s.name)) && (r.d || [])[w - 1])).map(s => s.id);
@@ -131,11 +132,11 @@ function pDash() {
   const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>' + dayLbl + ' 등원 (' + WD[new Date(day + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (ex.length ? ' · 보충 ' + ex.length + '명 포함' : '') + (absN ? ' · 결석 통보 ' + absN + '명 제외' : '') + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>' + dayLbl + ' 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
   const rk = x => exSet.has(x.id) ? 2 : expSet.has(x.id) ? 3 : absT.has(x.id) ? 1 : 0; const order = exp ? [...st].sort((x, y) => (rk(y) - rk(x)) || (exSet.has(x.id) && exSet.has(y.id) ? ex.indexOf(x.id) - ex.indexOf(y.id) : x.name.localeCompare(y.name, 'ko'))) : st;
   return '<h1>' + esc(TNAME()) + ' </h1>' +
-    dayBar(day, isT) +
+    dayBar(day, isT) + (() => { const l = D.exams.filter(e => onDay(e, day)); return l.length ? '<section class="card' + (l.some(e => evKind(e) === 'off') ? ' hl' : '') + '"><h2>' + dayLbl + ' 일정</h2><p>' + l.map(e => kindChip(e) + ' <b>' + esc((evKind(e) !== 'off' && e.school ? e.school + ' ' : '') + e.title) + '</b>' + (e.memo ? ' <span class="sub">' + esc(e.memo) + '</span>' : '')).join(' &nbsp; ') + '</p></section>' : ''; })() +
     pushCard() + '<div class="kpis">' + kpi + '<div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
     (() => { const cand = st.filter(x => !expSet.has(x.id) && !(exB || []).includes(x.id) && !(a[x.id] && a[x.id].st !== '결석'));
       return '<section class="card' + (notYet.length ? ' hl' : '') + '"><h2>' + (day < off(0) ? '오지 않은 학생' : '아직 안 온 학생') + ' <span class="sub">' + dayLbl + ' 수업 예정' + (ex.length ? ' · 보충 ' + ex.length + '명' : '') + '</span></h2>' +
-        '<p>' + (notYet.length ? (() => { const rg = notYet.filter(x => !exSet.has(x.id)), sp = notYet.filter(x => exSet.has(x.id)); return rg.map(x => '<b>' + esc(x.name) + '</b>').join(' · ') + (sp.length ? (rg.length ? '<span style="margin:0 10px"></span>' : '') + chip('보충', 'pri') + ' ' + sp.map(x => '<b>' + esc(x.name) + '</b> <button class="btn xs ghost" data-a="exDel" data-id="' + x.id + '" title="보충 취소">×</button>').join(' · ') : ''); })() : '<span class="sub">' + (exp ? '예정된 학생이 모두 왔어요' : '정산 메뉴에 등원 요일을 넣으면 예정 학생이 보여요') + '</span>') + '</p>' +
+        '<p>' + (notYet.length ? (() => { const rg = notYet.filter(x => !exSet.has(x.id)), sp = notYet.filter(x => exSet.has(x.id)); return rg.map(x => '<b>' + esc(x.name) + '</b>').join(' · ') + (sp.length ? (rg.length ? '<span style="margin:0 10px"></span>' : '') + chip('보충', 'pri') + ' ' + sp.map(x => '<b>' + esc(x.name) + '</b> <button class="btn xs ghost" data-a="exDel" data-id="' + x.id + '" title="보충 취소">×</button>').join(' · ') : ''); })() : '<span class="sub">' + (exp ? (D.exams.some(e => evKind(e) === 'off' && onDay(e, day)) ? '교습소 휴무일이에요' : '예정된 학생이 모두 왔어요') : '정산 메뉴에 등원 요일을 넣으면 예정 학생이 보여요') + '</span>') + '</p>' +
         (cand.length ? '<div class="bar" style="margin:10px 0 0"><select id="exSel" style="width:auto"><option value="">보충 올 학생 선택</option>' + cand.map(x => '<option value="' + x.id + '">' + esc(x.name) + ' (' + esc(x.grade) + ')</option>').join('') + '</select><button class="btn sm" data-a="exAdd">+ 보충 학생 추가</button></div>' : '') + '</section>'; })() +
     (isOwnerMe() && D.staff.some(x => x.st === 'pending') ? '<section class="card hl"><h2>부원장 가입 승인</h2><table><tbody>' + D.staff.filter(x => x.st === 'pending').map(x => '<tr><td><b>' + esc(x.name || '') + ' 부원장</b></td><td>' + esc(fmtP(x.phone)) + '</td><td class="r"><button class="btn sm ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn sm" data-a="stOk" data-id="' + x.id + '">승인</button></td></tr>').join('') + '</tbody></table></section>' : '') +
     absSection() +
@@ -290,18 +291,26 @@ function pHw() {
 const EXAM_T = ['1학기 중간고사', '1학기 기말고사', '2학기 중간고사', '2학기 기말고사'];
 const schools = () => [...new Set(D.students.filter(s => !s.left).map(s => (s.school || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
 const examLive = e => (e.end || e.start) >= TODAY;
-const dday = e => { if (e.start <= TODAY) return '시험 중'; return 'D-' + Math.round((new Date(e.start + 'T00:00') - new Date(TODAY + 'T00:00')) / 864e5); };
+const dday = e => { if (e.start <= TODAY) return evKind(e) === 'exam' ? '시험 중' : evKind(e) === 'off' ? '휴무 중' : '오늘'; return 'D-' + Math.round((new Date(e.start + 'T00:00') - new Date(TODAY + 'T00:00')) / 864e5); };
+const KIND = { exam: '시험기간', off: '교습소 휴무', event: '특수 일정' };
+const evKind = e => e.kind || 'exam';
+const kindChip = e => { const k = evKind(e); return chip(KIND[k], k === 'off' ? 'bad' : k === 'event' ? 'pri' : 'warn'); };
+const KIND_T = { exam: EXAM_T, off: ['교습소 휴무', '명절 연휴 휴무', '원장님 연수 휴무', '여름 휴가', '겨울 휴가'], event: ['소풍', '체험학습', '수학여행', '학교 축제', '개교기념일', '방학식', '개학식'] };
+const onDay = (e, d) => e.start <= d && (e.end || e.start) >= d;
 function pExam() {
-  const sc = schools(); const noSc = active().filter(s => !s.school);
+  const sc = schools(); const noSc = active().filter(s => !s.school); const k = V.exK || 'exam';
   const all = [...D.exams].sort((a, b) => (examLive(b) - examLive(a)) || (a.start < b.start ? -1 : 1));
   const bySchool = sc.map(x => [x, active().filter(s => (s.school || '').trim() === x)]);
-  return '<h1>학교별 시험기간 <span class="sub">등록하면 그 학교 학생·학부모 앱 홈에 D-day로 보여요</span></h1><div class="grid2"><section class="card"><h2>시험기간 등록</h2><form id="examF" class="form">' +
-    '<label>학교<input id="exS" list="exSL" placeholder="예: 동탄중" autocomplete="off"><datalist id="exSL">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></label>' +
-    '<label>시험<input id="exT" list="exTL" placeholder="예: 2학기 기말고사" autocomplete="off"><datalist id="exTL">' + EXAM_T.map(x => '<option value="' + x + '">').join('') + '</datalist></label>' +
-    '<div class="row2"><label>시작일<input type="date" id="exA"></label><label>끝나는 날<input type="date" id="exB"></label></div><label>메모 (선택)<input id="exM" placeholder="예: 수학 12/3(수) 2교시"></label><button class="btn" type="submit">등록하고 알림 보내기</button></form>' +
-    (noSc.length ? '<p class="sub">학교 미입력: ' + noSc.map(s => esc(s.name)).join(', ') + ' → 학생·학부모 메뉴의 [수정]에서 학교를 넣어 주세요.</p>' : '') + '</section>' +
-    '<section class="card"><h2>학교별 학생</h2>' + (bySchool.length ? '<table><tbody>' + bySchool.map(([x, l]) => { const nx = D.exams.filter(e => e.school === x && examLive(e)).sort((a, b) => a.start < b.start ? -1 : 1)[0]; return '<tr><td><b>' + esc(x) + '</b></td><td>' + l.map(s => esc(s.name)).join(', ') + '</td><td class="r">' + (nx ? chip(esc(nx.title) + ' ' + dday(nx), 'warn') : '<span class="sub">일정 없음</span>') + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">학교가 입력된 학생이 없어요</p>') + '</section></div>' +
-    '<section class="card"><h2>등록된 시험 <span class="sub">' + all.length + '건</span></h2>' + (all.length ? '<table><thead><tr><th>학교</th><th>시험</th><th>기간</th><th>메모</th><th>상태</th><th></th></tr></thead><tbody>' + all.map(e => '<tr><td><b>' + esc(e.school) + '</b></td><td>' + esc(e.title) + '</td><td>' + fmtD(e.start) + (e.end && e.end !== e.start ? ' ~ ' + fmtD(e.end) : '') + '</td><td>' + esc(e.memo || '') + '</td><td>' + (examLive(e) ? chip(dday(e), 'warn') : chip('끝남')) + '</td><td class="r"><button class="btn xs ghost" data-a="exDel" data-id="' + e.id + '">삭제</button></td></tr>').join('') + '</tbody></table>' : '<p class="empty">아직 등록된 시험이 없어요</p>') + '</section>';
+  const tgt = e => evKind(e) === 'off' ? '교습소 전체' : (e.school || '전체');
+  return '<h1>일정 등록 <span class="sub">시험기간·교습소 휴무·소풍 같은 특수 일정을 등록하면 해당 학생·학부모 앱 홈에 보이고 알림이 가요</span></h1><div class="grid2"><section class="card"><h2>일정 등록</h2>' +
+    '<div class="bar" style="margin-bottom:10px">' + Object.entries(KIND).map(([kk, l]) => '<button class="btn sm ' + (k === kk ? '' : 'ghost') + '" data-a="exK" data-v="' + kk + '">' + l + '</button>').join(' ') + '</div><form id="examF" class="form">' +
+    (k === 'off' ? '<p class="sub" style="margin:0 0 8px">교습소 전체가 쉬는 날이에요. 모든 가족에게 알림이 가고, 그날은 대시보드 예정 인원이 0명이 돼요.</p>' :
+      '<label>' + (k === 'exam' ? '학교' : '대상 학교 <span class="sub">비우면 전체 학생</span>') + '<input id="exS" list="exSL" placeholder="예: 동탄중" autocomplete="off"><datalist id="exSL">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></label>') +
+    '<label>' + (k === 'exam' ? '시험' : '일정 이름') + '<input id="exT" list="exTL" placeholder="' + (k === 'exam' ? '예: 2학기 기말고사' : k === 'off' ? '예: 추석 연휴 휴무' : '예: 소풍') + '" autocomplete="off"><datalist id="exTL">' + KIND_T[k].map(x => '<option value="' + x + '">').join('') + '</datalist></label>' +
+    '<div class="row2"><label>시작일<input type="date" id="exA"></label><label>끝나는 날<input type="date" id="exB"></label></div><label>메모 (선택)<input id="exM" placeholder="' + (k === 'exam' ? '예: 수학 12/3(수) 2교시' : k === 'off' ? '예: 보충은 따로 안내드려요' : '예: 그날은 오후 6시 등원') + '"></label><button class="btn" type="submit">등록하고 알림 보내기</button></form>' +
+    (k === 'exam' && noSc.length ? '<p class="sub">학교 미입력: ' + noSc.map(s => esc(s.name)).join(', ') + ' → 학생·학부모 메뉴의 [수정]에서 학교를 넣어 주세요.</p>' : '') + '</section>' +
+    '<section class="card"><h2>학교별 학생</h2>' + (bySchool.length ? '<table><tbody>' + bySchool.map(([x, l]) => { const nx = D.exams.filter(e => evKind(e) === 'exam' && e.school === x && examLive(e)).sort((a, b) => a.start < b.start ? -1 : 1)[0]; return '<tr><td><b>' + esc(x) + '</b></td><td>' + l.map(s => esc(s.name)).join(', ') + '</td><td class="r">' + (nx ? chip(esc(nx.title) + ' ' + dday(nx), 'warn') : '<span class="sub">시험 일정 없음</span>') + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">학교가 입력된 학생이 없어요</p>') + '</section></div>' +
+    '<section class="card"><h2>등록된 일정 <span class="sub">' + all.length + '건</span></h2>' + (all.length ? '<table><thead><tr><th>종류</th><th>대상</th><th>일정</th><th>기간</th><th>메모</th><th>상태</th><th></th></tr></thead><tbody>' + all.map(e => '<tr><td>' + kindChip(e) + '</td><td><b>' + esc(tgt(e)) + '</b></td><td>' + esc(e.title) + '</td><td>' + fmtD(e.start) + (e.end && e.end !== e.start ? ' ~ ' + fmtD(e.end) : '') + '</td><td>' + esc(e.memo || '') + '</td><td>' + (examLive(e) ? chip(dday(e), 'warn') : chip('끝남')) + '</td><td class="r"><button class="btn xs ghost" data-a="exDel" data-id="' + e.id + '">삭제</button></td></tr>').join('') + '</tbody></table>' : '<p class="empty">아직 등록된 일정이 없어요</p>') + '</section>';
 }
 /* ---------- 재학 학교 일괄 등록 ---------- */
 function pSchool() {
@@ -767,7 +776,8 @@ app.addEventListener('click', async e => {
     if (a === 'stDel') { const x = D.staff.find(y => y.id === id); if (!x || !confirm((x.name || '') + ' 부원장을 삭제할까요? 그 번호로는 더 이상 관리 기능을 쓸 수 없어요.')) return; await deleteDoc(doc(db, 'staff', id)); return toast('삭제했어요'); }
     if (a === 'stCopy') { const x = D.staff.find(y => y.id === id); try { await navigator.clipboard.writeText(staffInvite(x)); toast('문구를 복사했어요'); } catch (e) { toast('복사하지 못했어요'); } return; }
     if (a === 'schF') { V.schF = v; return render(); }
-    if (a === 'exDel') { if (!confirm('이 시험 일정을 삭제할까요?')) return; await deleteDoc(doc(db, 'exams', id)); return toast('시험 일정을 삭제했어요'); }
+    if (a === 'exDel') { if (!confirm('이 일정을 삭제할까요?')) return; await deleteDoc(doc(db, 'exams', id)); return toast('일정을 삭제했어요'); }
+    if (a === 'exK') { V.exK = v; return render(); }
     if (a === 'modal') { V.modal = v; V.editId = id || null; V.bulk = null; return render(); }
     if (a === 'invite') { V.modal = 'invite'; V.inviteSids = [id]; V.invQR = null; return render(); }
     if (a === 'invQR') { V.invQR = V.invQR === id ? null : id; return render(); }
@@ -905,14 +915,15 @@ app.addEventListener('submit', async e => {
       document.getElementById('schBulk').value = ''; return toast(ids.length + '명을 ' + v + '(으)로 저장했어요');
     }
     if (f === 'examF') {
-      const school = g('exS').trim(), title = g('exT').trim(), start = g('exA'), end = g('exB') || g('exA'), memo = g('exM').trim();
-      if (!school || !title || !start) return toast('학교·시험·시작일을 입력해 주세요');
+      const kind = V.exK || 'exam', school = kind === 'off' ? '' : g('exS').trim(), title = g('exT').trim(), start = g('exA'), end = g('exB') || g('exA'), memo = g('exM').trim();
+      if ((kind === 'exam' && !school) || !title || !start) return toast(kind === 'exam' ? '학교·시험·시작일을 입력해 주세요' : '일정 이름·시작일을 입력해 주세요');
       if (end < start) return toast('끝나는 날이 시작일보다 빨라요');
-      await addDoc(collection(db, 'exams'), { school, title, start, end, memo, ts: now() });
-      const kids = active().filter(x => (x.school || '').trim() === school);
-      if (kids.length) push(kids.flatMap(x => [x.id + '|student', x.id + '|parent']), school + ' ' + title + ' · ' + fmtD(start) + (end !== start ? ' ~ ' + fmtD(end) : '') + (memo ? ' · ' + memo : ''), { title: '시험 일정 등록', tag: 'exam' });
+      await addDoc(collection(db, 'exams'), { kind, school, title, start, end, memo, ts: now() });
+      const kids = school ? active().filter(x => (x.school || '').trim() === school) : active();
+      const body = (school ? school + ' ' : '') + title + ' · ' + fmtD(start) + (end !== start ? ' ~ ' + fmtD(end) : '') + (memo ? ' · ' + memo : '');
+      if (kids.length) push(kids.flatMap(x => [x.id + '|student', x.id + '|parent']), body, { title: kind === 'exam' ? '시험 일정 등록' : kind === 'off' ? '교습소 휴무 안내' : '일정 안내', tag: 'exam' });
       ['exS', 'exT', 'exA', 'exB', 'exM'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
-      return toast(school + ' ' + title + ' 등록' + (kids.length ? ' · ' + kids.length + '명 가족에게 알림' : ' (이 학교 학생이 아직 없어요)'));
+      return toast(title + ' 등록' + (kids.length ? ' · ' + kids.length + '명 가족에게 알림' : ' (이 학교 학생이 아직 없어요)'));
     }
     if (f === 'staffF') {
       const name = g('sfN').trim(), ph = digits(g('sfP'));

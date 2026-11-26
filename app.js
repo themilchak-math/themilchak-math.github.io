@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } fro
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.8.7';
+const APP_VERSION = '1.8.8';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -78,23 +78,27 @@ function mReqRows(){const l=mPending();if(!l.length)return '<div class="empty">�
 function inviteText(m){const s=stu(m.sid);const nm=s?s.name:(m.name||'');const who=m.rel==='student'?nm+' 학생':nm+' '+REL[m.rel];const tn=(D.cfg&&D.cfg.teacher)||'';
   return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?'더밀착수학 '+tn+' 원장':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\nhttps://themilchak-math.github.io/install.html\n\n가입할 때 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호를 넣어 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.'+(m.rel==='student'&&m.grade==='중1'?'\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.':'')}
 const smsHref=m=>'sms:'+m.phone+(pushIOS()?'&':'?')+'body='+encodeURIComponent(inviteText(m));
-/* ===== 학교별 시험기간 ===== */
+/* ===== 일정(시험기간·휴무·특수 일정) ===== */
 const EXAM_T=['1학기 중간고사','1학기 기말고사','2학기 중간고사','2학기 기말고사'];
 const schools=()=>[...new Set(D.students.map(s=>(s.school||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
-const examsFor=sc=>(D.exams||[]).filter(e=>e.school===sc&&(e.end||e.start)>=TODAY).sort((a,b)=>a.start<b.start?-1:1);
-const dday=e=>{if(e.start<=TODAY)return '시험 중';const n=Math.round((new Date(e.start+'T00:00')-new Date(TODAY+'T00:00'))/864e5);return 'D-'+n};
-const examRow=(e,del)=>'<div class="row"><div class="grow"><div class="nm">'+(del?esc(e.school)+' · ':'')+esc(e.title)+'</div><div class="sub">'+fmtD(e.start)+(e.end&&e.end!==e.start?' ~ '+fmtD(e.end):'')+(e.memo?' · '+esc(e.memo):'')+'</div></div>'+((e.end||e.start)>=TODAY?'<span class="chip c-warn">'+dday(e)+'</span>':'<span class="chip">끝남</span>')+(del?'<button class="btn sm ghost" data-act="exDel" data-id="'+e.id+'">삭제</button>':'')+'</div>';
-function examCard(s){if(!s||!s.school)return '';const l=examsFor(s.school);if(!l.length)return '';return '<div class="card" style="border-color:var(--warn)"><h3>시험 일정 <small>'+esc(s.school)+'</small></h3>'+l.map(e=>examRow(e,false)).join('')+'</div>'}
+const KIND={exam:'시험기간',off:'교습소 휴무',event:'특수 일정'};const kindOf=e=>e.kind||'exam';
+const KIND_T={exam:EXAM_T,off:['교습소 휴무','명절 연휴 휴무','원장님 연수 휴무','여름 휴가','겨울 휴가'],event:['소풍','체험학습','수학여행','학교 축제','개교기념일','방학식','개학식']};
+const examsFor=sc=>(D.exams||[]).filter(e=>(kindOf(e)==='off'||!e.school||e.school===sc)&&(e.end||e.start)>=TODAY).sort((a,b)=>a.start<b.start?-1:1);
+const dday=e=>{if(e.start<=TODAY)return kindOf(e)==='exam'?'시험 중':kindOf(e)==='off'?'휴무 중':'오늘';const n=Math.round((new Date(e.start+'T00:00')-new Date(TODAY+'T00:00'))/864e5);return 'D-'+n};
+const kChip=e=>{const k=kindOf(e);return '<span class="chip '+(k==='off'?'c-bad':k==='event'?'c-pri':'c-warn')+'">'+KIND[k]+'</span> '};
+const examRow=(e,del)=>'<div class="row"><div class="grow"><div class="nm">'+kChip(e)+(kindOf(e)!=='off'&&e.school&&(del||kindOf(e)==='event')?esc(e.school)+' · ':'')+esc(e.title)+'</div><div class="sub">'+fmtD(e.start)+(e.end&&e.end!==e.start?' ~ '+fmtD(e.end):'')+(e.memo?' · '+esc(e.memo):'')+'</div></div>'+((e.end||e.start)>=TODAY?'<span class="chip c-warn">'+dday(e)+'</span>':'<span class="chip">끝남</span>')+(del?'<button class="btn sm ghost" data-act="exDel" data-id="'+e.id+'">삭제</button>':'')+'</div>';
+function examCard(s){if(!s)return '';const l=examsFor(s.school||'__none').filter(e=>kindOf(e)!=='exam'||s.school);if(!l.length)return '';return '<div class="card" style="border-color:var(--warn)"><h3>일정 <small>'+esc(s.school||'')+'</small></h3>'+l.map(e=>examRow(e,false)).join('')+'</div>'}
 function examView(){
-  const sc=schools();const noSc=D.students.filter(s=>!s.school).length;
+  const sc=schools();const noSc=D.students.filter(s=>!s.school).length;const k=U.exK||'exam';
   const all=[...(D.exams||[])].sort((a,b)=>((b.end||b.start)>=TODAY)-((a.end||a.start)>=TODAY)||(a.start<b.start?-1:1));
-  return header('학교별 시험기간','등록하면 그 학교 학생·학부모 앱에 바로 보여요',true)+'<div class="body">'+
-  '<form class="card" id="examF"><h3>시험기간 등록</h3><label class="f"><span>학교</span><input id="exS" list="exSL" placeholder="예: 동탄중" autocomplete="off"><datalist id="exSL">'+sc.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>'+
-  '<label class="f"><span>시험</span><input id="exT" list="exTL" placeholder="예: 2학기 기말고사" autocomplete="off"><datalist id="exTL">'+EXAM_T.map(x=>'<option value="'+x+'">').join('')+'</datalist></label>'+
+  return header('일정 등록','시험기간·휴무·특수 일정을 등록하면 해당 가족 앱에 바로 보여요',true)+'<div class="body">'+
+  '<form class="card" id="examF"><h3>일정 등록</h3><div class="pills" style="margin:0 0 10px">'+Object.entries(KIND).map(([kk,l])=>'<button type="button" data-act="exK" data-v="'+kk+'" class="'+(k===kk?'on':'')+'">'+l+'</button>').join('')+'</div>'+
+  (k==='off'?'<p class="sub" style="margin:0 0 10px">교습소 전체가 쉬는 날이에요. 모든 가족에게 알림이 가요.</p>':'<label class="f"><span>'+(k==='exam'?'학교':'대상 학교 (비우면 전체)')+'</span><input id="exS" list="exSL" placeholder="예: 동탄중" autocomplete="off"><datalist id="exSL">'+sc.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>')+
+  '<label class="f"><span>'+(k==='exam'?'시험':'일정 이름')+'</span><input id="exT" list="exTL" placeholder="'+(k==='exam'?'예: 2학기 기말고사':k==='off'?'예: 추석 연휴 휴무':'예: 소풍')+'" autocomplete="off"><datalist id="exTL">'+KIND_T[k].map(x=>'<option value="'+x+'">').join('')+'</datalist></label>'+
   '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>시작일</span><input type="date" id="exA"></label><label class="f"><span>끝나는 날</span><input type="date" id="exB"></label></div>'+
-  '<label class="f"><span>메모 (선택)</span><input id="exM" placeholder="예: 수학 12/3(수) 2교시"></label><button class="btn" style="width:100%" type="submit">등록하고 알림 보내기</button>'+
-  (noSc?'<p class="sub" style="margin:10px 0 0">학교가 입력되지 않은 학생이 '+noSc+'명 있어요. 학생 관리에서 학교를 넣어 주세요.</p>':'')+'</form>'+
-  '<div class="card"><h3>등록된 시험 <small>'+all.length+'건</small></h3>'+(all.length?all.map(e=>examRow(e,true)).join(''):'<div class="empty">아직 등록된 시험이 없어요</div>')+'</div></div>';
+  '<label class="f"><span>메모 (선택)</span><input id="exM" placeholder="예: 그날은 오후 6시 등원"></label><button class="btn" style="width:100%" type="submit">등록하고 알림 보내기</button>'+
+  (k==='exam'&&noSc?'<p class="sub" style="margin:10px 0 0">학교가 입력되지 않은 학생이 '+noSc+'명 있어요. 학생 관리에서 학교를 넣어 주세요.</p>':'')+'</form>'+
+  '<div class="card"><h3>등록된 일정 <small>'+all.length+'건</small></h3>'+(all.length?all.map(e=>examRow(e,true)).join(''):'<div class="empty">아직 등록된 일정이 없어요</div>')+'</div></div>';
 }
 /* ===== 부원장 ===== */
 const isOwnerMe=()=>!!(D.cfg&&D.cfg.owner===ME.uid);
@@ -197,7 +201,7 @@ function tHome(){
   const present=D.students.filter(s=>a[s.id]&&a[s.id].st!=='결석').length;
   const toCheck=D.hw.filter(h=>h.st==='done');
   return header(TNAME(),'오늘 '+fmtD(TODAY))+'<div class="body">'+pushCard()+
-  '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button><button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button><button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'시험기간</button></div>'+
+  '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button><button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button><button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'일정 등록</button></div>'+
   (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
   (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+absTeacherCard()+
@@ -738,7 +742,8 @@ app.addEventListener('click',async e=>{
   if(a==='stRej'){await updateDoc(doc(db,'staff',id),{st:'none',uid:deleteField()});return toast('거절했어요')}
   if(a==='stDel'){const x=(D.staff||[]).find(y=>y.id===id);if(!x)return;if(!U.stDelArm||U.stDelArm!==id){U.stDelArm=id;return toast('한 번 더 누르면 '+(x.name||'')+' 부원장을 삭제해요')}U.stDelArm=null;await deleteDoc(doc(db,'staff',id));return toast('삭제했어요. 그 번호로는 더 이상 관리 기능을 쓸 수 없어요')}
   if(a==='schEdit'){U.schSid=id;U.sheet='school';return render()}
-  if(a==='exDel'){if(U.exDelArm!==id){U.exDelArm=id;return toast('한 번 더 누르면 삭제해요')}U.exDelArm=null;await deleteDoc(doc(db,'exams',id));return toast('시험 일정을 삭제했어요')}
+  if(a==='exDel'){if(U.exDelArm!==id){U.exDelArm=id;return toast('한 번 더 누르면 삭제해요')}U.exDelArm=null;await deleteDoc(doc(db,'exams',id));return toast('일정을 삭제했어요')}
+  if(a==='exK'){U.exK=v;return render()}
   // 가입 승인·관리
   if(a==='mOk'){const m=D.members.find(x=>x.id===id);if(!m||!m.uid)return;const all=D.members.filter(x=>x.uid===m.uid&&x.st==='pending');const b=writeBatch(db);all.forEach(x=>linkUser(b,x));await b.commit();
     for(const x of all){if(x.rel!=='student')await msg(thOf(x.sid,x.rel),x.sid,'s','[가입 승인] '+mLabel(x)+'으로 연결되었어요. 환영합니다!')}
@@ -836,14 +841,14 @@ app.addEventListener('submit',async e=>{
   if(fid==='codeF'){const c=digits(g('codeIn'));if(c.length!==6)return toast('숫자 6자리를 입력해 주세요');stopScan();return sendCode(c)}
   if(fid==='sendF'){const t=g('msgIn').trim();if(!t)return;const [sid]=U.chat.split('|');document.getElementById('msgIn').value='';await msg(U.chat,sid,U.role==='teacher'?'t':'o',t);if(U.role==='teacher')push([U.chat],t,{title:TNAME()+' 메시지',tag:'m'+U.chat});else push(['teacher'],t,{title:famName()+' 메시지',tag:'m'+U.chat});return}
   if(fid==='examF'){
-    const school=g('exS').trim(),title=g('exT').trim(),start=g('exA'),end=g('exB')||g('exA'),memo=g('exM').trim();
-    if(!school||!title||!start)return toast('학교·시험·시작일을 입력해 주세요');
+    const kind=U.exK||'exam',school=kind==='off'?'':g('exS').trim(),title=g('exT').trim(),start=g('exA'),end=g('exB')||g('exA'),memo=g('exM').trim();
+    if((kind==='exam'&&!school)||!title||!start)return toast(kind==='exam'?'학교·시험·시작일을 입력해 주세요':'일정 이름·시작일을 입력해 주세요');
     if(end<start)return toast('끝나는 날이 시작일보다 빨라요');
-    await addDoc(collection(db,'exams'),{school,title,start,end,memo,ts:now()});
-    const kids=D.students.filter(x=>(x.school||'').trim()===school);
-    if(kids.length)push(kids.flatMap(x=>[x.id+'|student',x.id+'|parent']),school+' '+title+' · '+fmtD(start)+(end!==start?' ~ '+fmtD(end):'')+(memo?' · '+memo:''),{title:'시험 일정 등록',tag:'exam'});
+    await addDoc(collection(db,'exams'),{kind,school,title,start,end,memo,ts:now()});
+    const kids=school?D.students.filter(x=>(x.school||'').trim()===school):D.students;
+    if(kids.length)push(kids.flatMap(x=>[x.id+'|student',x.id+'|parent']),(school?school+' ':'')+title+' · '+fmtD(start)+(end!==start?' ~ '+fmtD(end):'')+(memo?' · '+memo:''),{title:kind==='exam'?'시험 일정 등록':kind==='off'?'교습소 휴무 안내':'일정 안내',tag:'exam'});
     ['exS','exT','exA','exB','exM'].forEach(i=>{const el=document.getElementById(i);if(el)el.value=''});
-    return toast(school+' '+title+' 등록'+(kids.length?' · '+kids.length+'명 가족에게 알림':' (이 학교 학생이 아직 없어요)'));
+    return toast(title+' 등록'+(kids.length?' · '+kids.length+'명 가족에게 알림':' (이 학교 학생이 아직 없어요)'));
   }
   if(U.sheet==='staff'){
     const name=g('sfN').trim(),ph=digits(g('sfP'));
