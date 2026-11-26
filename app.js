@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.2.5';
+const APP_VERSION = '1.2.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -506,7 +506,7 @@ onAuthStateChanged(auth,user=>{
   B(doc(db,'config','main'),d=>{
     D.cfg=d.exists()?d.data():null;D.autoNotify=D.cfg?D.cfg.autoNotify!==false:true;
     if(!D.cfg){if(U.pendingSetup)return;U.screen='auth';U.authMsg='아직 원장님 설정이 안 된 앱이에요.';render();return}
-    if(D.cfg.owner===ME.uid){if(U.role!=='teacher'||U.screen!=='app'){U.role='teacher';U.screen='app';stopData();subTeacher()}sr();return}
+    if(D.cfg.owner===ME.uid){if(U.role!=='teacher'||U.screen!=='app'){U.role='teacher';U.screen='app';stopData();subTeacher();autoPush()}sr();return}
     if(!U.famStarted){U.famStarted=true;startFamily()}
     sr();
   });
@@ -516,7 +516,7 @@ function startFamily(){
     const p=d.exists()?d.data():{};const sids=p.sids||[];
     const sig=JSON.stringify([sids,p.ths||[]]);
     if(sids.length){
-      if(sig!==U.famSig){U.famSig=sig;ME.sids=sids;ME.rels=p.rels||{};ME.ths=p.ths||[];if(!sids.includes(U.me))U.me=sids[0];famRole();U.screen='app';stopData();subFamily()}
+      if(sig!==U.famSig){U.famSig=sig;ME.sids=sids;ME.rels=p.rels||{};ME.ths=p.ths||[];if(!sids.includes(U.me))U.me=sids[0];famRole();U.screen='app';stopData();subFamily();autoPush()}
       sr();
     }else{U.famSig=null;ME.sids=[];stopData();U.screen='wait';watchMembers()}
   });
@@ -554,7 +554,7 @@ function pushHelp(){
   return '<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px"><b>허용 창이 안 보이나요?</b><br>아이폰 <b>설정 → 알림 → 더밀착수학</b>에서 알림 허용을 켠 뒤 앱을 다시 열어 눌러 주세요.</div>';
 }
 function pushCard(){
-  const st=pushState(ME.uid);if(st==='off'||st==='on'||U.pushHide)return '';
+  const st0=pushState(ME.uid);const st=(st0==='on'&&U.pushAutoErr)?'default':st0;if(st==='off'||st==='on'||U.pushHide)return '';
   let inner;
   if(st==='ios-install')inner='<p class="sub" style="margin:0">아이폰은 <b>홈 화면에 설치한 앱</b>에서만 알림을 받을 수 있어요. 공유 버튼 → 홈 화면에 추가 후, 설치된 앱에서 다시 열어 주세요.</p>';
   else if(st==='unsupported')inner='<p class="sub" style="margin:0">이 브라우저는 알림을 지원하지 않아요. '+(pushIOS()?'iOS 16.4 이상으로 업데이트해 주세요.':'삼성 인터넷 또는 크롬을 최신으로 업데이트해 주세요.')+'</p>';
@@ -562,7 +562,17 @@ function pushCard(){
   else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+(U.pushHint?pushHelp():'')+'';
   return '<div class="card" style="border-color:var(--pri)"><h3>알림 받기 <button class="btn sm ghost" data-act="pushHide" aria-label="닫기">나중에</button></h3>'+inner+'</div>';
 }
+// 알림이 허용돼 있으면 버튼 없이 자동 등록 (업데이트·재설치·자녀 추가 후에도 유지)
+function autoPush(){
+  try{if(!('Notification' in window)||Notification.permission!=='granted'||!ME.uid)return}catch(e){return}
+  const tg=U.role==='teacher'?['teacher']:ME.ths;if(!tg||!tg.length)return;
+  const key=ME.uid+'|'+tg.join(',');if(U.pushSynced===key)return;U.pushSynced=key;
+  enablePush(db,ME.uid,tg).then(()=>{U.pushErr=''}).catch(e=>{U.pushSynced='';console.warn('autoPush',e);U.pushAutoErr=pushErrorText(e);render()});
+}
+// 화면이 실제로 보이고 그 대화방이 열려 있을 때만 읽음 처리
+const seen=()=>document.visibilityState==='visible'&&(typeof document.hasFocus!=='function'||document.hasFocus());
 function markRead(k){
+  if(!seen())return;
   const other=U.role==='teacher'?['o']:['t','s'];const l=thread(k).filter(m=>other.includes(m.f)&&!m.r&&m.id);
   if(!l.length)return;const b=writeBatch(db);l.forEach(m=>{m.r=true;b.update(doc(db,'msgs',m.id),{r:true})});b.commit().catch(e=>console.warn(e));
 }
@@ -584,7 +594,7 @@ app.addEventListener('click',async e=>{
   if(a==='install'){if(!U.bip)return;const ev=U.bip;U.bip=null;ev.prompt();const r=await ev.userChoice.catch(()=>null);if(r&&r.outcome==='accepted')toast('설치됐어요! 홈 화면에서 열어 주세요');return render()}
   if(a==='instHow'){U.sheet='inst';return render()}
   if(a==='instX'){U.noInstall=true;try{localStorage.setItem('tmm-noinst','1')}catch(e){}return render()}
-  if(a==='pushOn'){if(U.pushBusy)return;U.pushBusy=true;U.pushErr='';U.pushHint=false;render();const hintT=setTimeout(()=>{if(U.pushBusy){U.pushHint=true;render()}},5000);try{await enablePush(db,ME.uid,U.role==='teacher'?['teacher']:ME.ths);clearTimeout(hintT);U.pushBusy=false;U.pushHint=false;toast('알림이 켜졌어요')}catch(e){clearTimeout(hintT);U.pushBusy=false;U.pushErr=pushErrorText(e);U.pushHint=/permission|dismissed|denied/.test(String(e.message));render()}return render()}
+  if(a==='pushOn'){if(U.pushBusy)return;U.pushBusy=true;U.pushErr='';U.pushHint=false;render();const hintT=setTimeout(()=>{if(U.pushBusy){U.pushHint=true;render()}},5000);try{await enablePush(db,ME.uid,U.role==='teacher'?['teacher']:ME.ths);clearTimeout(hintT);U.pushBusy=false;U.pushAutoErr='';U.pushHint=false;toast('알림이 켜졌어요')}catch(e){clearTimeout(hintT);U.pushBusy=false;U.pushErr=pushErrorText(e);U.pushHint=/permission|dismissed|denied/.test(String(e.message));render()}return render()}
   if(a==='pushHide'){U.pushHide=true;return render()}
   if(a==='authTab'){U.authTab=v;U.authMsg='';return render()}
   if(a==='logout'){qrStop();stopScan();U.famStarted=false;U.claimed=false;U.famSig=null;U.authMsg='';U.authTab='login';await signOut(auth);return}
@@ -754,5 +764,6 @@ if('serviceWorker' in navigator){
 try{U.noInstall=localStorage.getItem('tmm-noinst')==='1'}catch(e){}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();U.bip=e;render()});
 window.addEventListener('appinstalled',()=>{U.bip=null;toast('설치됐어요! 홈 화면에서 열어 주세요')});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)location.reload()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ds(new Date())!==TODAY)return location.reload();if(document.visibilityState==='visible'){if(U.chat)markRead(U.chat);autoPush()}});
+window.addEventListener('focus',()=>{if(U.chat)markRead(U.chat)});
 render();

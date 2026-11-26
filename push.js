@@ -14,7 +14,7 @@ export function pushState(uid) {
   if (!PUSH_URL) return 'off';
   if (!supported()) return isIOS() && !standalone() ? 'ios-install' : 'unsupported';
   if (Notification.permission === 'denied') return 'denied';
-  if (Notification.permission === 'granted') { try { if (localStorage.getItem('tmm-push-' + uid) === '1') return 'on'; } catch (e) { } }
+  if (Notification.permission === 'granted') return 'on'; // 허용돼 있으면 앱이 조용히 자동 등록
   return 'default';
 }
 
