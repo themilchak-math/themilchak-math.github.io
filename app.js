@@ -7,7 +7,7 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } fro
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.8.8';
+const APP_VERSION = '1.8.9';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -127,7 +127,7 @@ function noticeList(limit){
   const total=D.students.length*2;
   return list.map(n=>{
     const read=(n.reads||[]).includes(ME.uid);
-    return '<div class="notice"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+(n.pin?'<span class="chip c-bad">고정</span>':'')+'<b>'+esc(n.title)+'</b></div><div class="sub">'+fmtD(n.at)+(U.role==='teacher'?' · 읽음 '+(n.reads||[]).length+'명':(read?' · 읽음':''))+'</div><p>'+esc(n.body)+'</p>'+(U.role!=='teacher'&&!read?'<button class="btn sm ghost" style="margin-top:8px" data-act="readN" data-id="'+n.id+'">확인했어요</button>':'')+(U.role==='teacher'?'<button class="btn sm ghost" style="margin-top:8px" data-act="delN" data-id="'+n.id+'">삭제</button>':'')+'</div>';
+    return '<div class="notice"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+(n.pin?'<span class="chip c-bad">고정</span>':'')+'<b>'+esc(n.title)+'</b></div><div class="sub">'+fmtD(n.at)+(U.role==='teacher'?' · 읽음 '+(n.reads||[]).length+'명':(read?' · 읽음':''))+'</div><p>'+esc(n.body)+'</p>'+(U.role!=='teacher'&&!read?'<button class="btn sm ghost" style="margin-top:8px" data-act="readN" data-id="'+n.id+'">확인했어요</button>':'')+(isOwnerMe()?'<button class="btn sm ghost" style="margin-top:8px" data-act="delN" data-id="'+n.id+'">삭제</button>':'')+'</div>';
   }).join('');
 }
 
@@ -201,7 +201,7 @@ function tHome(){
   const present=D.students.filter(s=>a[s.id]&&a[s.id].st!=='결석').length;
   const toCheck=D.hw.filter(h=>h.st==='done');
   return header(TNAME(),'오늘 '+fmtD(TODAY))+'<div class="body">'+pushCard()+
-  '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button><button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button><button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'일정 등록</button></div>'+
+  '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button>'+(isOwnerMe()?'<button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button>':'')+'<button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'일정 등록</button></div>'+
   (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
   (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+absTeacherCard()+
@@ -285,7 +285,7 @@ function commTabs(){return '<div class="pills"><button data-act="comm" data-v="m
 
 function tComm(){
   let inner;
-  if(U.comm==='notice'){inner='<button class="btn" style="width:100%;margin-bottom:12px" data-act="sheet" data-s="notice">+ 공지 쓰기</button><div class="card">'+noticeList()+'</div>'}
+  if(U.comm==='notice'){inner=(U.role==='teacher'&&!isOwnerMe()?'<p class="sub" style="margin:0 0 10px">공지 작성은 원장님만 할 수 있어요</p>':'<button class="btn" style="width:100%;margin-bottom:12px" data-act="sheet" data-s="notice">+ 공지 쓰기</button>')+'<div class="card">'+noticeList()+'</div>'}
   else{
     const keys=[];D.students.forEach(s=>{keys.push(s.id+'|student',s.id+'|parent')});
     const items=keys.map(k=>{const t=thread(k);const last=t[t.length-1];return {k,last,un:t.filter(m=>m.f==='o'&&!m.r).length}}).sort((a,b)=>((b.last?b.last.at:'')>(a.last?a.last.at:'')?1:-1));
@@ -876,6 +876,7 @@ app.addEventListener('submit',async e=>{
     U.sheet=null;return toast('원장님께 결석을 알렸어요');
   }
   if(U.sheet==='notice'){
+    if(!isOwnerMe())return toast('공지는 원장님만 쓸 수 있어요');
     if(!g('nT').trim())return toast('제목을 입력해 주세요');
     await addDoc(collection(db,'notices'),{title:g('nT').trim(),body:g('nB').trim(),at:TODAY,pin:document.getElementById('nP').checked,reads:[],ts:now()});push(D.students.flatMap(x=>[x.id+'|student',x.id+'|parent']),g('nT').trim(),{title:'새 공지',tag:'notice'});
     U.sheet=null;U.tab='comm';U.comm='notice';return toast('공지를 올렸어요');

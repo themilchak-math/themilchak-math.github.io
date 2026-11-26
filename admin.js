@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.1.2';
+const ADMIN_VERSION = '2.1.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -83,7 +83,8 @@ const absOf = (sid, d) => D.abs.find(x => x.sid === sid && x.date === d);
 const clsChip = (r, e, ab) => r && r.st === '결석' ? chip('결석', 'bad') : r && r.out ? chip('완료', 'pri') : r ? chip('수업중', 'ok') : ab ? chip('결석 통보', 'bad') : e ? chip('예정', 'warn') : chip('없음');
 
 const NAV0 = [['dash', '대시보드'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['students', '학생 관리'], ['fin', '정산'], ['exam', '일정 등록'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
-const navList = () => NAV0.filter(([k]) => (k !== 'staff' && k !== 'fin') || isOwnerMe());
+const STAFF_PAGES = ['dash', 'att', 'log', 'hw', 'notice', 'msg']; // 부원장이 쓸 수 있는 메뉴
+const navList = () => NAV0.filter(([k]) => isOwnerMe() || STAFF_PAGES.includes(k));
 function navBadge(k) {
   const n = k === 'dash' ? mPending().length + pending().length : k === 'students' ? mPending().length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : k === 'staff' ? D.staff.filter(x => x.st === 'pending').length : k === 'school' ? active().filter(s => !s.school).length : 0;
   return n ? '<span class="badge">' + n + '</span>' : '';
@@ -586,8 +587,9 @@ function pStaff() {
 }
 function pNotice() {
   const list = [...D.notices].sort((a, b) => (b.pin - a.pin) || ((b.ts || 0) - (a.ts || 0)));
-  return '<h1>공지</h1><div class="grid2"><section class="card"><h2>공지 쓰기</h2><form id="ntF" class="form"><input id="nT" placeholder="제목"><textarea id="nB" rows="8" placeholder="내용"></textarea><label class="sw"><input type="checkbox" id="nP"> 상단 고정</label><button class="btn" type="submit">올리기</button></form></section>' +
-    '<section class="card"><h2>공지 목록</h2>' + (list.length ? list.map(n => '<div class="notice"><div>' + (n.pin ? chip('고정', 'bad') + ' ' : '') + '<b>' + esc(n.title) + '</b> <span class="sub">' + fmtD(n.at) + ' · 읽음 ' + (n.reads || []).length + '명</span></div><p>' + esc(n.body) + '</p><button class="btn xs ghost" data-a="delN" data-id="' + n.id + '">삭제</button></div>').join('') : '<p class="empty">공지가 없어요</p>') + '</section></div>';
+  const own = isOwnerMe();
+  return '<h1>공지' + (own ? '' : ' <span class="sub">공지 작성·삭제는 원장님만 할 수 있어요</span>') + '</h1><div class="' + (own ? 'grid2' : '') + '">' + (own ? '<section class="card"><h2>공지 쓰기</h2><form id="ntF" class="form"><input id="nT" placeholder="제목"><textarea id="nB" rows="8" placeholder="내용"></textarea><label class="sw"><input type="checkbox" id="nP"> 상단 고정</label><button class="btn" type="submit">올리기</button></form></section>' : '') +
+    '<section class="card"><h2>공지 목록</h2>' + (list.length ? list.map(n => '<div class="notice"><div>' + (n.pin ? chip('고정', 'bad') + ' ' : '') + '<b>' + esc(n.title) + '</b> <span class="sub">' + fmtD(n.at) + ' · 읽음 ' + (n.reads || []).length + '명</span></div><p>' + esc(n.body) + '</p>' + (own ? '<button class="btn xs ghost" data-a="delN" data-id="' + n.id + '">삭제</button>' : '') + '</div>').join('') : '<p class="empty">공지가 없어요</p>') + '</section></div>';
 }
 
 function pMsg() {
@@ -642,7 +644,7 @@ function render() {
   else if (V.screen === 'login') html = loginView();
   else {
     let page = '';
-    if ((V.page === 'staff' || V.page === 'fin') && !isOwnerMe()) V.page = 'dash';
+    if (!isOwnerMe() && !STAFF_PAGES.includes(V.page)) V.page = 'dash';
     try { page = ({ dash: pDash, qr: pAtt, students: pPeople, att: pAtt, log: pLog, hw: pHw, exam: pExam, school: pPeople, fin: pFin, roster: pPeople, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
     catch (e) { console.error(e); page = '<section class="card"><p class="err">화면 오류: ' + esc(e.message) + '</p></section>'; }
     html = '<aside><div class="brand">더밀착수학<small>관리자</small></div><nav>' + navList().map(([k, l]) => '<button data-a="go" data-v="' + k + '" class="' + (V.page === k ? 'on' : '') + '">' + l + navBadge(k) + '</button>').join('') + '</nav><div class="foot"><a href="./" target="_blank">폰 앱 열기</a><a href="./install.html" target="_blank">설치 안내 페이지</a><button data-a="logout">로그아웃</button><small>v' + ADMIN_VERSION + '</small></div></aside><main>' + page + '</main>' + modalHtml();
@@ -850,6 +852,7 @@ app.addEventListener('click', async e => {
     if (a === 'delLog') { await deleteDoc(doc(db, 'logs', id)); return toast('기록을 삭제했어요'); }
     if (a === 'hwCheck') { await updateDoc(doc(db, 'hw', id), { st: 'checked' }); return toast('숙제 확인 완료'); }
     if (a === 'hwDel') { await deleteDoc(doc(db, 'hw', id)); return toast('숙제를 삭제했어요'); }
+    if (a === 'delN' && !isOwnerMe()) return toast('공지는 원장님만 삭제할 수 있어요');
     if (a === 'delN') { await deleteDoc(doc(db, 'notices', id)); return toast('공지를 삭제했어요'); }
   } catch (err) { fail(err, err.message && !err.code ? err.message : undefined); }
 });
@@ -899,6 +902,7 @@ app.addEventListener('submit', async e => {
       await b.commit(); push(ids.map(x => x + '|student'), '[새 숙제] ' + title + ' · 마감 ' + fmtD(due)); ['hwT', 'hwR'].forEach(i => document.getElementById(i).value = ''); document.querySelectorAll('input[name=hwS]').forEach(x => x.checked = false);
       return toast(ids.length + '명에게 숙제를 냈어요');
     }
+    if (f === 'ntF' && !isOwnerMe()) return toast('공지는 원장님만 쓸 수 있어요');
     if (f === 'ntF') { if (!g('nT').trim()) return toast('제목을 입력해 주세요'); await addDoc(collection(db, 'notices'), { title: g('nT').trim(), body: g('nB').trim(), at: TODAY, pin: document.getElementById('nP').checked, reads: [], ts: now() }); push(active().flatMap(x => [x.id + '|student', x.id + '|parent']), g('nT').trim(), { title: '새 공지', tag: 'notice' }); document.getElementById('nT').value = ''; document.getElementById('nB').value = ''; return toast('공지를 올렸어요'); }
     if (f === 'attF') {
       const sid = V.attSid, d = V.attDate, isAbs = g('atSt') === 'abs', at = g('atIn'), out = g('atOut');

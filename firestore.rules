@@ -76,8 +76,9 @@ service cloud.firestore {
       allow write: if isTeacher();
     }
     match /notices/{id} {
+      // 공지 작성·삭제는 원장님만, 부원장은 읽기만
       allow read: if isTeacher() || hasProfile();
-      allow create, delete: if isTeacher();
+      allow create, delete: if isOwner();
       allow update: if isTeacher() || (hasProfile() && onlyKeys(['reads'])
         && request.resource.data.reads.toSet().difference(resource.data.reads.toSet()) == [request.auth.uid].toSet());
     }
