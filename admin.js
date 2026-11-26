@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '2.1.0';
+const ADMIN_VERSION = '2.1.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -82,7 +82,7 @@ const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 
 const absOf = (sid, d) => D.abs.find(x => x.sid === sid && x.date === d);
 const clsChip = (r, e, ab) => r && r.st === '결석' ? chip('결석', 'bad') : r && r.out ? chip('완료', 'pri') : r ? chip('수업중', 'ok') : ab ? chip('결석 통보', 'bad') : e ? chip('예정', 'warn') : chip('없음');
 
-const NAV0 = [['dash', '대시보드'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['students', '학생·학부모'], ['roster', '학생명부'], ['school', '재학 학교'], ['fin', '정산'], ['exam', '일정 등록'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
+const NAV0 = [['dash', '대시보드'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['students', '학생 관리'], ['fin', '정산'], ['exam', '일정 등록'], ['notice', '공지'], ['msg', '메시지'], ['staff', '부원장']];
 const navList = () => NAV0.filter(([k]) => (k !== 'staff' && k !== 'fin') || isOwnerMe());
 function navBadge(k) {
   const n = k === 'dash' ? mPending().length + pending().length : k === 'students' ? mPending().length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : k === 'staff' ? D.staff.filter(x => x.st === 'pending').length : k === 'school' ? active().filter(s => !s.school).length : 0;
@@ -160,11 +160,19 @@ function memCell(s, rel) {
   else if (m.st === 'block') act = '<button class="btn xs ghost" data-a="mUnblock" data-id="' + m.id + '">해제</button>';
   return '<div class="mem"><span>' + esc(fmtP(m.phone)) + '</span> ' + memChip(m) + '<span class="acts">' + act + '</span></div>';
 }
+/* ---------- 학생 관리 (연락처·앱 연결 / 학생명부 / 재학 학교 통합) ---------- */
+function pPeople() {
+  const v = V.stuV || 'list'; const noSc = active().filter(s => !s.school).length;
+  const tabs = [['list', '연락처·앱 연결'], ['roster', '학생명부 (상세)'], ['school', '재학 학교' + (noSc ? ' · 미입력 ' + noSc : '')]];
+  return '<h1>학생 관리 <span class="sub">재원 ' + active().length + '명' + (D.students.length - active().length ? ' · 퇴원 ' + (D.students.length - active().length) + '명' : '') + '</span></h1>' +
+    '<div class="bar"><button class="btn" data-a="modal" data-v="stu">+ 학생 등록</button><button class="btn ghost" data-a="modal" data-v="bulk">여러 명 붙여넣기</button><span style="flex:1"></span><label class="btn ghost" style="cursor:pointer">엑셀 불러오기<input type="file" id="xlIn" accept=".xlsx" hidden></label> <button class="btn ghost" data-a="xlOut">엑셀로 내보내기</button></div>' +
+    (mPending().length ? '<section class="card hl"><h2>가입 승인 대기</h2>' + joinRows() + '</section>' : '') +
+    '<div class="bar" style="margin:4px 0 12px">' + tabs.map(([k, l]) => '<button class="btn sm ' + (v === k ? '' : 'ghost') + '" data-a="stuV" data-v="' + k + '">' + l + '</button>').join(' ') + '</div>' +
+    (v === 'roster' ? pRoster() : v === 'school' ? pSchool() : pStudents());
+}
 function pStudents() {
   const left = D.students.filter(s => s.left);
-  return '<h1>학생·학부모 관리 <span class="sub">등록한 번호로만 가입할 수 있어요</span></h1>' +
-    '<div class="bar"><button class="btn" data-a="modal" data-v="stu">+ 학생 한 명 등록</button><button class="btn ghost" data-a="modal" data-v="bulk">엑셀에서 여러 명 붙여넣기</button></div>' +
-    (mPending().length ? '<section class="card hl"><h2>가입 승인 대기</h2>' + joinRows() + '</section>' : '') +
+  return '<p class="sub" style="margin:0 0 10px">학생·학부모 번호와 앱 연결 상태 · 번호 수정은 [수정] · 등록한 번호로만 가입할 수 있어요</p>' +
     '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>학교</th><th>수업</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
     (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.time) + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && m.st === 'none') ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
     '</tbody></table></section>' +
@@ -308,7 +316,7 @@ function pExam() {
       '<label>' + (k === 'exam' ? '학교' : '대상 학교 <span class="sub">비우면 전체 학생</span>') + '<input id="exS" list="exSL" placeholder="예: 동탄중" autocomplete="off"><datalist id="exSL">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></label>') +
     '<label>' + (k === 'exam' ? '시험' : '일정 이름') + '<input id="exT" list="exTL" placeholder="' + (k === 'exam' ? '예: 2학기 기말고사' : k === 'off' ? '예: 추석 연휴 휴무' : '예: 소풍') + '" autocomplete="off"><datalist id="exTL">' + KIND_T[k].map(x => '<option value="' + x + '">').join('') + '</datalist></label>' +
     '<div class="row2"><label>시작일<input type="date" id="exA"></label><label>끝나는 날<input type="date" id="exB"></label></div><label>메모 (선택)<input id="exM" placeholder="' + (k === 'exam' ? '예: 수학 12/3(수) 2교시' : k === 'off' ? '예: 보충은 따로 안내드려요' : '예: 그날은 오후 6시 등원') + '"></label><button class="btn" type="submit">등록하고 알림 보내기</button></form>' +
-    (k === 'exam' && noSc.length ? '<p class="sub">학교 미입력: ' + noSc.map(s => esc(s.name)).join(', ') + ' → 학생·학부모 메뉴의 [수정]에서 학교를 넣어 주세요.</p>' : '') + '</section>' +
+    (k === 'exam' && noSc.length ? '<p class="sub">학교 미입력: ' + noSc.map(s => esc(s.name)).join(', ') + ' → 학생 관리 › 재학 학교에서 넣어 주세요.</p>' : '') + '</section>' +
     '<section class="card"><h2>학교별 학생</h2>' + (bySchool.length ? '<table><tbody>' + bySchool.map(([x, l]) => { const nx = D.exams.filter(e => evKind(e) === 'exam' && e.school === x && examLive(e)).sort((a, b) => a.start < b.start ? -1 : 1)[0]; return '<tr><td><b>' + esc(x) + '</b></td><td>' + l.map(s => esc(s.name)).join(', ') + '</td><td class="r">' + (nx ? chip(esc(nx.title) + ' ' + dday(nx), 'warn') : '<span class="sub">시험 일정 없음</span>') + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">학교가 입력된 학생이 없어요</p>') + '</section></div>' +
     '<section class="card"><h2>등록된 일정 <span class="sub">' + all.length + '건</span></h2>' + (all.length ? '<table><thead><tr><th>종류</th><th>대상</th><th>일정</th><th>기간</th><th>메모</th><th>상태</th><th></th></tr></thead><tbody>' + all.map(e => '<tr><td>' + kindChip(e) + '</td><td><b>' + esc(tgt(e)) + '</b></td><td>' + esc(e.title) + '</td><td>' + fmtD(e.start) + (e.end && e.end !== e.start ? ' ~ ' + fmtD(e.end) : '') + '</td><td>' + esc(e.memo || '') + '</td><td>' + (examLive(e) ? chip(dday(e), 'warn') : chip('끝남')) + '</td><td class="r"><button class="btn xs ghost" data-a="exDel" data-id="' + e.id + '">삭제</button></td></tr>').join('') + '</tbody></table>' : '<p class="empty">아직 등록된 일정이 없어요</p>') + '</section>';
 }
@@ -317,7 +325,7 @@ function pSchool() {
   const st = active(); const sc = schools(); const no = st.filter(s => !s.school);
   const f = V.schF || 'all'; const list = f === 'none' ? no : f === 'all' ? st : st.filter(s => (s.school || '') === f);
   const dl = '<datalist id="scAll">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>';
-  return '<h1>재학 학교 등록 <span class="sub">학생별 학교를 넣고 [저장] · 여러 명을 골라 한 번에 넣을 수도 있어요</span></h1>' + dl +
+  return '<p class="sub" style="margin:0 0 10px">학생별 학교를 넣고 [저장] · 여러 명을 골라 한 번에 넣을 수도 있어요</p>' + dl +
     '<div class="grid2"><section class="card"><h2>학교별 인원</h2><table><tbody>' + sc.map(x => '<tr><td><b>' + esc(x) + '</b></td><td>' + st.filter(s => s.school === x).length + '명</td><td class="sub">' + st.filter(s => s.school === x).map(s => esc(s.name)).join(', ') + '</td></tr>').join('') + '<tr><td><b>미입력</b></td><td>' + no.length + '명</td><td class="sub">' + no.map(s => esc(s.name)).join(', ') + '</td></tr></tbody></table></section>' +
     '<section class="card"><h2>선택한 학생에게 한 번에 넣기</h2><form id="schBulkF" class="form"><label>학교 이름<input id="schBulk" list="scAll" placeholder="예: 동탄중" autocomplete="off"></label><p class="sub">아래 표에서 학생을 체크한 뒤 [선택 학생에게 적용]을 누르세요.</p><button class="btn" type="submit">선택 학생에게 적용</button></form></section></div>' +
     '<section class="card"><div class="bar" style="margin-bottom:10px"><b>보기</b> ' + [['all', '전체 ' + st.length], ['none', '미입력 ' + no.length]].concat(sc.map(x => [x, x])).map(([k, l]) => '<button class="btn xs ' + (f === k ? '' : 'ghost') + '" data-a="schF" data-v="' + esc(k) + '">' + esc(l) + '</button>').join(' ') + '</div>' +
@@ -446,8 +454,7 @@ const phoneOf = (s, rel) => { const m = memberOf(s.id, rel); if (m && m.phone) r
 function pRoster() {
   const list = [...D.students].sort((a, b) => (!!a.left - !!b.left) || a.name.localeCompare(b.name, 'ko'));
   const sc = schools();
-  return '<h1>학생명부 <span class="sub">재원·퇴원 학생 기본 정보 · 연락처 변경은 [학생·학부모] 메뉴의 [수정]에서</span></h1>' +
-    '<div class="bar"><button class="btn" data-a="modal" data-v="stu">+ 학생 등록</button><span style="flex:1"></span><label class="btn ghost" style="cursor:pointer">엑셀 불러오기<input type="file" id="xlIn" accept=".xlsx" hidden></label> <button class="btn ghost" data-a="xlOut">엑셀로 내보내기</button></div>' +
+  return '<p class="sub" style="margin:0 0 10px">재원·퇴원 학생 상세 정보(생년월일·첫 등록일·메모·학교·학년·재원 상태) · 연락처는 [연락처·앱 연결]의 [수정]에서</p>' +
     '<datalist id="rsSc">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>' +
     '<section class="card scroll"><form id="rosterF"><table class="fin"><thead><tr><th>No</th><th>이름</th><th>생년월일</th><th>학생 연락처</th><th>모 연락처</th><th>부 연락처</th><th>학교</th><th>학년</th><th>구분</th><th>첫 등록일</th><th>상태</th><th>메모</th></tr></thead><tbody>' +
     (list.length ? list.map((s, i) => { const si = D.sinfo[s.id] || {}; const P = 'rs_' + s.id + '_';
@@ -627,7 +634,7 @@ function render() {
   else {
     let page = '';
     if ((V.page === 'staff' || V.page === 'fin') && !isOwnerMe()) V.page = 'dash';
-    try { page = ({ dash: pDash, qr: pAtt, students: pStudents, att: pAtt, log: pLog, hw: pHw, exam: pExam, school: pSchool, fin: pFin, roster: pRoster, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
+    try { page = ({ dash: pDash, qr: pAtt, students: pPeople, att: pAtt, log: pLog, hw: pHw, exam: pExam, school: pPeople, fin: pFin, roster: pPeople, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
     catch (e) { console.error(e); page = '<section class="card"><p class="err">화면 오류: ' + esc(e.message) + '</p></section>'; }
     html = '<aside><div class="brand">더밀착수학<small>관리자</small></div><nav>' + navList().map(([k, l]) => '<button data-a="go" data-v="' + k + '" class="' + (V.page === k ? 'on' : '') + '">' + l + navBadge(k) + '</button>').join('') + '</nav><div class="foot"><a href="./" target="_blank">폰 앱 열기</a><a href="./install.html" target="_blank">설치 안내 페이지</a><button data-a="logout">로그아웃</button><small>v' + ADMIN_VERSION + '</small></div></aside><main>' + page + '</main>' + modalHtml();
   }
@@ -777,6 +784,7 @@ app.addEventListener('click', async e => {
     if (a === 'stCopy') { const x = D.staff.find(y => y.id === id); try { await navigator.clipboard.writeText(staffInvite(x)); toast('문구를 복사했어요'); } catch (e) { toast('복사하지 못했어요'); } return; }
     if (a === 'schF') { V.schF = v; return render(); }
     if (a === 'exDel') { if (!confirm('이 일정을 삭제할까요?')) return; await deleteDoc(doc(db, 'exams', id)); return toast('일정을 삭제했어요'); }
+    if (a === 'stuV') { V.stuV = v; return render(); }
     if (a === 'exK') { V.exK = v; return render(); }
     if (a === 'modal') { V.modal = v; V.editId = id || null; V.bulk = null; return render(); }
     if (a === 'invite') { V.modal = 'invite'; V.inviteSids = [id]; V.invQR = null; return render(); }
