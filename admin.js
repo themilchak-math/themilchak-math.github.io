@@ -7,7 +7,7 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel } from './s
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 
-const ADMIN_VERSION = '1.9.4';
+const ADMIN_VERSION = '1.9.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -194,7 +194,7 @@ const ratioOf = l => { const c = +l.c || 0, p = +l.p || 0, t = c + p; return t ?
 function defaultsFor(s, sj) {
   if (!sj) { const l0 = latest(s.id); sj = l0 ? subjOf(l0) : '수학'; }
   const l = latestIn(s.id, sj); const course = l ? l.course : (sj === '수학' ? s.course : defCourse(s.grade, sj));
-  const unit = l ? l.unit : (unitsOf(s.id, course)[0] || null); const c = l ? ratioOf(l) : 50;
+  const unit = l ? l.unit : (unitsOf(s.id, course)[0] || null); const c = l ? Math.round(ratioOf(l) / 10) * 10 : 50;
   return { subj: sj, course, unit, c, pp: 100 - c };
 }
 const opt = (v, cur, label) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label ?? v) + '</option>';
@@ -214,9 +214,9 @@ function pLog() {
         '<td><select id="lj_' + key + '" data-sid="' + key + '" class="lj" style="min-width:78px">' + SUBJS.map(x => opt(x, d.subj)).join('') + '</select></td>' +
         '<td><select id="lc_' + key + '" data-sid="' + key + '" class="lc">' + courseOpts(d.subj, d.course) + '</select></td>' +
         '<td><select id="lu_' + key + '" data-sid="' + key + '" class="lu">' + unitsOf(s.id, d.course).map(u => { const x = lastOf(s.id, d.course, u); return opt(u, d.unit, (x ? '• ' : '') + u); }).join('') + '</select></td>' +
+        '<td>' + (nK > 1 ? '<select id="lw_' + key + '" data-sid="' + key + '" class="lw" style="min-width:76px">' + [10, 20, 30, 40, 50, 60, 70, 80, 90].map(v => opt(String(v), String(wDef), v + '%')).join('') + '</select>' : '<span class="sub">100%</span>') + '</td>' +
         '<td><select id="lpc_' + key + '">' + PCT.map(v => opt(String(v), String(d.c), v + '%')).join('') + '</select></td>' +
         '<td><select id="lpp_' + key + '">' + PCT.map(v => opt(String(v), String(d.pp), v + '%')).join('') + '</select></td>' +
-        '<td>' + (nK > 1 ? '<select id="lw_' + key + '" data-sid="' + key + '" class="lw">' + [10, 20, 30, 40, 50, 60, 70, 80, 90].map(v => opt(String(v), String(wDef), v + '%')).join('') + '</select>' : '<span class="sub">100%</span>') + '</td>' +
         '<td>' + (first ? '<input id="lm_' + s.id + '" placeholder="특별한 일만">' : '') + '</td>' +
         '<td class="cen">' + (first ? '<input type="checkbox" id="ls_' + s.id + '" checked>' : '') + '</td>' +
         '<td>' + (first && done.length ? chip('오늘 ' + done.length + '건 저장됨', 'ok') : '') + '</td>' +
@@ -225,7 +225,7 @@ function pLog() {
   }).join('');
   return '<h1>수업 기록 <span class="sub">' + fmtD(TODAY) + ' · 등원한 학생은 미리 체크돼 있어요 · 두 단원·과목 이상 했으면 [+ 단원·과목] · 개념 비중을 고르면 문제풀이는 자동(합 100%)</span></h1>' +
     '<div class="bar"><button class="btn" data-a="saveChecked">체크한 학생 한꺼번에 저장</button><span class="sub">저장하면 그 학생의 하원 버튼이 열리고, 공유를 켜 둔 기록은 학부모님께 알림이 가요</span></div>' +
-    '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>오늘 개념 비중</th><th>문제풀이 비중</th><th>항목 비중</th><th>특별 메모</th><th>공유</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="12" class="empty">학생이 없어요</td></tr>') + '</tbody></table></section>' +
+    '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>항목 비중</th><th>오늘 개념 비중</th><th>문제풀이 비중</th><th>특별 메모</th><th>공유</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="12" class="empty">학생이 없어요</td></tr>') + '</tbody></table></section>' +
     '<section class="card"><h2>최근 기록</h2>' + recentLogs() + '</section>';
 }
 function recentLogs() {
