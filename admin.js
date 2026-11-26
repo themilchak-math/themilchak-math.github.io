@@ -5,7 +5,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { pushState, enablePush, sendPush } from './push.js';
 
-const ADMIN_VERSION = '1.1.0';
+const ADMIN_VERSION = '1.2.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -62,6 +62,19 @@ const latest = sid => sortLogs(D.logs.filter(l => l.sid === sid)).pop();
 const unitsOf = (sid, course) => { const base = CUR[course] || []; const extra = [...new Set(D.logs.filter(l => l.sid === sid && l.course === course && !base.includes(l.unit)).map(l => l.unit))]; return base.concat(extra); };
 const unreadAll = () => Object.values(D.threads).reduce((a, t) => a + t.filter(m => m.f === 'o' && !m.r).length, 0);
 const TNAME = () => ((D.cfg && D.cfg.teacher) || '원장') + ' 선생님';
+const APP_URL = 'https://themilchak-math.github.io';
+const isIOSdev = () => /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function inviteText(m) {
+  const s = stu(m.sid); const nm = s ? s.name : (m.name || '');
+  const who = m.rel === 'student' ? nm + ' 학생' : nm + ' ' + REL[m.rel];
+  const tn = (D.cfg && D.cfg.teacher) || '';
+  return '[더밀착수학] 안녕하세요, ' + who + '. ' + (tn ? tn + ' 선생님' : '더밀착수학') + '입니다.\n' + (m.rel === 'student' ? '출결·숙제·수업 기록' : '출결·수업 기록·숙제·공지') + '을 확인하는 교습소 앱 안내드려요.\n\n'
+    + '1) 아래 주소 열기 (아이폰은 사파리, 안드로이드는 크롬)\n' + APP_URL + '\n'
+    + '2) [처음이에요 · 가입하기] → 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호 입력\n'
+    + '3) 선생님 승인 후 이용 가능\n'
+    + '4) 홈 화면에 추가(설치) → 앱에서 [알림 받기] 누르기' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');
+}
+const smsHref = (m) => 'sms:' + m.phone + (isIOSdev() ? '&' : '?') + 'body=' + encodeURIComponent(inviteText(m));
 const thOf = (sid, rel) => sid + '|' + (rel === 'student' ? 'student' : 'parent');
 
 /* ---------- 화면 조각 ---------- */
@@ -117,7 +130,7 @@ function pStudents() {
     '<div class="bar"><button class="btn" data-a="modal" data-v="stu">+ 학생 한 명 등록</button><button class="btn ghost" data-a="modal" data-v="bulk">엑셀에서 여러 명 붙여넣기</button></div>' +
     (mPending().length ? '<section class="card hl"><h2>가입 승인 대기</h2>' + joinRows() + '</section>' : '') +
     '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>수업</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
-    (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + esc(s.time) + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r"><button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="8" class="empty">아직 등록된 학생이 없어요</td></tr>') +
+    (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + esc(s.time) + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && m.st === 'none') ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="8" class="empty">아직 등록된 학생이 없어요</td></tr>') +
     '</tbody></table></section>' +
     (left.length ? '<details class="card"><summary>퇴원한 학생 ' + left.length + '명</summary><table><tbody>' + left.map(s => '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.grade) + '</td><td class="r"><button class="btn xs ghost" data-a="rejoin" data-id="' + s.id + '">복귀</button></td></tr>').join('') + '</tbody></table></details>' : '');
 }
@@ -211,6 +224,12 @@ function modalHtml() {
     return '<div class="mbg" data-a="close"><form class="modal" id="stuF"><h2>' + (s ? esc(s.name) + ' 정보 수정' : '학생 등록') + '</h2><label>학생 이름<input id="sN" value="' + esc(s ? s.name : '') + '"></label><div class="row2"><label>학년<select id="sG">' + GRADES.map(g => opt(g, s ? s.grade : '중2')).join('') + '</select></label><label>수업 시작<input type="time" id="sT" value="' + esc(s ? s.time : '16:00') + '"></label></div>' + (s ? '<label>현재 과정<select id="sC">' + COURSES.map(c => opt(c, s.course)).join('') + '</select></label>' : '') + ph('student') + ph('father') + ph('mother') +
       '<p class="sub">가족이 이 번호로 가입하면 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 이미 가입한 부모님 계정에 자동 연결돼요.</p><div class="mf">' + (s ? '<button type="button" class="btn ghost danger" data-a="leave" data-id="' + s.id + '">퇴원 처리</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit">저장</button></div></form></div>';
   }
+  if (V.modal === 'invite') {
+    const list = D.members.filter(m => (V.inviteSids || []).includes(m.sid) && m.phone).sort((a, b) => (V.inviteSids.indexOf(a.sid) - V.inviteSids.indexOf(b.sid)) || ['student', 'father', 'mother'].indexOf(a.rel) - ['student', 'father', 'mother'].indexOf(b.rel));
+    return '<div class="mbg" data-a="close"><div class="modal wide"><h2>가입 안내 문자 보내기</h2><p class="sub">원장님 휴대폰 문자로 보내요 (무료, 원장님 요금제). <b>PC에서는</b> QR을 폰 카메라로 찍으면 받는 사람과 문구가 채워진 문자 화면이 열려요 → 전송만 누르세요. <b>폰에서는</b> [문자 앱 열기]를 누르면 돼요.</p>' +
+      (list.length ? '<table><tbody>' + list.map(m => '<tr><td><b>' + esc(mLabel(m)) + '</b><div class="sub">' + esc(fmtP(m.phone)) + '</div></td><td>' + memChip(m) + '</td><td class="r"><a class="btn xs" href="' + esc(smsHref(m)) + '">문자 앱 열기</a> <button class="btn xs ghost" data-a="invQR" data-id="' + m.id + '">' + (V.invQR === m.id ? 'QR 닫기' : 'QR') + '</button> <button class="btn xs ghost" data-a="invCopy" data-id="' + m.id + '">문구 복사</button></td></tr>' + (V.invQR === m.id ? '<tr><td colspan="3" style="text-align:center"><div id="invQRBox" style="display:inline-block;padding:14px;background:#fff;border:1px solid var(--line);border-radius:14px"></div><p class="sub">폰 기본 카메라로 찍으세요 → 뜨는 알림을 누르면 문자 화면이 열려요</p></td></tr>' : '')).join('') + '</tbody></table>' : '<p class="empty">보낼 번호가 없어요</p>') +
+      '<details style="margin-top:8px"><summary class="sub">보낼 문구 미리보기</summary><pre style="white-space:pre-wrap;font:inherit;background:var(--soft);padding:10px;border-radius:10px">' + esc(list[0] ? inviteText(list[0]) : '') + '</pre></details><div class="mf"><span style="flex:1"></span><button type="button" class="btn" data-a="close">닫기</button></div></div></div>';
+  }
   if (V.modal === 'bulk') {
     const b = V.bulk;
     return '<div class="mbg" data-a="close"><form class="modal wide" id="bulkF"><h2>엑셀에서 여러 명 붙여넣기</h2><p class="sub">엑셀에서 아래 순서로 열을 맞춰 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣기(Ctrl+V) 하세요. 첫 줄이 제목이면 자동으로 건너뛰어요.<br><b>이름 · 학년(중1~고3) · 수업 시작(16:00) · 학생 번호 · 아버님 번호 · 어머님 번호</b></p><textarea id="bulkIn" rows="7" placeholder="홍길동	중2	16:00	010-1111-2222	010-3333-4444	010-5555-6666"></textarea><button type="button" class="btn ghost" data-a="bulkCheck">미리보기</button>' +
@@ -249,6 +268,7 @@ function render() {
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
   const cb = document.getElementById('chatBody'); if (cb) cb.scrollTop = cb.scrollHeight;
   if (V.page === 'qr' && V.screen === 'app') drawQR();
+  if (V.modal === 'invite' && V.invQR) { const box = document.getElementById('invQRBox'); const m = D.members.find(x => x.id === V.invQR); if (box && m && window.QRCode) { box.innerHTML = ''; new window.QRCode(box, { text: 'SMSTO:' + m.phone + ':' + inviteText(m), width: 300, height: 300, correctLevel: window.QRCode.CorrectLevel.L }); } }
 }
 let rT = null; const sr = () => { if (rT) return; rT = requestAnimationFrame(() => { rT = null; render(); }); };
 let tt; const toast = m => { V.toast = m; clearTimeout(tt); tt = setTimeout(() => { V.toast = ''; render(); }, 3000); render(); };
@@ -346,6 +366,9 @@ app.addEventListener('click', async e => {
     if (a === 'pushHide') { V.pushHide = true; return render(); }
     if (a === 'logout') { qrStop(); await signOut(auth); return; }
     if (a === 'modal') { V.modal = v; V.editId = id || null; V.bulk = null; return render(); }
+    if (a === 'invite') { V.modal = 'invite'; V.inviteSids = [id]; V.invQR = null; return render(); }
+    if (a === 'invQR') { V.invQR = V.invQR === id ? null : id; return render(); }
+    if (a === 'invCopy') { const m = D.members.find(x => x.id === id); try { await navigator.clipboard.writeText(inviteText(m)); toast('문구를 복사했어요. 카톡·문자에 붙여넣으세요'); } catch (e) { toast('복사하지 못했어요'); } return; }
     if (a === 'close') { V.modal = null; V.editId = null; V.bulk = null; return render(); }
     if (a === 'calM') { let [y, m] = V.calM.split('-').map(Number); m += +v; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } V.calM = y + '-' + pad(m); return render(); }
     if (a === 'open') { V.chat = v; markRead(v); return render(); }
@@ -427,7 +450,7 @@ app.addEventListener('submit', async e => {
       const name = g('sN').trim(); if (!name) return toast('이름을 입력해 주세요');
       const grade = g('sG'), time = g('sT') || '16:00'; const ph = { student: digits(g('p_student')), father: digits(g('p_father')), mother: digits(g('p_mother')) };
       if (Object.values(ph).some(x => x && (x.length < 10 || x.length > 11))) return toast('휴대폰번호를 확인해 주세요');
-      const b = writeBatch(db); let auto = false;
+      const b = writeBatch(db); let auto = false; let newSid = null;
       if (V.editId) {
         const sid = V.editId; b.update(doc(db, 'students', sid), { name, grade, time, course: g('sC') || stu(sid).course });
         for (const rel of ['student', 'father', 'mother']) {
@@ -440,17 +463,18 @@ app.addEventListener('submit', async e => {
         }
       } else {
         if (!Object.values(ph).some(x => x)) return toast('번호를 하나 이상 등록해 주세요');
-        const ref = doc(collection(db, 'students')); b.set(ref, { name, grade, time, course: DEF_COURSE[grade], ts: now() });
+        const ref = doc(collection(db, 'students')); newSid = ref.id; b.set(ref, { name, grade, time, course: DEF_COURSE[grade], ts: now() });
         Object.entries(ph).forEach(([rel, p]) => { if (p) auto = addMember(b, ref.id, rel, p, name, grade) || auto; });
       }
       await b.commit(); V.modal = null; const ed = V.editId; V.editId = null;
+      if (!ed && newSid) { V.modal = 'invite'; V.inviteSids = [newSid]; V.invQR = null; }
       return toast(name + (ed ? ' 정보를 저장했어요' : ' 등록 완료') + (auto ? ' · 형제 부모님 계정에 자동 연결' : ''));
     }
     if (f === 'bulkF') {
       const ok = (V.bulk || []).filter(r => !r.err); if (!ok.length) return;
       const b = writeBatch(db);
-      ok.forEach(r => { const ref = doc(collection(db, 'students')); b.set(ref, { name: r.name, grade: r.grade, time: r.time, course: DEF_COURSE[r.grade], ts: now() }); ['student', 'father', 'mother'].forEach(rel => { if (r[rel]) addMember(b, ref.id, rel, r[rel], r.name, r.grade); }); });
-      await b.commit(); V.modal = null; V.bulk = null; return toast(ok.length + '명 등록 완료');
+      const sids = []; ok.forEach(r => { const ref = doc(collection(db, 'students')); sids.push(ref.id); b.set(ref, { name: r.name, grade: r.grade, time: r.time, course: DEF_COURSE[r.grade], ts: now() }); ['student', 'father', 'mother'].forEach(rel => { if (r[rel]) addMember(b, ref.id, rel, r[rel], r.name, r.grade); }); });
+      await b.commit(); V.bulk = null; V.modal = 'invite'; V.inviteSids = sids; V.invQR = null; return toast(ok.length + '명 등록 완료 · 가입 안내 문자를 보내 주세요');
     }
   } catch (err) { fail(err); }
 });

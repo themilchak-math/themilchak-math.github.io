@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { firebaseConfig } from './firebase-config.js';
 import { PUSH_URL, pushState, enablePush, sendPush, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -83,11 +83,14 @@ const mPending=()=>(D.members||[]).filter(m=>m.st==='pending');
 const mLabel=m=>{const s=stu(m.sid);return (s?s.name:(m.name||''))+' '+REL[m.rel]};
 const mChip=m=>m.st==='ok'?'<span class="chip c-ok">연결됨</span>':m.st==='pending'?'<span class="chip c-warn">승인 대기</span>':m.st==='block'?'<span class="chip c-bad">차단</span>':'<span class="chip">미가입</span>';
 function mReqRows(){const l=mPending();if(!l.length)return '<div class="empty">가입 승인 대기가 없어요</div>';return l.map(m=>'<div class="row" style="flex-wrap:wrap"><div class="av'+(m.rel!=='student'?' p':'')+'">'+(m.rel==='student'?'학생':REL[m.rel].slice(0,2))+'</div><div class="grow"><div class="nm">'+esc(mLabel(m))+'</div><div class="sub">'+esc(maskP(m.phone))+' · 등록 번호 일치</div></div><div style="display:flex;gap:6px"><button class="btn sm ghost" data-act="mRej" data-id="'+m.id+'">거절</button><button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button></div></div>').join('')}
+function inviteText(m){const s=stu(m.sid);const nm=s?s.name:(m.name||'');const who=m.rel==='student'?nm+' 학생':nm+' '+REL[m.rel];const tn=(D.cfg&&D.cfg.teacher)||'';
+  return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?tn+' 선생님':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n1) 아래 주소 열기 (아이폰은 사파리, 안드로이드는 크롬)\nhttps://themilchak-math.github.io\n2) [처음이에요 · 가입하기] → 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호 입력\n3) 선생님 승인 후 이용 가능\n4) 홈 화면에 추가(설치) → 앱에서 [알림 받기] 누르기'+(m.rel==='student'&&m.grade==='중1'?'\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.':'')}
+const smsHref=m=>'sms:'+m.phone+(pushIOS()?'&':'?')+'body='+encodeURIComponent(inviteText(m));
 function mngView(){
   return header('학생·학부모 관리','등록한 번호로만 가입할 수 있어요',true)+'<div class="body">'+
   '<div class="card"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>'+
   '<button class="btn" style="width:100%;margin-bottom:12px" data-act="sheet" data-s="stu">+ 학생 등록</button>'+
-  D.students.map(s=>'<div class="card"><h3>'+esc(s.name)+' <small>'+esc(s.grade)+' · 수업 '+esc(s.time)+'</small></h3>'+['student','father','mother'].map(rel=>{const m=(D.members||[]).find(x=>x.sid===s.id&&x.rel===rel);return '<div class="row"><div class="grow"><div class="nm" style="font-weight:500">'+REL[rel]+'</div><div class="sub">'+(m?esc(fmtP(m.phone)):'번호 미등록')+'</div></div>'+(m?mChip(m):'<span class="chip">없음</span>')+(m&&m.st==='ok'?'<button class="btn sm ghost" data-act="mReset" data-id="'+m.id+'">비번 분실</button><button class="btn sm ghost" data-act="mBlock" data-id="'+m.id+'">차단</button>':m&&m.st==='block'?'<button class="btn sm ghost" data-act="mUnblock" data-id="'+m.id+'">해제</button>':m&&m.st==='pending'?'<button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button>':'')+'</div>'}).join('')+'</div>').join('')+'</div>';
+  D.students.map(s=>'<div class="card"><h3>'+esc(s.name)+' <small>'+esc(s.grade)+' · 수업 '+esc(s.time)+'</small></h3>'+['student','father','mother'].map(rel=>{const m=(D.members||[]).find(x=>x.sid===s.id&&x.rel===rel);return '<div class="row"><div class="grow"><div class="nm" style="font-weight:500">'+REL[rel]+'</div><div class="sub">'+(m?esc(fmtP(m.phone)):'번호 미등록')+'</div></div>'+(m?mChip(m):'<span class="chip">없음</span>')+(m&&m.st==='ok'?'<button class="btn sm ghost" data-act="mReset" data-id="'+m.id+'">비번 분실</button><button class="btn sm ghost" data-act="mBlock" data-id="'+m.id+'">차단</button>':m&&m.st==='block'?'<button class="btn sm ghost" data-act="mUnblock" data-id="'+m.id+'">해제</button>':m&&m.st==='pending'?'<button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button>':m&&m.st==='none'?'<a class="btn sm" style="display:inline-flex;align-items:center;text-decoration:none" href="'+esc(smsHref(m))+'">안내 문자</a>':'')+'</div>'}).join('')+'</div>').join('')+'</div>';
 }
 const pending=()=>(D.req||[]).filter(q=>q.st==='pending');
 const myReq=sid=>pending().find(q=>q.sid===sid);
@@ -719,7 +722,7 @@ app.addEventListener('submit',async e=>{
       const m={sid,rel,phone:p,st:ex?'ok':'none',name,grade,guardianOk:false};if(ex){m.uid=ex.uid;autoLinked.push(ex)}b.set(mref,m);
       if(ex)b.set(doc(db,'users',ex.uid),{sids:arrayUnion(sid),rels:{[sid]:rel},ths:arrayUnion(thOf(sid,rel))},{merge:true})});
     await b.commit();U.sheet=null;
-    return toast(name+' 등록 완료'+(autoLinked.length?' · 형제 부모님 계정에 자동 연결':' · 가족에게 앱 링크만 보내주세요'));
+    U.page='mng';return toast(name+' 등록 완료'+(autoLinked.length?' · 형제 부모님 계정에 자동 연결':' · [안내 문자]로 가입 안내를 보내세요'));
   }
   }catch(err){U.busy=false;fail(err)}
 });
