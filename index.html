@@ -247,14 +247,22 @@ button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}
 }
 /* iOS 26 홈 화면 앱 버그: 화면 높이가 상태바만큼 짧게 계산돼 아래 메뉴가 떠 보임 → 실제 화면 크기로 높이 고정 */
 html.ios-pwa,html.ios-pwa body{background:var(--scr)}
-html.ios-pwa .phone{bottom:auto;height:var(--app-h,100%)}
+html.ios-pwa .phone{bottom:auto;top:var(--app-top,0px);height:var(--app-h,100%)}
+html.ios-pwa .send{padding-bottom:max(10px,env(safe-area-inset-bottom))}
+html.ios-pwa.kb .send{padding-bottom:10px}
 </style>
 <script>
 /* 아이폰 홈 화면 앱: 화면 실제 높이로 맞추기 */
 (function(){var ua=navigator.userAgent;var ios=/iPhone|iPod/.test(ua)||(/iPad/.test(ua));var sa=window.navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
 if(!ios||!sa)return;var r=document.documentElement;r.classList.add('ios-pwa');
-function fit(){var land=Math.abs(window.orientation||0)===90||(screen.orientation&&/landscape/.test(screen.orientation.type));var h=land?Math.min(screen.width,screen.height):Math.max(screen.width,screen.height);r.style.setProperty('--app-h',Math.max(h,window.innerHeight)+'px')}
-fit();window.addEventListener('resize',fit);window.addEventListener('orientationchange',function(){setTimeout(fit,300)});})();
+function fit(){var land=Math.abs(window.orientation||0)===90||(screen.orientation&&/landscape/.test(screen.orientation.type));var h=Math.max(land?Math.min(screen.width,screen.height):Math.max(screen.width,screen.height),window.innerHeight);
+ /* 키보드가 열리면 보이는 영역에 맞춰 입력칸이 키보드 바로 위에 오게, 닫히면 화면 전체로 */
+ var vv=window.visualViewport,kb=!!(vv&&h-vv.height>150);r.classList.toggle('kb',kb);
+ r.style.setProperty('--app-h',(kb?vv.height:h)+'px');r.style.setProperty('--app-top',(kb?vv.offsetTop:0)+'px')}
+fit();window.addEventListener('resize',fit);window.addEventListener('orientationchange',function(){setTimeout(fit,300)});
+if(window.visualViewport){visualViewport.addEventListener('resize',fit);visualViewport.addEventListener('scroll',fit)}
+/* 키보드를 닫은 뒤 iOS가 화면을 위로 밀어 둔 채 남겨 두는 문제 → 원위치 */
+document.addEventListener('focusout',function(){setTimeout(function(){if(!(document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)))window.scrollTo(0,0);fit()},80)});})();
 </script>
 </head>
 <body>
