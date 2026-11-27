@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.4.4';
+const ADMIN_VERSION = '2.4.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -514,7 +514,8 @@ function pRoster() {
     '<datalist id="rsSc">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>' +
     '<section class="card scroll"><form id="rosterF"><table class="fin"><thead><tr><th>No</th><th>이름</th><th>생년월일</th><th>학생 연락처</th><th>모 연락처</th><th>부 연락처</th><th>학교</th><th>학년</th><th>구분</th><th>첫 등록일</th><th>상태</th><th>메모</th></tr></thead><tbody>' +
     (list.length ? list.map((s, i) => { const si = D.sinfo[s.id] || {}; const P = 'rs_' + s.id + '_';
-      return '<tr' + (s.left ? ' class="left"' : '') + '><td>' + (i + 1) + '</td><td><b>' + esc(s.name) + '</b></td><td><input type="date" id="' + P + 'birth" data-rs="' + s.id + '" value="' + esc(si.birth || '') + '"></td>' +
+      const nL = list.filter(x => x.left).length; const sep = s.left && (i === 0 || !list[i - 1].left) ? '<tr class="lefthd"><td colspan="12"><button type="button" class="btn sm ghost" data-a="showLeft">' + (V.showLeft ? '▾ 퇴원생 ' + nL + '명 접기' : '▸ 퇴원생 ' + nL + '명 펼치기') + '</button></td></tr>' : '';
+      return sep + '<tr' + (s.left ? ' class="left"' + (V.showLeft ? '' : ' style="display:none"') : '') + '><td>' + (s.left ? '' : i + 1) + '</td><td><b>' + esc(s.name) + '</b></td><td><input type="date" id="' + P + 'birth" data-rs="' + s.id + '" value="' + esc(si.birth || '') + '"></td>' +
         ['student', 'mother', 'father'].map(rel => '<td class="sub">' + esc(fmtP(phoneOf(s, rel))) + '</td>').join('') +
         '<td><input id="' + P + 'school" data-rs="' + s.id + '" list="rsSc" value="' + esc(s.school || '') + '" style="width:90px"></td><td><select id="' + P + 'grade" data-rs="' + s.id + '">' + GRADES.map(g => opt(g, s.grade)).join('') + '</select></td><td class="sub">' + kindOf(s.grade) + '</td>' +
         '<td><input type="date" id="' + P + 'joined" data-rs="' + s.id + '" value="' + esc(si.joined || '') + '"></td><td><select id="' + P + 'st" data-rs="' + s.id + '">' + opt('재원', s.left ? '퇴원' : '재원') + opt('퇴원', s.left ? '퇴원' : '재원') + '</select></td>' +
@@ -863,6 +864,7 @@ app.addEventListener('click', async e => {
     if (a === 'apDel') { const x = D.apply.find(y => y.id === id); if (!x || !confirm(x.name + ' 학생 신청서를 삭제할까요?')) return; await deleteDoc(doc(db, 'apply', id)); return toast('신청서를 삭제했어요'); }
     if (a === 'apOk') { const x = D.apply.find(y => y.id === id); if (!x) return; if (D.students.some(s => s.name === x.name) && !confirm('이미 ' + x.name + ' 학생이 있어요. 그래도 새로 등록할까요?')) return;
       const r = await approveApply(x); V.page = 'students'; V.modal = 'invite'; V.inviteSids = [r.sid]; V.invQR = null; render(); return toast(x.name + ' 등록 완료' + (r.auto ? ' · 형제 부모님 계정에 자동 연결' : '') + ' · 설치 안내 문자를 보내 주세요'); }
+    if (a === 'showLeft') { V.showLeft = !V.showLeft; return render(); }
     if (a === 'stuV') { V.stuV = v; return render(); }
     if (a === 'schM') { if (+v === 0) V.schM = null; else { const [y, m] = (V.schM || TODAY.slice(0, 7)).split('-').map(Number); const d = new Date(y, m - 1 + +v, 1); V.schM = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); } return render(); }
     if (a === 'exK') { V.exK = v; return render(); }
