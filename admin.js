@@ -7,11 +7,10 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
-import { ensureCodes } from './invcode.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.8.6';
+const ADMIN_VERSION = '2.9.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -94,11 +93,10 @@ function inviteText(m) {
   const tn = (D.cfg && D.cfg.teacher) || '';
   return '[더밀착수학] 안녕하세요, ' + who + '. ' + (tn ? '더밀착수학 ' + tn + ' 원장' : '더밀착수학') + '입니다.\n' + (m.rel === 'student' ? '출결·숙제·수업 기록' : '출결·수업 기록·숙제·공지') + '을 확인하는 교습소 앱 안내드려요.\n\n'
     + '▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\n' + APP_URL + '/install.html\n\n'
-    + '가입할 때 이 번호(' + fmtP(m.phone) + ')' + (m.code ? '와 아래 가입 코드, ' : '와 ') + '원하는 비밀번호를 넣어 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'
-    + (m.code ? '🔑 가입 코드: ' + m.code + '\n' : '')
+    + '가입할 때 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호를 넣고, 문자로 오는 인증번호 6자리를 입력해 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'
     + '설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');
 }
-const shortInvite = m => '[더밀착수학] ' + mLabel(m) + ' 앱 안내\n설치: https://themilchak-math.github.io/install.html\n가입 번호: ' + fmtP(m.phone) + (m.code ? '\n가입 코드: ' + m.code : '') + ' (비밀번호는 원하는 걸로)';
+const shortInvite = m => '[더밀착수학] ' + mLabel(m) + ' 앱 안내\n설치: https://themilchak-math.github.io/install.html\n가입 번호: ' + fmtP(m.phone) + ' (가입할 때 문자 인증 · 비밀번호는 원하는 걸로)';
 const KAKAO_JS_KEY = '1a4da179bbea2afbb606a5d77bf4caf4';
 function kakaoReady() {
   if (window.Kakao && Kakao.isInitialized && Kakao.isInitialized()) return Promise.resolve(true);
@@ -120,7 +118,7 @@ async function kakaoInvite(m) {
   } catch (e) { return toast('카카오톡 공유를 열지 못했어요: ' + (e.message || e)); }
   try {
     Kakao.Share.sendDefault({ objectType: 'feed',
-      content: { title: '[더밀착수학] ' + mLabel(m) + ' 앱 설치 안내', description: '가입 번호: ' + fmtP(m.phone) + (m.code ? ' · 🔑 가입 코드: ' + m.code : '') + ' (비밀번호는 원하는 걸로) · 설치 후 [알림 받기]를 꼭 눌러 주세요',
+      content: { title: '[더밀착수학] ' + mLabel(m) + ' 앱 설치 안내', description: '가입 번호: ' + fmtP(m.phone) + ' (비밀번호는 원하는 걸로, 가입할 때 문자 인증) · 설치 후 [알림 받기]를 꼭 눌러 주세요',
         imageUrl: APP_URL + '/icon-512.png?v=2', imageWidth: 512, imageHeight: 512, link: { mobileWebUrl: inst, webUrl: inst } },
       buttons: [{ title: '설치 안내 보기', link: { mobileWebUrl: inst, webUrl: inst } }] });
   } catch (e) { toast('카카오톡 공유를 열지 못했어요: ' + (e.message || e)); }
@@ -146,7 +144,7 @@ const pushOn = m => {
   return (D.push[m.sid + '|parent'] || []).some(e => !known.has(e));
 };
 const pushMark = m => { const o = pushOn(m); return o === true ? ' <span title="알림 켜짐">🔔</span>' : o === false ? ' ' + chip('🔕 알림 꺼짐', 'warn') : ''; };
-const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') + pushMark(m) : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입') + (m.code ? ' <span class="sub" title="가입 코드">🔑' + m.code + '</span>' : '');
+const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') + pushMark(m) : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입');
 const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 'done' ? chip('제출함', 'pri') : h.due < TODAY ? chip('기한 지남', 'bad') : chip('진행 중', 'warn');
 
 const absOf = (sid, d) => D.abs.find(x => x.sid === sid && x.date === d);
@@ -783,7 +781,7 @@ function modalHtml() {
   if (V.modal === 'invite') {
     const list = D.members.filter(m => (V.inviteSids || []).includes(m.sid) && needsInvite(m)).sort((a, b) => (V.inviteSids.indexOf(a.sid) - V.inviteSids.indexOf(b.sid)) || ['student', 'father', 'mother'].indexOf(a.rel) - ['student', 'father', 'mother'].indexOf(b.rel));
     const pv = [list.find(m => m.st === 'none'), list.find(m => m.st === 'ok')].filter(Boolean);
-    return '<div class="mbg" data-a="close"><div class="modal wide"><h2>가입·알림 안내 보내기</h2><p class="sub">아직 가입 안 한 사람에게는 <b>가입 안내</b>(가입 코드 포함), 가입했지만 알림이 꺼진 사람에게는 <b>알림 켜기 안내</b>가 가요. 이미 다 된 사람은 목록에 안 나와요.<br><b>[카톡으로 보내기]</b>를 누르면 카카오톡 공유 창이 열려요 → 받을 사람(친구·채팅방)을 고르고 보내기. 처음 한 번은 카카오 계정 로그인이 필요해요. 문자로 보내려면 [QR]을 폰 카메라로 찍거나, 폰에서 [문자 앱 열기]를 누르세요.</p>' +
+    return '<div class="mbg" data-a="close"><div class="modal wide"><h2>가입·알림 안내 보내기</h2><p class="sub">아직 가입 안 한 사람에게는 <b>가입 안내</b>, 가입했지만 알림이 꺼진 사람에게는 <b>알림 켜기 안내</b>가 가요. 이미 다 된 사람은 목록에 안 나와요.<br><b>[카톡으로 보내기]</b>를 누르면 카카오톡 공유 창이 열려요 → 받을 사람(친구·채팅방)을 고르고 보내기. 처음 한 번은 카카오 계정 로그인이 필요해요. 문자로 보내려면 [QR]을 폰 카메라로 찍거나, 폰에서 [문자 앱 열기]를 누르세요.</p>' +
       (list.length ? '<table><tbody>' + list.map(m => '<tr><td><b>' + esc(mLabel(m)) + '</b><div class="sub">' + esc(fmtP(m.phone)) + '</div></td><td>' + memChip(m) + '<div class="sub" style="margin-top:3px">' + (m.st === 'ok' ? '→ 알림 켜기 안내' : '→ 가입 안내') + '</div></td><td class="r" style="white-space:nowrap"><button class="btn xs" data-a="invKakao" data-id="' + m.id + '" style="background:#FEE500;color:#191919;border-color:#FEE500">카톡으로 보내기</button> <a class="btn xs ghost" href="' + esc(smsHref(m)) + '">문자 앱 열기</a> <button class="btn xs ghost" data-a="invQR" data-id="' + m.id + '">' + (V.invQR === m.id ? 'QR 닫기' : 'QR') + '</button> <button class="btn xs ghost" data-a="invCopy" data-id="' + m.id + '">문구 복사</button></td></tr>' + (V.invQR === m.id ? '<tr><td colspan="3" style="text-align:center"><div id="invQRBox" style="display:inline-block;padding:14px;background:#fff;border:1px solid var(--line);border-radius:14px"></div><p class="sub">폰 기본 카메라로 찍으세요 → 뜨는 알림을 누르면 문자 화면이 열려요</p></td></tr>' : '')).join('') + '</tbody></table>' : '<p class="empty">보낼 번호가 없어요</p>') +
       pv.map(m => '<details style="margin-top:8px"><summary class="sub">' + (m.st === 'ok' ? '알림 켜기 안내' : '가입 안내') + ' 문구 미리보기</summary><pre style="white-space:pre-wrap;font:inherit;background:var(--soft);padding:10px;border-radius:10px">' + esc(inviteText(m)) + '</pre></details>').join('') + '<div class="mf"><span style="flex:1"></span><button type="button" class="btn" data-a="close">닫기</button></div></div></div>';
   }
@@ -840,7 +838,6 @@ const fail = (e, m) => { console.error(e); toast(m || '저장하지 못했어요
 
 /* ---------- 데이터 ---------- */
 let unsubs = [];
-let codeT = null; const codesSoon = () => { if (!isOwnerMe() || !D.inv) return; clearTimeout(codeT); codeT = setTimeout(() => ensureCodes(db, D.members, D.inv), 700); };
 const L = (q, fn) => unsubs.push(onSnapshot(q, fn, e => console.warn('구독 오류', e.code)));
 function subscribe() {
   L(doc(db, 'config', 'main'), d => { D.cfg = d.exists() ? d.data() : null; sr(); });
@@ -852,8 +849,7 @@ function subscribe() {
   L(collection(db, 'notices'), s => { D.notices = docs(s); sr(); });
   L(query(collection(db, 'reqs'), where('st', '==', 'pending')), s => { D.req = docs(s); sr(); });
   L(collection(db, 'push'), s => { D.push = Object.fromEntries(s.docs.map(d => [d.id, (d.data().subs || []).map(x => x.endpoint)])); sr(); });
-  L(collection(db, 'members'), s => { D.members = docs(s); codesSoon(); sr(); });
-  if (isOwnerMe()) L(collection(db, 'inv'), s => { D.inv = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); codesSoon(); });
+  L(collection(db, 'members'), s => { D.members = docs(s); sr(); });
   L(collection(db, 'exams'), s => { D.exams = docs(s); sr(); });
   L(collection(db, 'staff'), s => { D.staff = docs(s); sr(); });
   L(query(collection(db, 'abs'), where('date', '>=', off(-400))), s => { D.abs = docs(s); sr(); });
