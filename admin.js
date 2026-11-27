@@ -7,10 +7,10 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
-import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, targetSids, okLink, BOARD_CSS } from './board.js';
+import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.6.4';
+const ADMIN_VERSION = '2.6.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -675,7 +675,7 @@ function pNotice() {
   if (!V.usage && !V.usageLoad) { V.usageLoad = 1; storageUsage(auth).then(u => { V.usage = u; render(); }).catch(() => { V.usage = { err: 1 }; render(); }); }
   const us = V.usage && !V.usage.err ? '<p class="sub" style="margin-top:10px">저장소 ' + fmtSize(V.usage.bytes) + ' / 무료 10GB 사용 중 (' + V.usage.n + '개 파일)</p>' : V.usage && V.usage.err ? '<p class="sub" style="margin-top:10px;color:var(--acc)">파일 저장소에 연결하지 못했어요 (사진·파일 첨부 불가, 드라이브 링크는 가능)</p>' : '';
   const gs = GRADES.filter(g => active().some(x => x.grade === g));
-  const toOpts = '<option value="all">전체 (모든 학생·부모님)</option><optgroup label="학년만">' + gs.map(g => '<option value="g:' + g + '">' + g + ' 학생·부모님만</option>').join('') + '</optgroup><optgroup label="한 학생만 (그 학생과 부모님)">' + active().map(x => '<option value="s:' + x.id + '">' + esc(x.name) + ' (' + esc(x.grade) + ')</option>').join('') + '</optgroup>';
+  const toOpts = TO_OPTS.map(o => '<option value="' + o[0] + '">' + o[1] + '</option>').join('');
   const q = V.bf || [], ql = V.bl || [];
   const form = '<section class="card"><h2>글쓰기 <span class="sub">' + (own ? '원장님·부원장만 쓸 수 있어요' : '공지는 원장님만 · 자료실·앨범·가정통신문은 부원장도') + '</span></h2><form id="bF" class="form">' +
     '<div class="row2"><label>말머리<select id="bCat">' + cats.map(c => '<option value="' + c[0] + '">' + c[1] + '</option>').join('') + '</select></label><label>보는 사람<select id="bTo">' + toOpts + '</select></label></div>' +
@@ -1063,14 +1063,14 @@ app.addEventListener('submit', async e => {
       if (V.bBusy) return; const cat = g('bCat') || 'notice', title = g('bT').trim(), body = g('bB').trim();
       if (cat === 'notice' && !isOwnerMe()) return toast('공지는 원장님만 쓸 수 있어요');
       if (!title) return toast('제목을 입력해 주세요');
-      const tv = g('bTo') || 'all'; const to = tv === 'all' ? { t: 'all' } : tv.startsWith('g:') ? { t: 'grade', v: tv.slice(2) } : { t: 'sid', v: tv.slice(2) };
+      const to = parseTo(g('bTo'));
       const q = V.bf || [], files = [];
       try {
         for (let i = 0; i < q.length; i++) { V.bBusy = '올리는 중… ' + (i + 1) + '/' + q.length; render(); files.push(await uploadFile(auth, q[i])); }
         V.bBusy = '저장 중…'; render();
         await addDoc(collection(db, 'notices'), { cat, title, body, at: g('bD') || TODAY, pin: !!(document.getElementById('bPin') || {}).checked, reads: [], ts: now(), by: auth.currentUser.uid, byName: TNAME(), to, files, links: V.bl || [] });
       } catch (err) { V.bBusy = ''; await deleteFiles(auth, files.map(x => x.k)); render(); return toast(err.message || '올리지 못했어요'); }
-      push(targetSids(to, D.students).flatMap(x => [x + '|student', x + '|parent']), title, { title: catPush(cat), tag: 'notice' });
+      push(pushKeys(to, D.students), title, { title: catPush(cat), tag: 'notice' });
       ['bT', 'bB', 'bD'].forEach(x => { document.getElementById(x).value = ''; }); V.bf = []; V.bl = []; V.bBusy = ''; V.usage = null; V.usageLoad = 0;
       return toast(catLabel(cat) + ' 글을 올렸어요' + (files.length ? ' (첨부 ' + files.length + '개)' : ''));
     }

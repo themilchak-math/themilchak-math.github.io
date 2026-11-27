@@ -6,11 +6,11 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, isAct } from './subjects.js';
 import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
-import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fmtSize, filesHtml, lightbox, visibleTo, toLabel, targetSids, okLink, BOARD_CSS } from './board.js';
+import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fmtSize, filesHtml, lightbox, visibleTo, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.2.3';
+const APP_VERSION = '2.2.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -64,7 +64,7 @@ const ic=n=>'<svg viewBox="0 0 24 24">'+IC[n]+'</svg>';
 const unreadTeacher=()=>Object.values(D.threads).reduce((a,t)=>a+t.filter(m=>m.f==='o'&&!m.r).length,0);
 const unreadMine=()=>fthread(myKey()).filter(m=>(m.f==='t'||m.f==='s')&&!m.r).length;
 const mySids=()=>U.role==='student'?[U.me]:U.role==='parent'?famSids(U.me):[];
-const seenPosts=()=>U.role==='teacher'?D.notices:D.notices.filter(n=>visibleTo(n,mySids(),x=>(stu(x)||{}).grade));
+const seenPosts=()=>U.role==='teacher'?D.notices:D.notices.filter(n=>visibleTo(n,mySids(),x=>(stu(x)||{}).grade,U.role));
 const canDelPost=n=>isOwnerMe()||(U.role==='teacher'&&catOf(n)!=='notice');
 const unreadNotice=()=>U.role==='teacher'?0:seenPosts().filter(n=>!(n.reads||[]).includes(ME.uid)).length;
 
@@ -401,7 +401,7 @@ function sheetHtml(){
   if(t==='school'){const s=stu(U.schSid)||{};h='<h3>'+esc(s.name||'')+' 학교</h3><label class="f"><span>학교</span><input id="scIn" list="scInL" value="'+esc(s.school||'')+'" placeholder="예: 동탄중" autocomplete="off"><datalist id="scInL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>'}
   if(t==='abs'){const s=stu(U.me)||{};h='<h3>'+esc(s.name||'')+' 결석 알리기</h3><label class="f"><span>결석하는 날</span><input type="date" id="abD" min="'+TODAY+'" value="'+TODAY+'"></label><label class="f"><span>사유</span><textarea id="abR" placeholder="예: 가족 행사, 병원 진료, 학교 행사"></textarea></label><p class="sub" style="margin:0 0 10px">저장하면 원장님과 선생님께 바로 알림이 가요. 날짜가 지나기 전에는 취소할 수 있어요.</p>'}
   if(t==='notice'){const own=isOwnerMe();const cats=own?CATS:CATS.filter(c=>c[0]!=='notice');const gs=['초4','초5','초6','중1','중2','중3','고1','고2','고3'].filter(g=>D.students.some(x=>x.grade===g));const q=U.bf||[];
-    h='<h3>소식 글쓰기</h3><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>말머리</span><select id="bCat">'+cats.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('')+'</select></label><label class="f"><span>보는 사람</span><select id="bTo"><option value="all">전체</option>'+gs.map(g=>'<option value="g:'+g+'">'+g+'만</option>').join('')+D.students.map(x=>'<option value="s:'+x.id+'">'+esc(x.name)+'만</option>').join('')+'</select></label></div>'+
+    h='<h3>소식 글쓰기</h3><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>말머리</span><select id="bCat">'+cats.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('')+'</select></label><label class="f"><span>보는 사람</span><select id="bTo">'+TO_OPTS.map(o=>'<option value="'+o[0]+'">'+o[1]+'</option>').join('')+'</select></label></div>'+
     '<label class="f"><span>날짜 <small class="sub" style="font-weight:400">비워 두면 오늘</small></span><input type="date" id="bD"></label><label class="f"><span>제목</span><input id="nT"></label><label class="f"><span>내용</span><textarea id="nB"></textarea></label>'+
     '<label class="btn ghost" style="display:block;text-align:center;cursor:pointer;margin-bottom:6px">📷 사진·파일 고르기<input type="file" id="bFile" multiple accept="image/*,.pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" hidden></label><p class="sub" style="margin:0 0 6px">사진은 자동으로 줄여서 올려요 · 파일 하나 50MB까지</p>'+
     (q.length?'<ul class="bq">'+q.map((x,i)=>'<li>'+(/^image\//.test(x.type)?'🖼️':'📎')+' <span class="n">'+esc(x.name)+'</span><span class="sub">'+fmtSize(x.size)+'</span><button type="button" class="btn sm ghost" style="padding:2px 8px" data-act="bfDel" data-id="'+i+'">×</button></li>').join('')+'</ul>':'')+
@@ -952,13 +952,13 @@ app.addEventListener('submit',async e=>{
     if(U.bBusy)return;const cat=g('bCat')||'notice',title=g('nT').trim(),body=g('nB').trim(),lu=g('bLu').trim();
     if(cat==='notice'&&!isOwnerMe())return toast('공지는 원장님만 쓸 수 있어요');
     if(!title)return toast('제목을 입력해 주세요');if(lu&&!okLink(lu))return toast('https:// 로 시작하는 링크를 넣어 주세요');
-    const tv=g('bTo')||'all';const to=tv==='all'?{t:'all'}:tv.startsWith('g:')?{t:'grade',v:tv.slice(2)}:{t:'sid',v:tv.slice(2)};
+    const to=parseTo(g('bTo'));
     const q=U.bf||[],files=[];
     try{for(let i=0;i<q.length;i++){U.bBusy='올리는 중… '+(i+1)+'/'+q.length;render();files.push(await uploadFile(auth,q[i]))}
       U.bBusy='저장 중…';render();
       await addDoc(collection(db,'notices'),{cat,title,body,at:g('bD')||TODAY,pin:!!(document.getElementById('nP')||{}).checked,reads:[],ts:now(),by:ME.uid,byName:TNAME(),to,files,links:lu?[{name:'구글 드라이브 자료',url:lu}]:[]});
     }catch(err){U.bBusy='';await deleteFiles(auth,files.map(x=>x.k));render();return toast(err.message||'올리지 못했어요')}
-    push(targetSids(to,D.students).flatMap(x=>[x+'|student',x+'|parent']),title,{title:catPush(cat),tag:'notice'});
+    push(pushKeys(to,D.students),title,{title:catPush(cat),tag:'notice'});
     U.bBusy='';U.bf=[];U.sheet=null;U.tab='comm';U.comm='notice';U.bcat='all';return toast(catLabel(cat)+' 글을 올렸어요');
   }
   if(U.sheet==='log'){

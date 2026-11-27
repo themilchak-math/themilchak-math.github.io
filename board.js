@@ -55,10 +55,14 @@ export async function storageUsage(auth) {
 export const fmtSize = b => b >= 1024 ** 3 ? (b / 1024 ** 3).toFixed(2) + 'GB' : b >= 1024 ** 2 ? (b / 1024 ** 2).toFixed(1) + 'MB' : Math.max(1, Math.round(b / 1024)) + 'KB';
 
 /* ---------- 누구에게 보이나 ---------- */
-// to: { t:'all' } | { t:'grade', v:'중2' } | { t:'sid', v:'학생id' }
-export const visibleTo = (n, sids, gradeOf) => { const to = n.to || { t: 'all' }; if (to.t === 'grade') return sids.some(s => gradeOf(s) === to.v); if (to.t === 'sid') return sids.includes(to.v); return true; };
-export const toLabel = (n, nameOf) => { const to = n.to || { t: 'all' }; return to.t === 'grade' ? to.v + ' 전체' : to.t === 'sid' ? (nameOf(to.v) || '학생') + ' 학생 가족' : '전체'; };
-export const targetSids = (to, students) => students.filter(s => !s.left && (!to || to.t === 'all' || (to.t === 'grade' && s.grade === to.v) || (to.t === 'sid' && s.id === to.v))).map(s => s.id);
+// to: { t:'all' } 모두 | { t:'student' } 학생만 | { t:'parent' } 학부모만
+// (예전 글: { t:'grade', v } / { t:'sid', v } 도 그대로 보여요)
+export const TO_OPTS = [['all', '모두'], ['student', '학생만'], ['parent', '학부모만']];
+export const parseTo = v => ({ t: v === 'student' || v === 'parent' ? v : 'all' });
+export const visibleTo = (n, sids, gradeOf, role) => { const to = n.to || { t: 'all' }; if (to.t === 'student' || to.t === 'parent') return to.t === role; if (to.t === 'grade') return sids.some(s => gradeOf(s) === to.v); if (to.t === 'sid') return sids.includes(to.v); return true; };
+export const toLabel = (n, nameOf) => { const to = n.to || { t: 'all' }; return to.t === 'student' ? '학생만' : to.t === 'parent' ? '학부모만' : to.t === 'grade' ? to.v + ' 전체' : to.t === 'sid' ? (nameOf(to.v) || '학생') + ' 학생 가족' : '모두'; };
+// 알림 보낼 곳: 재원생마다 학생함·학부모함
+export const pushKeys = (to, students) => students.filter(s => !s.left).flatMap(s => to && to.t === 'student' ? [s.id + '|student'] : to && to.t === 'parent' ? [s.id + '|parent'] : [s.id + '|student', s.id + '|parent']);
 
 /* ---------- 첨부 보여 주기 ---------- */
 const extIcon = n => /\.pdf$/i.test(n) ? '📕' : /\.(hwp|hwpx)$/i.test(n) ? '📘' : /\.(docx?|txt)$/i.test(n) ? '📄' : /\.(xlsx?|csv)$/i.test(n) ? '📗' : /\.(pptx?)$/i.test(n) ? '📙' : /\.(zip)$/i.test(n) ? '🗜️' : '📎';
