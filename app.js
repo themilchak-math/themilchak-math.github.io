@@ -10,7 +10,7 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.2.2';
+const APP_VERSION = '2.2.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -137,7 +137,7 @@ const fmtDist=m=>m>=1000?(m/1000).toFixed(1)+'km':m+'m';
 const stars=n=>'<span class="stars" aria-label="이해도 '+n+'/5">'+'★'.repeat(n)+'<span style="opacity:.25">'+'★'.repeat(5-n)+'</span></span>';
 
 function noticeList(limit,cat){
-  const list=seenPosts().filter(n=>!cat||cat==='all'||catOf(n)===cat).sort((a,b)=>(!!b.pin-!!a.pin)||((b.ts||0)-(a.ts||0))).slice(0,limit||99);
+  const list=seenPosts().filter(n=>!cat||cat==='all'||catOf(n)===cat).sort((a,b)=>(!!b.pin-!!a.pin)||((b.at||'')>(a.at||'')?1:(b.at||'')<(a.at||'')?-1:0)||((b.ts||0)-(a.ts||0))).slice(0,limit||99);
   if(!list.length)return '<div class="empty">'+(cat&&cat!=='all'?'이 말머리 글이 아직 없어요':'아직 소식이 없어요')+'</div>';
   const T=U.role==='teacher';
   return list.map(n=>{
@@ -402,7 +402,7 @@ function sheetHtml(){
   if(t==='abs'){const s=stu(U.me)||{};h='<h3>'+esc(s.name||'')+' 결석 알리기</h3><label class="f"><span>결석하는 날</span><input type="date" id="abD" min="'+TODAY+'" value="'+TODAY+'"></label><label class="f"><span>사유</span><textarea id="abR" placeholder="예: 가족 행사, 병원 진료, 학교 행사"></textarea></label><p class="sub" style="margin:0 0 10px">저장하면 원장님과 선생님께 바로 알림이 가요. 날짜가 지나기 전에는 취소할 수 있어요.</p>'}
   if(t==='notice'){const own=isOwnerMe();const cats=own?CATS:CATS.filter(c=>c[0]!=='notice');const gs=['초4','초5','초6','중1','중2','중3','고1','고2','고3'].filter(g=>D.students.some(x=>x.grade===g));const q=U.bf||[];
     h='<h3>소식 글쓰기</h3><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>말머리</span><select id="bCat">'+cats.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('')+'</select></label><label class="f"><span>보는 사람</span><select id="bTo"><option value="all">전체</option>'+gs.map(g=>'<option value="g:'+g+'">'+g+'만</option>').join('')+D.students.map(x=>'<option value="s:'+x.id+'">'+esc(x.name)+'만</option>').join('')+'</select></label></div>'+
-    '<label class="f"><span>제목</span><input id="nT"></label><label class="f"><span>내용</span><textarea id="nB"></textarea></label>'+
+    '<label class="f"><span>날짜 <small class="sub" style="font-weight:400">비워 두면 오늘</small></span><input type="date" id="bD"></label><label class="f"><span>제목</span><input id="nT"></label><label class="f"><span>내용</span><textarea id="nB"></textarea></label>'+
     '<label class="btn ghost" style="display:block;text-align:center;cursor:pointer;margin-bottom:6px">📷 사진·파일 고르기<input type="file" id="bFile" multiple accept="image/*,.pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" hidden></label><p class="sub" style="margin:0 0 6px">사진은 자동으로 줄여서 올려요 · 파일 하나 50MB까지</p>'+
     (q.length?'<ul class="bq">'+q.map((x,i)=>'<li>'+(/^image\//.test(x.type)?'🖼️':'📎')+' <span class="n">'+esc(x.name)+'</span><span class="sub">'+fmtSize(x.size)+'</span><button type="button" class="btn sm ghost" style="padding:2px 8px" data-act="bfDel" data-id="'+i+'">×</button></li>').join('')+'</ul>':'')+
     '<label class="f"><span>구글 드라이브 링크 (선택)</span><input id="bLu" placeholder="큰 파일·동영상은 링크로"></label>'+(own?'<label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="nP">상단 고정</label>':'')+(U.bBusy?'<p class="sub" style="color:var(--pri);font-weight:700">'+esc(U.bBusy)+'</p>':'');}
@@ -956,7 +956,7 @@ app.addEventListener('submit',async e=>{
     const q=U.bf||[],files=[];
     try{for(let i=0;i<q.length;i++){U.bBusy='올리는 중… '+(i+1)+'/'+q.length;render();files.push(await uploadFile(auth,q[i]))}
       U.bBusy='저장 중…';render();
-      await addDoc(collection(db,'notices'),{cat,title,body,at:TODAY,pin:!!(document.getElementById('nP')||{}).checked,reads:[],ts:now(),by:ME.uid,byName:TNAME(),to,files,links:lu?[{name:'구글 드라이브 자료',url:lu}]:[]});
+      await addDoc(collection(db,'notices'),{cat,title,body,at:g('bD')||TODAY,pin:!!(document.getElementById('nP')||{}).checked,reads:[],ts:now(),by:ME.uid,byName:TNAME(),to,files,links:lu?[{name:'구글 드라이브 자료',url:lu}]:[]});
     }catch(err){U.bBusy='';await deleteFiles(auth,files.map(x=>x.k));render();return toast(err.message||'올리지 못했어요')}
     push(targetSids(to,D.students).flatMap(x=>[x+'|student',x+'|parent']),title,{title:catPush(cat),tag:'notice'});
     U.bBusy='';U.bf=[];U.sheet=null;U.tab='comm';U.comm='notice';U.bcat='all';return toast(catLabel(cat)+' 글을 올렸어요');

@@ -10,7 +10,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, targetSids, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.6.3';
+const ADMIN_VERSION = '2.6.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -670,7 +670,7 @@ function pStaff() {
 }
 function pNotice() {
   const own = isOwnerMe(); const cats = own ? CATS : CATS.filter(c => c[0] !== 'notice'); const f = V.bcat || 'all';
-  const list = [...D.notices].filter(n => f === 'all' || catOf(n) === f).sort((a, b) => (!!b.pin - !!a.pin) || ((b.ts || 0) - (a.ts || 0)));
+  const list = [...D.notices].filter(n => f === 'all' || catOf(n) === f).sort((a, b) => (!!b.pin - !!a.pin) || ((b.at || '') > (a.at || '') ? 1 : (b.at || '') < (a.at || '') ? -1 : 0) || ((b.ts || 0) - (a.ts || 0)));
   const canDel = n => own || catOf(n) !== 'notice';
   if (!V.usage && !V.usageLoad) { V.usageLoad = 1; storageUsage(auth).then(u => { V.usage = u; render(); }).catch(() => { V.usage = { err: 1 }; render(); }); }
   const us = V.usage && !V.usage.err ? '<p class="sub" style="margin-top:10px">저장소 ' + fmtSize(V.usage.bytes) + ' / 무료 10GB 사용 중 (' + V.usage.n + '개 파일)</p>' : V.usage && V.usage.err ? '<p class="sub" style="margin-top:10px;color:var(--acc)">파일 저장소에 연결하지 못했어요 (사진·파일 첨부 불가, 드라이브 링크는 가능)</p>' : '';
@@ -679,7 +679,7 @@ function pNotice() {
   const q = V.bf || [], ql = V.bl || [];
   const form = '<section class="card"><h2>글쓰기 <span class="sub">' + (own ? '원장님·부원장만 쓸 수 있어요' : '공지는 원장님만 · 자료실·앨범·가정통신문은 부원장도') + '</span></h2><form id="bF" class="form">' +
     '<div class="row2"><label>말머리<select id="bCat">' + cats.map(c => '<option value="' + c[0] + '">' + c[1] + '</option>').join('') + '</select></label><label>보는 사람<select id="bTo">' + toOpts + '</select></label></div>' +
-    '<input id="bT" placeholder="제목"><textarea id="bB" rows="6" placeholder="내용"></textarea>' +
+    '<label>날짜 <span class="sub">비워 두면 오늘(' + fmtD(TODAY) + ')</span><input type="date" id="bD"></label><input id="bT" placeholder="제목"><textarea id="bB" rows="6" placeholder="내용"></textarea>' +
     '<div class="bar" style="margin:0"><label class="btn ghost sm" style="cursor:pointer">📎 사진·파일 추가<input type="file" id="bFile" multiple hidden></label><span class="sub">여기로 끌어다 놓아도 돼요 · 사진은 자동으로 줄여서 올려요 · 파일 하나 50MB까지</span></div>' +
     (q.length ? '<ul class="bq">' + q.map((x, i) => '<li>' + (/^image\//.test(x.type) ? '🖼️' : '📎') + ' <span class="n">' + esc(x.name) + '</span><span class="sub">' + fmtSize(x.size) + '</span><button type="button" class="btn xs ghost" data-a="bfDel" data-id="' + i + '">×</button></li>').join('') + '</ul>' : '') +
     '<div class="bar" style="margin:0"><input id="bLn" placeholder="링크 이름 (예: 2학기 기출 모음)" style="flex:1;min-width:0"><input id="bLu" placeholder="구글 드라이브 링크 붙여넣기" style="flex:2;min-width:0"><button type="button" class="btn sm ghost" data-a="blAdd">+ 링크</button></div>' +
@@ -1068,10 +1068,10 @@ app.addEventListener('submit', async e => {
       try {
         for (let i = 0; i < q.length; i++) { V.bBusy = '올리는 중… ' + (i + 1) + '/' + q.length; render(); files.push(await uploadFile(auth, q[i])); }
         V.bBusy = '저장 중…'; render();
-        await addDoc(collection(db, 'notices'), { cat, title, body, at: TODAY, pin: !!(document.getElementById('bPin') || {}).checked, reads: [], ts: now(), by: auth.currentUser.uid, byName: TNAME(), to, files, links: V.bl || [] });
+        await addDoc(collection(db, 'notices'), { cat, title, body, at: g('bD') || TODAY, pin: !!(document.getElementById('bPin') || {}).checked, reads: [], ts: now(), by: auth.currentUser.uid, byName: TNAME(), to, files, links: V.bl || [] });
       } catch (err) { V.bBusy = ''; await deleteFiles(auth, files.map(x => x.k)); render(); return toast(err.message || '올리지 못했어요'); }
       push(targetSids(to, D.students).flatMap(x => [x + '|student', x + '|parent']), title, { title: catPush(cat), tag: 'notice' });
-      ['bT', 'bB'].forEach(x => { document.getElementById(x).value = ''; }); V.bf = []; V.bl = []; V.bBusy = ''; V.usage = null; V.usageLoad = 0;
+      ['bT', 'bB', 'bD'].forEach(x => { document.getElementById(x).value = ''; }); V.bf = []; V.bl = []; V.bBusy = ''; V.usage = null; V.usageLoad = 0;
       return toast(catLabel(cat) + ' 글을 올렸어요' + (files.length ? ' (첨부 ' + files.length + '개)' : ''));
     }
     if (f === 'attF') {
