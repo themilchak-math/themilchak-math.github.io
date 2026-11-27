@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.3.0';
+const ADMIN_VERSION = '2.3.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -444,14 +444,17 @@ function pFin() {
   return head + table + sumCard + finMeals(m, set) + finSummary() + finSettings(set);
 }
 function finMeals(m, set) {
+  // 가로형: 사람이 줄, 날짜가 칸 (한 달이 한 화면에)
   const ym = m.ym; const n = daysIn(ym); const people = ['원장', '부원장', ...(m.rows || []).map(r => r.name).filter(Boolean)];
   const has = (k, d) => ((m.meals || {})[k] || []).includes(d);
-  const body = Array.from({ length: n }, (_, i) => { const d = i + 1; const dt = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, d); const w = dt.getDay();
-    return '<tr' + (w === 0 ? ' class="sun"' : '') + '><td>' + (+ym.slice(5, 7)) + '/' + d + '</td><td class="cen">' + WD[w] + '</td>' + people.map(p => '<td class="cen meal' + (has(p, d) ? ' on' : '') + '" data-a="meal" data-v="' + esc(p) + '|' + d + '">' + (has(p, d) ? '1' : '') + '</td>').join('') + '</tr>'; }).join('');
   const cnt = p => ((m.meals || {})[p] || []).length;
+  const days = Array.from({ length: n }, (_, i) => { const d = i + 1; return { d, w: new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, d).getDay() }; });
+  const wc = w => w === 0 ? ' sun' : w === 6 ? ' sat' : '';
+  const head = '<tr><th class="nm">이름</th>' + days.map(x => '<th class="cen' + wc(x.w) + '">' + x.d + '<br><small>' + WD[x.w] + '</small></th>').join('') + '<th class="cen">횟수</th><th class="r">금액</th></tr>';
+  const body = people.map((p, i) => '<tr' + (i === 2 ? ' class="gap"' : '') + '><td class="nm"><b>' + esc(p) + '</b></td>' + days.map(x => '<td class="cen meal' + wc(x.w) + (has(p, x.d) ? ' on' : '') + '" data-a="meal" data-v="' + esc(p) + '|' + x.d + '">' + (has(p, x.d) ? '1' : '') + '</td>').join('') + '<td class="cen"><b>' + cnt(p) + '</b></td><td class="r">' + won(cnt(p) * set.meal) + '</td></tr>').join('');
+  const dayTot = '<tr class="tot"><td class="nm"><b>그날 합계</b></td>' + days.map(x => { const k = people.filter(p => has(p, x.d)).length; return '<td class="cen' + wc(x.w) + '">' + (k || '') + '</td>'; }).join('') + '<td class="cen"><b>' + people.reduce((a, p) => a + cnt(p), 0) + '</b></td><td class="r"><b>' + won(people.reduce((a, p) => a + cnt(p), 0) * set.meal) + '</b></td></tr>';
   return '<section class="card scroll"><h2>④ 식대 출석표 <span class="sub">이번 달 먹은 날 → 다음 달 정산에 청구 · 칸을 누르면 1 ↔ 빈칸 · 1회 ' + won(set.meal) + '원</span></h2><div class="bar"><button class="btn sm ghost" data-a="mealAtt">등원 기록으로 채우기</button><span class="sub">앱 출결에서 그날 등원한 학생 칸에 1을 넣어요 (이미 있는 1은 그대로)</span></div>' +
-    '<table class="mealt"><thead><tr><th>날짜</th><th>요일</th>' + people.map(p => '<th class="cen">' + esc(p) + '</th>').join('') + '</tr></thead><tbody>' + body +
-    '<tr class="tot"><td colspan="2"><b>횟수</b></td>' + people.map(p => '<td class="cen"><b>' + cnt(p) + '</b></td>').join('') + '</tr><tr class="tot"><td colspan="2"><b>금액</b></td>' + people.map(p => '<td class="cen">' + won(cnt(p) * set.meal) + '</td>').join('') + '</tr></tbody></table></section>';
+    '<table class="mealt mealh"><thead>' + head + '</thead><tbody>' + body + dayTot + '</tbody></table></section>';
 }
 function finSummary() {
   const ms = finMonths().slice().reverse(); if (!ms.length) return '';
