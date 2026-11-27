@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.0.5';
+const APP_VERSION = '2.0.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -457,9 +457,9 @@ function authView(){
 }
 function waitView(){
   const rows=U.wait.map(m=>{const nm=(m.name||'')+' '+REL[m.rel];
-    const st=m.st==='pending'?'<span class="chip c-warn">선생님 승인 대기</span>':m.st==='block'?'<span class="chip c-bad">이용 제한</span>':m.st==='ok'?'<span class="chip c-ok">연결됨</span>':(m.rel==='student'&&m.grade==='중1'&&!m.guardianOk)?'<span class="chip c-bad">보호자 가입 먼저</span>':'<button class="btn sm" data-act="reclaim">다시 요청</button>';
+    const st=m.st==='pending'?'<span class="chip c-warn">선생님 승인 대기</span>':m.st==='block'?'<span class="chip c-bad">이용 제한</span>':m.st==='ok'?'<span class="chip c-ok">연결됨</span>':'<button class="btn sm" data-act="reclaim">다시 요청</button>';
     return '<div class="row"><div class="grow nm">'+esc(nm)+'</div>'+st+'</div>'}).join('');
-  const needG=U.wait.some(m=>m.rel==='student'&&m.grade==='중1'&&!m.guardianOk&&m.st==='none');
+  const needG=false; // 14세 미만 부모님 먼저 가입 조건 해제 (원장님 요청)
   return authHeader('번호가 확인됐어요','선생님이 승인하면 바로 이용할 수 있어요')+'<div class="body"><div class="card"><h3>'+esc(fmtP(ME.phone))+'</h3>'+(rows||'<div class="empty">확인 중...</div>')+'</div>'+
     (needG?'<div class="card"><p style="margin:0" class="sub">만 14세 미만일 수 있어 부모님이 먼저 가입해 승인받으셔야 학생 가입이 열려요. 부모님 승인 뒤 <b>다시 요청</b>을 눌러 주세요.</p></div>':'')+
     '<div class="card"><p class="sub" style="margin:0">이 화면을 닫아도 괜찮아요. 승인되면 다음에 열 때 바로 들어가져요.</p></div>'+installTip()+
@@ -656,7 +656,7 @@ function watchMembers(){
   baseUnsubs.push(()=>{if(memUnsub){memUnsub();memUnsub=null}});
 }
 async function claim(ms){
-  const go=ms.filter(m=>m.st==='none'&&!(m.rel==='student'&&m.grade==='중1'&&!m.guardianOk));
+  const go=ms.filter(m=>m.st==='none');
   const done=[];for(const m of go){try{await updateDoc(doc(db,'members',m.id),{st:'pending',uid:ME.uid,at:hm()});done.push(m)}catch(e){console.warn(e)}}
   if(done.length)push(['teacher'],'[가입 요청] '+done.map(m=>(m.name||'')+' '+REL[m.rel]).join(', ')+' 가입을 승인해 주세요.',{tag:'join'});
 }
