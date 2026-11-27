@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.5.3';
+const ADMIN_VERSION = '2.5.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -42,7 +42,7 @@ const PCT = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 /* ---------- 상태 ---------- */
 const D = { students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], abs: [], extra: {}, apply: [], fin: {}, finSet: null, sinfo: {}, cfg: null };
-const V = { screen: 'loading', page: 'dash', msg: '', busy: false, calM: TODAY.slice(0, 7), chat: null, hwF: 'all', modal: null, bulk: null, qr: null, toast: '' };
+const V = { screen: 'loading', page: 'dash', msg: '', busy: false, calM: TODAY.slice(0, 7), chat: null, hwF: 'all', modal: null, bulk: null, toast: '' };
 const app = document.getElementById('app');
 const docs = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
 const stu = id => D.students.find(s => s.id === id);
@@ -185,11 +185,6 @@ function pDash() {
     '<section class="card"><h2>' + dayLbl + ' 출결 <span class="sub">' + fmtD(day) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th>' + (exp ? '<th>수업</th>' : '') + '<th>상태</th><th>수업 기록</th></tr></thead><tbody>' +
     order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === day).pop(); const e = expSet.has(s.id); const ab = absT.has(s.id) && !a[s.id] ? absOf(s.id, day) : null; return '<tr' + (exp && !e && !a[s.id] && !ab ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + (exSet.has(s.id) ? (!a[s.id] ? chip('보충 예정', 'pri') : a[s.id].st === '결석' ? chip('결석', 'bad') : a[s.id].out ? chip('완료', 'pri') : chip('학습중', 'ok')) : clsChip(a[s.id], e, ab)) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (ab ? '<span class="sub">결석 사유: ' + esc(ab.reason) + '</span>' : lg ? esc(lg.unit || subjOf(lg) + ' (메모 기록)') + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
     '<section class="card"><h2>확인할 숙제</h2>' + hwTable(toCheck) + '</section>';
-}
-
-function pQR() {
-  const q = V.qr || {}; const left = q.exp ? Math.max(0, Math.ceil((q.exp - 5000 - now()) / 1000)) : 0;
-  return '<h1>등원 QR <span class="sub">학생이 폰 앱으로 이 화면을 찍으면 승인 요청이 와요</span></h1><div class="grid2"><section class="card qrcard"><div id="qrBox"></div><p class="code">' + (q.code ? q.code.slice(0, 3) + ' ' + q.code.slice(3) : '...') + '</p><p class="sub"><b id="qrLeft">' + left + '</b>초 후 새 코드로 바뀌어요 · 카메라가 안 되면 학생이 숫자를 입력해도 돼요</p><p class="sub">이 화면을 열어 둔 동안만 등원 요청을 받을 수 있어요.</p></section><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '<h2 style="margin-top:20px">오늘 출결</h2><table><tbody>' + active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + attChip((D.att[TODAY] || {})[s.id]) + '</td></tr>').join('') + '</tbody></table></section></div>';
 }
 
 function memCell(s, rel) {
@@ -744,7 +739,6 @@ function render() {
   if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); }
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
   const cb = document.getElementById('chatBody'); if (cb) cb.scrollTop = cb.scrollHeight;
-  if (V.page === 'qr' && V.screen === 'app') drawQR();
   if (V.modal === 'invite' && V.invQR) { const box = document.getElementById('invQRBox'); const m = D.members.find(x => x.id === V.invQR); if (box && m && window.QRCode) { const mk = t => { const txt = 'SMSTO:' + m.phone + ':' + t; box.innerHTML = '';
       if (window.qrcode && window.qrcode.stringToBytesFuncs) { // 한글(UTF-8)을 정확히 계산하는 QR 라이브러리
         window.qrcode.stringToBytes = window.qrcode.stringToBytesFuncs['UTF-8']; const q = window.qrcode(0, 'L'); q.addData(txt, 'Byte'); q.make();
@@ -756,15 +750,6 @@ function render() {
 let rT = null; const sr = () => { if (rT) return; rT = requestAnimationFrame(() => { rT = null; render(); }); };
 let tt; const toast = m => { V.toast = m; clearTimeout(tt); tt = setTimeout(() => { V.toast = ''; render(); }, 3000); render(); };
 const fail = (e, m) => { console.error(e); toast(m || '저장하지 못했어요. 인터넷 연결을 확인해 주세요.'); };
-
-/* ---------- 등원 QR ---------- */
-let qrT = null, qrC = null;
-function rand6() { const a = new Uint32Array(1); crypto.getRandomValues(a); return String(100000 + a[0] % 900000); }
-async function qrRotate() { const code = rand6(); const exp = now() + 35000; V.qr = { code, exp }; try { await setDoc(doc(db, 'config', 'qr'), { code, exp }); } catch (e) { fail(e, 'QR을 만들지 못했어요'); } if (V.page === 'qr') render(); }
-function qrStart() { if (qrT) return; qrRotate(); qrT = setInterval(qrRotate, 30000); qrC = setInterval(() => { const el = document.getElementById('qrLeft'); if (el && V.qr) el.textContent = Math.max(0, Math.ceil((V.qr.exp - 5000 - now()) / 1000)); }, 1000); }
-function qrStop() { clearInterval(qrT); clearInterval(qrC); qrT = null; if (V.qr) { V.qr = null; setDoc(doc(db, 'config', 'qr'), { code: '', exp: 0 }).catch(() => { }); } }
-function drawQR() { const box = document.getElementById('qrBox'); if (!box || !V.qr || !window.QRCode) return; box.innerHTML = ''; new window.QRCode(box, { text: 'TMM' + V.qr.code, width: 280, height: 280, correctLevel: window.QRCode.CorrectLevel.M }); }
-window.addEventListener('beforeunload', () => qrStop());
 
 /* ---------- 데이터 ---------- */
 let unsubs = [];
@@ -788,7 +773,7 @@ function subscribe() {
   if (isOwnerMe()) L(collection(db, 'fin'), s => { D.fin = {}; D.finSet = null; s.docs.forEach(d => { if (d.id === 'settings') D.finSet = d.data(); else if (d.id.startsWith('m_')) D.fin[d.id.slice(2)] = d.data(); }); if (V.ym && !V.finDirty) V.finEdit = D.fin[V.ym] ? clone(D.fin[V.ym]) : (V.finEdit && V.finEdit.ym === V.ym ? V.finEdit : null); sr(); });
 }
 onAuthStateChanged(auth, user => {
-  unsubs.forEach(f => f()); unsubs = []; qrStop();
+  unsubs.forEach(f => f()); unsubs = [];
   if (!user) { V.screen = 'login'; render(); return; }
   V.screen = 'loading'; render();
   const u = onSnapshot(doc(db, 'config', 'main'), async d => {
@@ -869,7 +854,7 @@ app.addEventListener('click', async e => {
     if (a === 'go') { V.page = v; if (v === 'msg' && V.chat) markRead(V.chat); return render(); }
     if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(pushErrorText(e)); } return render(); }
     if (a === 'pushHide') { V.pushHide = true; return render(); }
-    if (a === 'logout') { qrStop(); await signOut(auth); return; }
+    if (a === 'logout') { await signOut(auth); return; }
     if (a === 'wifiReg') { const ip = await myIp(); if (!ip) return toast('인터넷 주소를 확인하지 못했어요. 잠시 후 다시 눌러 주세요'); const l = [...new Set([...((D.cfg && D.cfg.wifiIps) || []), ip])]; await updateDoc(doc(db, 'config', 'main'), { wifiIps: l, wifiAuto: true }); return toast('교습소 인터넷 주소(' + ip + ')를 등록했어요 · 자동 등원 켜짐'); }
     if (a === 'wifiTog') { const on = !(D.cfg && D.cfg.wifiAuto); await updateDoc(doc(db, 'config', 'main'), { wifiAuto: on }); return toast('와이파이 자동 등원 ' + (on ? '켬' : '끔')); }
     if (a === 'wifiClr') { if (!confirm('등록된 교습소 인터넷 주소를 지울까요?')) return; await updateDoc(doc(db, 'config', 'main'), { wifiIps: [], wifiAuto: false }); return toast('지웠어요'); }

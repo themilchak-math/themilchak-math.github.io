@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.1.5';
+const APP_VERSION = '2.1.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -75,13 +75,6 @@ function tabsFor(){
 const hwChip=h=>h.st==='checked'?'<span class="chip c-ok">확인 완료</span>':h.st==='done'?'<span class="chip c-pri">제출함</span>':(h.due<TODAY?'<span class="chip c-bad">기한 지남</span>':'<span class="chip c-warn">진행 중</span>');
 const isIn=r=>!!r&&r.st!=='결석';
 const attChip=a=>!a?'<span class="chip">미등원</span>':a.st==='결석'?'<span class="chip c-bad">결석</span>':'<span style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end"><span class="chip c-ok">등원'+(a.at?' '+a.at:'')+'</span>'+(a.out?'<span class="chip c-pri">하원 '+lateLabel(a.out)+'</span>':'')+'</span>';
-const qrCode=(t=Date.now())=>String((Math.floor(t/30000)*7919+13)%900000+100000);
-const qrLeft=()=>30-Math.floor(Date.now()/1000)%30;
-function qrSvg(code){let z=+code||1;const r=()=>(z=z*16807%2147483647)/2147483647;const N=25;let d='';
-  const inF=(x,y)=>(x<8&&y<8)||(x>N-9&&y<8)||(x<8&&y>N-9);
-  for(let y=0;y<N;y++)for(let x=0;x<N;x++)if(!inF(x,y)&&r()<.5)d+='M'+x+' '+y+'h1v1h-1z';
-  const f=(x,y)=>'M'+x+' '+y+'h7v7h-7zM'+(x+1)+' '+(y+1)+'h5v5h-5zM'+(x+2)+' '+(y+2)+'h3v3h-3z';
-  return '<svg viewBox="-2 -2 29 29" style="width:100%;height:100%;display:block" role="img" aria-label="등원 QR"><rect x="-2" y="-2" width="29" height="29" rx="1.5" fill="#fff"/><path fill="#11152b" fill-rule="evenodd" d="'+f(0,0)+f(N-7,0)+f(0,N-7)+d+'"/></svg>'}
 const REL={student:'학생',father:'아버님',mother:'어머님'};
 const digits=x=>String(x||'').replace(/\D/g,'');
 const fmtP=d=>d.length===11?d.slice(0,3)+'-'+d.slice(3,7)+'-'+d.slice(7):d;
@@ -496,13 +489,6 @@ function waitView(){
     '<button class="btn ghost" style="width:100%" data-act="logout">로그아웃</button></div>';
 }
 
-function qrSheet(){
-  const q=U.qr||{};const left=q.exp?Math.max(0,Math.ceil((q.exp-5000-now())/1000)):0;
-  return '<div class="sheetbg" data-act="close"><div class="sheet" style="text-align:center"><h3>등원 QR</h3><p class="sub" style="margin:0 0 12px">학생이 앱으로 이 화면을 찍으면 승인 요청이 와요</p><div id="qrBox" style="width:min(240px,70%);aspect-ratio:1;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;place-items:center"></div><p style="margin:10px 0 2px;font:700 24px/1.2 \'IBM Plex Sans KR\',sans-serif;letter-spacing:.12em">'+(q.code?q.code.slice(0,3)+' '+q.code.slice(3):'...')+'</p><p class="sub" style="margin:0 0 6px"><b id="qrLeft">'+left+'</b>초 후 새 코드로 바뀌어요 · 카메라가 안 되면 숫자를 입력해도 돼요</p><div style="text-align:left;margin-top:12px" class="card"><h3>승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div><button type="button" class="btn ghost" style="width:100%" data-act="close">닫기</button></div></div>';
-}
-function scanSheet(){
-  return '<div class="sheetbg" data-act="close"><div class="sheet" style="text-align:center"><h3>등원 QR 찍기</h3><div id="reader" style="width:min(280px,82%);margin:0 auto 12px;border-radius:16px;overflow:hidden;background:#0b0d1c;min-height:200px"></div><p class="sub" id="scanMsg" style="margin:0 0 12px">선생님 폰 화면의 QR을 네모 안에 맞춰주세요</p><form id="codeF" style="display:flex;gap:8px;margin-bottom:10px"><input id="codeIn" inputmode="numeric" maxlength="7" placeholder="숫자 6자리 직접 입력" style="flex:1;height:46px;border-radius:12px;border:1px solid var(--line);padding:0 12px;font-size:18px;background:var(--soft);letter-spacing:.1em"><button class="btn" type="submit">요청</button></form><button type="button" class="btn ghost" style="width:100%" data-act="close">닫기</button></div></div>';
-}
 
 function pushBanner(){
   const m0=mPending().find(x=>!U.pushX[x.id]);const q=pending().find(x=>!U.pushX[x.id]);
@@ -528,7 +514,6 @@ function appView(){
 let dirty=false;
 function render(){
   document.documentElement.classList.toggle('chat-open',!!U.chat);
-  if(U.sheet==='scan'&&document.getElementById('reader')){dirty=true;return}
   // 입력 중인 값 보존
   const keep={},checks={};let focusId=null,selS=null,selE=null;
   app.querySelectorAll('input[id],textarea[id],select[id]').forEach(el=>{if(el.type==='checkbox')keep[el.id]={c:el.checked};else keep[el.id]={v:el.value}});
@@ -544,7 +529,7 @@ function render(){
     else{
       html=appView();
       if(U.role==='teacher'&&!U.sheet)html+=pushBanner();
-      if(U.sheet==='qr')html+=qrSheet();else if(U.sheet==='scan')html+=scanSheet();else if(U.sheet==='inst')html+=instSheet();else if(U.sheet)html+=sheetHtml();
+      if(U.sheet==='inst')html+=instSheet();else if(U.sheet)html+=sheetHtml();
       if(!U.sheet&&!U.chat&&!U.update)html+=installBar();
     }
   }catch(err){console.error(err);html=authHeader('잠시 문제가 생겼어요','')+'<div class="body"><div class="card"><p>화면을 그리다 오류가 났어요. 새로고침해 주세요.</p><p class="sub">'+esc(err.message)+'</p><button class="btn" data-act="reload">새로고침</button></div></div>'}
@@ -559,40 +544,12 @@ function render(){
   const nb=app.querySelector('.body');
   if(U.chat){const b=document.getElementById('chatBody');if(b)b.scrollTop=b.scrollHeight}
   else if(nb&&sameView)nb.scrollTop=scroll;
-  if(U.sheet==='qr')drawQR();
-  if(U.sheet==='scan')startScan();
   dirty=false;
 }
 let rT=null;const sr=()=>{if(rT)return;rT=requestAnimationFrame(()=>{rT=null;render()})};
 let tt;
 const toast=m=>{U.toast=m;clearTimeout(tt);tt=setTimeout(()=>{U.toast='';render()},2800);render()};
 const fail=(e,m)=>{console.error(e);toast(m||('저장하지 못했어요. 인터넷 연결을 확인해 주세요.'))};
-
-/* ================= QR ================= */
-let qrTimer=null,qrCountT=null;
-function rand6(){const a=new Uint32Array(1);crypto.getRandomValues(a);return String(100000+a[0]%900000)}
-async function qrRotate(){
-  const code=rand6();const exp=now()+35000;U.qr={code,exp};
-  try{await setDoc(doc(db,'config','qr'),{code,exp})}catch(e){fail(e,'QR을 만들지 못했어요')}
-  if(U.sheet==='qr')render();
-}
-function qrStart(){qrStop();qrRotate();qrTimer=setInterval(qrRotate,30000);qrCountT=setInterval(()=>{const el=document.getElementById('qrLeft');if(el&&U.qr)el.textContent=Math.max(0,Math.ceil((U.qr.exp-5000-now())/1000))},1000)}
-function qrStop(){clearInterval(qrTimer);clearInterval(qrCountT);qrTimer=null;if(U.qr){U.qr=null;setDoc(doc(db,'config','qr'),{code:'',exp:0}).catch(()=>{})}}
-function drawQR(){const box=document.getElementById('qrBox');if(!box||!U.qr||!window.QRCode)return;box.innerHTML='';new window.QRCode(box,{text:'TMM'+U.qr.code,width:200,height:200,correctLevel:window.QRCode.CorrectLevel.M})}
-
-let scanner=null;
-function startScan(){
-  if(scanner||!window.Html5Qrcode){if(!window.Html5Qrcode){const m=document.getElementById('scanMsg');if(m)m.textContent='카메라를 쓸 수 없어요. 선생님 화면의 숫자 6자리를 입력해 주세요.'}return}
-  scanner=new window.Html5Qrcode('reader');
-  scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:200,height:200}},txt=>{const c=digits(txt).slice(-6);if(c.length===6){stopScan();sendCode(c)}},()=>{})
-    .catch(()=>{const m=document.getElementById('scanMsg');if(m)m.textContent='카메라 권한이 없어요. 선생님 화면의 숫자 6자리를 입력해 주세요.';scanner=null});
-}
-function stopScan(){if(scanner){const s=scanner;scanner=null;s.stop().catch(()=>{}).finally(()=>{try{s.clear()}catch(e){}})}}
-async function sendCode(code){
-  const s=stu(U.me);U.sheet=null;
-  try{await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:hm(),date:TODAY,code,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생이 등원 QR을 찍었어요 ('+hm()+'). 승인해 주세요.',{tag:'req'});toast('선생님께 등원 승인 요청을 보냈어요')}
-  catch(e){fail(e,'코드가 맞지 않거나 만료됐어요. 선생님 화면을 다시 찍어주세요.')}
-}
 
 /* ================= 데이터 구독 ================= */
 let baseUnsubs=[],dataUnsubs=[];
@@ -641,7 +598,7 @@ function famRole(){U.role=ME.rels[U.me]==='student'?'student':'parent'}
 
 /* ================= 로그인 흐름 ================= */
 onAuthStateChanged(auth,user=>{
-  stopAll();U.attReady=false;U.wifiState=null;U.staffSub=false;U.isStaff=false;U.staffDoc=null;U.famStarted=false;U.famSig=null;U.claimed=false;U.comm='msg';U.hwF='all';U.calS='all';U.pushX={};U.me=null;U.logS=null;U.ret=null;U.lf=null;qrStop();ME.uid=null;U.sheet=null;U.chat=null;U.page=null;U.tab='home';
+  stopAll();U.attReady=false;U.wifiState=null;U.staffSub=false;U.isStaff=false;U.staffDoc=null;U.famStarted=false;U.famSig=null;U.claimed=false;U.comm='msg';U.hwF='all';U.calS='all';U.pushX={};U.me=null;U.logS=null;U.ret=null;U.lf=null;ME.uid=null;U.sheet=null;U.chat=null;U.page=null;U.tab='home';
   if(!user){U.screen='auth';render();return}
   ME.uid=user.uid;ME.phone=phoneOf(user);U.screen='loading';render();
   B(doc(db,'config','main'),d=>{
@@ -790,7 +747,7 @@ app.addEventListener('click',async e=>{
   if(a==='pushOn'){if(U.pushBusy)return;U.pushBusy=true;U.pushErr='';U.pushHint=false;render();const hintT=setTimeout(()=>{if(U.pushBusy){U.pushHint=true;render()}},5000);try{await enablePush(db,ME.uid,U.role==='teacher'?['teacher']:ME.ths);clearTimeout(hintT);U.pushBusy=false;U.pushAutoErr='';U.pushHint=false;toast('알림이 켜졌어요')}catch(e){clearTimeout(hintT);U.pushBusy=false;U.pushErr=pushErrorText(e);U.pushHint=/permission|dismissed|denied/.test(String(e.message));render()}return render()}
   if(a==='pushHide'){U.pushHide=true;return render()}
   if(a==='authTab'){U.authTab=v;U.authMsg='';return render()}
-  if(a==='logout'){qrStop();stopScan();U.famStarted=false;U.claimed=false;U.famSig=null;U.authMsg='';U.authTab='login';await signOut(auth);return}
+  if(a==='logout'){U.famStarted=false;U.claimed=false;U.famSig=null;U.authMsg='';U.authTab='login';await signOut(auth);return}
   if(a==='reclaim'){await claim(U.wait);return toast('다시 요청했어요')}
   if(a==='who'){if(id===U.me)return;U.me=id;famRole();U.chat=null;U.wifiState=null;setTimeout(autoCheckin,300);return render()}
   if(a==='go'){U.tab=el.dataset.tab;if(el.dataset.comm)U.comm=el.dataset.comm;U.chat=null;U.page=null;return render()}
@@ -802,8 +759,8 @@ app.addEventListener('click',async e=>{
   if(a==='open'){const [sd,rr]=el.dataset.k.split('|');U.chat=rr!=='student'&&U.role==='teacher'?famSids(sd)[0]+'|'+rr:el.dataset.k;markRead(U.chat);return render()}
   if(a==='sheet'){
     if(el.dataset.s==='log'||el.dataset.s==='hw'){if(!D.students.length)return toast('학생을 먼저 등록해 주세요');}
-    U.sheet=el.dataset.s;if(U.sheet==='log'){const c=D.students.filter(x=>isIn((D.att[curDay()]||{})[x.id]));initLf((c.find(x=>x.id===U.logS)||c[0]||stu(U.logS)||D.students[0]).id)}if(U.sheet==='qr')qrStart();return render()}
-  if(a==='close'){if(U.sheet==='qr')qrStop();if(U.sheet==='scan')stopScan();U.sheet=null;U.ret=null;U.lf=null;return render()}
+    U.sheet=el.dataset.s;if(U.sheet==='log'){const c=D.students.filter(x=>isIn((D.att[curDay()]||{})[x.id]));initLf((c.find(x=>x.id===U.logS)||c[0]||stu(U.logS)||D.students[0]).id)}return render()}
+  if(a==='close'){U.sheet=null;U.ret=null;U.lf=null;return render()}
   if(a==='comm'){U.comm=v;return render()}
   if(a==='hwF'){U.hwF=v;return render()}
   if(a==='logS'){U.logS=v;return render()}
@@ -937,7 +894,6 @@ app.addEventListener('submit',async e=>{
       U.pendingSetup=false;toast('원장님 계정이 만들어졌어요');
     }catch(err){U.pendingSetup=false;U.authMsg=err.code==='permission-denied'?'이미 원장님 계정이 설정된 앱이에요.':authErr(err.code);if(auth.currentUser)await signOut(auth)}
     U.busy=false;return render()}
-  if(fid==='codeF'){const c=digits(g('codeIn'));if(c.length!==6)return toast('숫자 6자리를 입력해 주세요');stopScan();return sendCode(c)}
   if(fid==='sendF'){const t=g('msgIn').trim();if(!t)return;const [sid]=U.chat.split('|');document.getElementById('msgIn').value='';await msg(U.chat,sid,U.role==='teacher'?'t':'o',t);if(U.role==='teacher')push([U.chat],t,{title:TNAME()+' 메시지',tag:'m'+U.chat});else push(['teacher'],t,{title:famName()+' 메시지',tag:'m'+U.chat});return}
   if(fid==='examF'){
     const kind=U.exK||'exam',school=kind==='off'?'':g('exS').trim(),title=g('exT').trim(),start=g('exA'),end=g('exB')||g('exA'),memo=g('exM').trim();
