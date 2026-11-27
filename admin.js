@@ -11,7 +11,7 @@ import { ensureCodes } from './invcode.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.8.4';
+const ADMIN_VERSION = '2.8.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -358,7 +358,8 @@ function pLog() {
   const day = curDay(); const isT = day === off(0) || day === ds(new Date());
   const a = D.att[day] || {};
   const inT = s => (a[s.id] && a[s.id].st !== '결석') || D.logs.some(l => l.sid === s.id && l.date === day);
-  const shown = active().filter(s => V.logAll || inT(s)); const hidden = active().length - active().filter(inT).length;
+  const saved = active().filter(s => D.logs.some(l => l.sid === s.id && l.date === day));
+  const shown = active().filter(s => (V.logAll || inT(s)) && (V.logDone || !saved.includes(s))); const hidden = active().length - active().filter(inT).length;
   const rows = shown.map(s => {
     const done = D.logs.filter(l => l.sid === s.id && l.date === day); const came = a[s.id] && a[s.id].st !== '결석'; const keys = logKeys(s.id);
     const nK = keys.length, wb = Math.floor(100 / nK / 10) * 10;
@@ -375,14 +376,14 @@ function pLog() {
         '<td><select id="lpc_' + key + '"' + (d.subj === ACT ? ' disabled' : '') + '>' + PCT.map(v => opt(String(v), String(d.c), v + '%')).join('') + '</select></td>' +
         '<td><select id="lpp_' + key + '"' + (d.subj === ACT ? ' disabled' : '') + '>' + PCT.map(v => opt(String(v), String(d.pp), v + '%')).join('') + '</select></td>' +
         '<td>' + (first ? '<input id="lm_' + s.id + '" placeholder="특별한 일만 (단원 없이 기록하면 필수)">' : '') + '</td>' +
-        '<td class="cen">' + (first ? '<input type="checkbox" id="ls_' + s.id + '" checked>' : '') + '</td>' +
         '<td>' + (first && done.length ? chip('오늘 ' + done.length + '건 저장됨', 'ok') : '') + '</td>' +
         '<td class="r">' + (first ? '<button class="btn xs" data-a="saveLog" data-id="' + s.id + '">저장</button>' : '') + '</td></tr>';
     }).join('');
   }).join('');
   return '<h1>수업 기록 <span class="sub">' + fmtD(day) + ' · ' + (isT ? '오늘' : '그날') + ' 등원한 학생만 보여요 · 두 단원·과목 이상 했으면 [+ 단원·과목] · 개념 비중을 고르면 문제풀이는 자동(합 100%)</span></h1>' + dayBar(day, isT) +
-    '<div class="bar"><button class="btn" data-a="saveChecked">체크한 학생 한꺼번에 저장</button><button class="btn ghost" data-a="modal" data-v="act">🎬 다 같이 특별활동</button><span class="sub">저장하면 그 학생의 하원 버튼이 열리고, 공유를 켜 둔 기록은 학부모님께 알림이 가요</span>' + (hidden ? '<button class="btn sm ghost" style="margin-left:auto" data-a="logAll">' + (V.logAll ? '오늘 등원한 학생만 보기' : '등원 안 한 학생도 보기 (' + hidden + '명)') + '</button>' : '') + '</div>' +
-    '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>항목 비중</th><th>오늘 개념 비중</th><th>문제풀이 비중</th><th>특별 메모</th><th>공유</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="12" class="empty">아직 오늘 등원한 학생이 없어요</td></tr>') + '</tbody></table></section>' +
+    '<div class="bar"><button class="btn" data-a="saveChecked">체크한 학생 한꺼번에 저장</button><button class="btn ghost" data-a="modal" data-v="act">🎬 다 같이 특별활동</button><span class="sub">저장하면 그 학생의 하원 버튼이 열리고 학부모·학생에게 공유돼요 · 숨길 기록은 아래 최근 기록에서 [비공개]</span>' + (hidden ? '<button class="btn sm ghost" style="margin-left:auto" data-a="logAll">' + (V.logAll ? '오늘 등원한 학생만 보기' : '등원 안 한 학생도 보기 (' + hidden + '명)') + '</button>' : '') + '</div>' +
+    (saved.length ? '<p class="sub" style="margin:0 0 8px">✅ 저장 완료 ' + saved.length + '명: ' + saved.map(x => esc(x.name)).join(', ') + ' <button class="btn xs ghost" data-a="logDone">' + (V.logDone ? '저장한 학생 숨기기' : '저장한 학생도 보기 (기록 추가)') + '</button></p>' : '') +
+    '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>항목 비중</th><th>오늘 개념 비중</th><th>문제풀이 비중</th><th>특별 메모</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="11" class="empty">' + (saved.length ? '등원한 학생 기록을 모두 저장했어요 👍' : '아직 오늘 등원한 학생이 없어요') + '</td></tr>') + '</tbody></table></section>' +
     '<section class="card"><h2>최근 기록</h2>' + recentLogs() + '</section>';
 }
 function recentLogs() {
@@ -910,7 +911,7 @@ function addMember(b, sid, rel, phone, name, grade) {
 async function saveLogFor(sid, b, ovr) {
   const day = curDay();
   const s = stu(sid); const g = id => (document.getElementById(id) || {}).value || '';
-  const cm = ovr ? ovr.cm : g('lm_' + sid).trim(), sh = ovr ? ovr.sh : !!(document.getElementById('ls_' + sid) || {}).checked; const items = [];
+  const cm = ovr ? ovr.cm : g('lm_' + sid).trim(), sh = ovr ? ovr.sh : true; const items = [];
   if (ovr) items.push({ subj: ACT, course: ACT, unit: ovr.unit, c: null, p: null, w: 100 });
   else { const ks = logKeys(sid); ks.forEach(key => { const subj = g('lj_' + key) || '수학', course = g('lc_' + key), unit = g('lu_' + key), act = subj === ACT, c = act ? null : +g('lpc_' + key), p = act ? null : +g('lpp_' + key), w = ks.length > 1 ? +g('lw_' + key) : 100; items.push({ subj, course, unit, c, p, w }); }); }
   if (items.some(it => !it.unit) && !cm) throw new Error(s.name + ': 단원을 고르지 않았으면 특별 메모에 오늘 한 내용을 꼭 적어 주세요');
@@ -1009,6 +1010,7 @@ app.addEventListener('click', async e => {
     if (a === 'dashM') { const d = new Date((V.dashD || dashDefault()) + 'T00:00'); d.setDate(d.getDate() + +v); V.dashD = ds(d) === dashDefault() ? null : ds(d); V.calM = curDay().slice(0, 7); return render(); }
     if (a === 'dashT') { V.dashD = null; V.calM = curDay().slice(0, 7); return render(); }
     if (a === 'logAll') { V.logAll = !V.logAll; return render(); }
+    if (a === 'logDone') { V.logDone = !V.logDone; return render(); }
     if (a === 'absOk') { const x = D.abs.find(y => y.id === id); if (!x) return; const s = stu(x.sid) || { name: '' }; await updateDoc(doc(db, 'abs', id), { ok: true, okBy: TNAME() }); const tx = '[결석 확인] ' + s.name + ' 학생 ' + fmtD(x.date) + ' 결석 통보를 확인했어요.'; push([x.sid + '|parent'], tx, { tag: 'abs' }); await msg(x.sid + '|parent', x.sid, 's', tx).catch(() => { }); return toast(s.name + ' 결석 확인 · 학부모님께 알렸어요'); }
     if (a === 'ok' || a === 'rej') {
       const q = D.req.find(x => x.id === id); if (!q) return; const s = stu(q.sid);
