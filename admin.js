@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.2.3';
+const ADMIN_VERSION = '2.3.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -371,11 +371,15 @@ function calcRow(r, meals, set) {
   const mealN = r.name ? ((meals || {})[r.name] || []).length : 0;
   const mealAmt = mealN * set.meal; return { wk, fee, mealN, mealAmt, total: (+fee || 0) + mealAmt };
 }
+// 식대는 후불: ○월 정산에는 전월(○-1월) 식대 출석표의 횟수가 청구돼요 (원비는 선불로 그달 것)
+const prevYm = ym => { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 2, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+const billMeals = m => (m && m.ym && D.fin[prevYm(m.ym)] && D.fin[prevYm(m.ym)].meals) || {};
+const monL = ym => +ym.slice(5) + '월';
 function calcMonth(m, set) {
   set = set || finSet(); const rows = (m.rows || []).filter(r => r.name || r.price);
-  const cs = rows.map(r => calcRow(r, m.meals, set));
+  const bm = billMeals(m); const cs = rows.map(r => calcRow(r, bm, set));
   const sum = k => cs.reduce((a, c) => a + (+c[k] || 0), 0);
-  const staff = (((m.meals || {})['원장'] || []).length + ((m.meals || {})['부원장'] || []).length) * set.meal;
+  const staff = ((bm['원장'] || []).length + (bm['부원장'] || []).length) * set.meal;
   const perDay = DAYS6.map((_, k) => rows.filter(r => (r.d || [])[k]).length);
   return { n: rows.filter(r => r.name).length, fee: sum('fee'), disc: rows.reduce((a, r) => a + (+r.disc || 0), 0), price: rows.reduce((a, r) => a + (+r.price || 0), 0), meal: sum('mealAmt'), mealN: sum('mealN'), total: sum('total'), staff, wk: sum('wk'), perDay };
 }
@@ -404,14 +408,14 @@ function pFin() {
   const ms = finMonths(); const set = finSet();
   if (!V.ym || (!D.fin[V.ym] && !finCur())) { if (ms.length) finOpen(ms.includes(ymOf(TODAY)) ? ymOf(TODAY) : ms[0]); }
   const m = finCur(); if (m && finSync(m)) finTouch();
-  const head = '<h1>정산 <span class="sub">원비 = 정가 − 할인 (교습소 수입) · 식대는 별도 사업자 청구 · 학부모 총 납부액 = 원비 + 식대</span></h1>' +
+  const head = '<h1>정산 <span class="sub">원비 = 정가 − 할인 (교습소 수입) · 식대는 별도 사업자 청구 · 학부모 총 납부액 = 이번 달 원비(선불) + 전월 식대(후불)</span></h1>' +
     '<div class="bar">' + ms.map(ym => '<button class="btn sm ' + (ym === V.ym ? '' : 'ghost') + '" data-a="finYm" data-v="' + ym + '">' + ymLabel(ym) + '</button>').join(' ') +
     ' <button class="btn sm" data-a="finNew">+ 새 달 만들기</button><span style="flex:1"></span><label class="btn sm ghost" style="cursor:pointer">엑셀 불러오기<input type="file" id="xlIn" accept=".xlsx" hidden></label> <button class="btn sm ghost" data-a="xlOut">엑셀로 내보내기</button></div>';
   if (!m) return head + '<section class="card"><p class="empty">아직 정산 자료가 없어요. [엑셀 불러오기]로 기존 파일을 가져오거나 [+ 새 달 만들기]를 누르세요.</p></section>' + finSummary() + finSettings(set);
   const C = calcMonth(m, set); const ym = m.ym; const P = 'fn_' + ym.replace('-', '') + '_';
   const studs = D.students.filter(s => !s.left).map(s => s.name);
   const rows = (m.rows || []).map((r, i) => {
-    const c = calcRow(r, m.meals, set); const s = rowStu(r);
+    const c = calcRow(r, billMeals(m), set); const s = rowStu(r);
     return '<tr><td>' + (i + 1) + '</td><td><b>' + esc(r.name || '') + '</b>' + (s && s.left ? ' <span class="sub">퇴원</span>' : !s ? ' <span class="sub">앱에 없음</span>' : '') + '</td>' +
       '<td class="sub">' + esc(s ? (s.school || '') : (r.name ? '명부에 없음' : '')) + '</td><td class="sub">' + esc(s ? s.grade : '') + '</td>' +
       '<td><input id="' + P + i + '_course" data-fi="' + i + '" data-k="course" value="' + esc(r.course ?? '') + '" style="width:44px"></td>' +
@@ -428,14 +432,14 @@ function pFin() {
   }).join('');
   const over = k => C.perDay[k] > set.cap1;
   const table = '<section class="card scroll"><h2>① 원비 · 수강 정보 <span class="sub">' + ymLabel(ym) + ' · 학생 ' + C.n + '명</span> ' + saveBadge() + '</h2>' +
-    '<table class="fin"><thead><tr><th>No</th><th>이름</th><th>학교</th><th>학년</th><th>Course</th>' + DAYS6.map(d => '<th class="cen">' + d + '</th>').join('') + '<th>주 횟수</th><th>정가</th><th>할인</th><th>원비 (교습소)</th><th>보충과목 (과외 별도)</th><th>교재</th><th>식대 횟수</th><th>식대 (별도)</th><th>학부모 총 납부액</th><th>메모</th><th></th></tr></thead><tbody>' +
+    '<table class="fin"><thead><tr><th>No</th><th>이름</th><th>학교</th><th>학년</th><th>Course</th>' + DAYS6.map(d => '<th class="cen">' + d + '</th>').join('') + '<th>주 횟수</th><th>정가</th><th>할인</th><th>원비 (교습소)</th><th>보충과목 (과외 별도)</th><th>교재</th><th>전월 식대 횟수<br><small class="sub">' + monL(prevYm(ym)) + '분</small></th><th>전월 식대 (별도)</th><th>학부모 총 납부액</th><th>메모</th><th></th></tr></thead><tbody>' +
     (rows || '<tr><td colspan="23" class="empty">학생 줄이 없어요</td></tr>') +
     '<tr class="tot"><td></td><td><b>합계</b></td><td colspan="3">' + C.n + '명</td>' + C.perDay.map((n, k) => '<td class="cen"' + (over(k) ? ' style="color:var(--bad);font-weight:700"' : '') + '>' + n + '</td>').join('') + '<td class="cen"><b>' + C.wk + '</b></td><td class="r">' + won(C.price) + '</td><td class="r">' + won(C.disc) + '</td><td class="r"><b>' + won(C.fee) + '</b></td><td></td><td></td><td class="cen">' + C.mealN + '</td><td class="r">' + won(C.meal) + '</td><td class="r"><b>' + won(C.total) + '</b></td><td colspan="2"></td></tr>' +
     '<tr class="sub"><td></td><td>1층 정원</td><td colspan="3">하루 최대 ' + set.cap1 + '명</td>' + DAYS6.map((_, k) => '<td class="cen">' + (over(k) ? '<b style="color:var(--bad)">초과</b>' : set.cap1 - C.perDay[k]) + '</td>').join('') + '<td colspan="12"></td></tr>' +
     '</tbody></table><div class="bar" style="margin-top:10px"><span class="sub">학생은 [학생명부]에서 추가하면 이번 달·다음 달 정산에 자동으로 들어와요 · 여기서는 Course·요일·원비·보충과목·교재·메모만 입력 · 퇴원생 줄만 ✕로 뺄 수 있어요</span><span style="flex:1"></span><button class="btn sm ghost danger" data-a="finDelMonth">이 달 삭제</button></div></section>';
   const wkCap1 = set.cap1 * 6, wkCap2 = set.cap2 * 6;
   const sumCard = '<div class="grid2"><section class="card"><h2>② 이번 달 요약</h2><table><tbody>' +
-    [['교습소 원비 수입', C.fee], ['장기수강 할인 합계', C.disc], ['식대 청구 (별도 사업자)', C.meal], ['학부모 총 납부액 (원비+식대)', C.total], ['원장 · 부원장 식대', C.staff]].map(([l, v]) => '<tr><td>' + l + '</td><td class="r"><b>' + won(v) + '원</b></td></tr>').join('') + '</tbody></table></section>' +
+    [['교습소 원비 수입', C.fee], ['장기수강 할인 합계', C.disc], ['식대 청구 (' + monL(prevYm(ym)) + '분 · 별도 사업자)', C.meal], ['학부모 총 납부액 (원비+전월 식대)', C.total], ['원장 · 부원장 식대 (' + monL(prevYm(ym)) + '분)', C.staff]].map(([l, v]) => '<tr><td>' + l + '</td><td class="r"><b>' + won(v) + '원</b></td></tr>').join('') + '</tbody></table></section>' +
     '<section class="card"><h2>③ 주간 정원 (최대 인원)</h2><table><tbody><tr><td>1층 교습소</td><td class="r">' + wkCap1 + '명</td><td class="sub">평일 ' + set.cap1 * 5 + ' / 토 ' + set.cap1 + '</td></tr><tr><td>2층 공부방</td><td class="r">' + wkCap2 + '명</td><td class="sub">평일 ' + set.cap2 * 5 + ' / 토 ' + set.cap2 + '</td></tr><tr><td>합계</td><td class="r">' + (wkCap1 + wkCap2) + '명</td><td></td></tr><tr><td>1층 현재 주간 등원</td><td class="r"><b>' + C.wk + '명</b></td><td></td></tr><tr><td>1층 남은 자리 (주간)</td><td class="r"><b' + (wkCap1 - C.wk < 0 ? ' style="color:var(--bad)"' : '') + '>' + (wkCap1 - C.wk) + '명</b></td><td></td></tr></tbody></table></section></div>';
   return head + table + sumCard + finMeals(m, set) + finSummary() + finSettings(set);
 }
@@ -445,7 +449,7 @@ function finMeals(m, set) {
   const body = Array.from({ length: n }, (_, i) => { const d = i + 1; const dt = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, d); const w = dt.getDay();
     return '<tr' + (w === 0 ? ' class="sun"' : '') + '><td>' + (+ym.slice(5, 7)) + '/' + d + '</td><td class="cen">' + WD[w] + '</td>' + people.map(p => '<td class="cen meal' + (has(p, d) ? ' on' : '') + '" data-a="meal" data-v="' + esc(p) + '|' + d + '">' + (has(p, d) ? '1' : '') + '</td>').join('') + '</tr>'; }).join('');
   const cnt = p => ((m.meals || {})[p] || []).length;
-  return '<section class="card scroll"><h2>④ 식대 출석표 <span class="sub">먹은 날 칸을 누르면 1 ↔ 빈칸 · 1회 ' + won(set.meal) + '원</span></h2><div class="bar"><button class="btn sm ghost" data-a="mealAtt">등원 기록으로 채우기</button><span class="sub">앱 출결에서 그날 등원한 학생 칸에 1을 넣어요 (이미 있는 1은 그대로)</span></div>' +
+  return '<section class="card scroll"><h2>④ 식대 출석표 <span class="sub">이번 달 먹은 날 → 다음 달 정산에 청구 · 칸을 누르면 1 ↔ 빈칸 · 1회 ' + won(set.meal) + '원</span></h2><div class="bar"><button class="btn sm ghost" data-a="mealAtt">등원 기록으로 채우기</button><span class="sub">앱 출결에서 그날 등원한 학생 칸에 1을 넣어요 (이미 있는 1은 그대로)</span></div>' +
     '<table class="mealt"><thead><tr><th>날짜</th><th>요일</th>' + people.map(p => '<th class="cen">' + esc(p) + '</th>').join('') + '</tr></thead><tbody>' + body +
     '<tr class="tot"><td colspan="2"><b>횟수</b></td>' + people.map(p => '<td class="cen"><b>' + cnt(p) + '</b></td>').join('') + '</tr><tr class="tot"><td colspan="2"><b>금액</b></td>' + people.map(p => '<td class="cen">' + won(cnt(p) * set.meal) + '</td>').join('') + '</tr></tbody></table></section>';
 }
@@ -453,7 +457,7 @@ function finSummary() {
   const ms = finMonths().slice().reverse(); if (!ms.length) return '';
   const set = finSet(); const cs = ms.map(ym => [ym, calcMonth(D.fin[ym], set)]);
   const t = k => cs.reduce((a, [, c]) => a + c[k], 0);
-  return '<section class="card"><h2>월별 요약</h2><table><thead><tr><th>월</th><th class="r">학생 수</th><th class="r">교습소 원비 수입</th><th class="r">장기수강 할인</th><th class="r">식대 청구 (별도 사업자)</th><th class="r">학부모 총 납부액</th><th class="r">원장단 식대</th></tr></thead><tbody>' +
+  return '<section class="card"><h2>월별 요약</h2><table><thead><tr><th>월</th><th class="r">학생 수</th><th class="r">교습소 원비 수입</th><th class="r">장기수강 할인</th><th class="r">식대 청구 (전월분)</th><th class="r">학부모 총 납부액</th><th class="r">원장단 식대 (전월분)</th></tr></thead><tbody>' +
     cs.map(([ym, c]) => '<tr><td><a href="#" data-a="finYm" data-v="' + ym + '">' + ymLabel(ym) + '</a></td><td class="r">' + c.n + '</td><td class="r">' + won(c.fee) + '</td><td class="r">' + won(c.disc) + '</td><td class="r">' + won(c.meal) + '</td><td class="r">' + won(c.total) + '</td><td class="r">' + won(c.staff) + '</td></tr>').join('') +
     '<tr class="tot"><td><b>합계</b></td><td></td><td class="r"><b>' + won(t('fee')) + '</b></td><td class="r"><b>' + won(t('disc')) + '</b></td><td class="r"><b>' + won(t('meal')) + '</b></td><td class="r"><b>' + won(t('total')) + '</b></td><td class="r"><b>' + won(t('staff')) + '</b></td></tr></tbody></table></section>';
 }
