@@ -11,7 +11,7 @@ import { ensureCodes } from './invcode.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.8.0';
+const ADMIN_VERSION = '2.8.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -120,7 +120,16 @@ const noshowBtn = (x, day) => day !== TODAY ? '' : (noshowAt(x.id) ? ' <span cla
 const chip = (t, c) => '<span class="chip ' + (c || '') + '">' + esc(t) + '</span>';
 const isIn = r => !!r && r.st !== '결석';
 const attChip = a => !a ? chip('미등원') : a.st === '결석' ? chip('결석', 'bad') : chip('등원' + (a.at ? ' ' + a.at : ''), 'ok') + (a.out ? ' ' + chip('하원 ' + lateLabel(a.out), 'pri') : '');
-const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입') + (m.code ? ' <span class="sub" title="가입 코드">🔑' + m.code + '</span>' : '');
+// 알림 켬 여부: push/{학생id|관계}에 기기가 있으면 켬. 아버님·어머님 방이 나뉘기 전 '학생id|parent'에만 등록된 기기도 켬으로 봐요
+const pushOn = m => {
+  if (!D.push || !m || m.st !== 'ok' || !m.sid) return null;
+  if ((D.push[m.sid + '|' + m.rel] || []).length) return true;
+  if (m.rel === 'student') return false;
+  const known = new Set([...(D.push[m.sid + '|father'] || []), ...(D.push[m.sid + '|mother'] || [])]);
+  return (D.push[m.sid + '|parent'] || []).some(e => !known.has(e));
+};
+const pushMark = m => { const o = pushOn(m); return o === true ? ' <span title="알림 켜짐">🔔</span>' : o === false ? ' ' + chip('🔕 알림 꺼짐', 'warn') : ''; };
+const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') + pushMark(m) : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입') + (m.code ? ' <span class="sub" title="가입 코드">🔑' + m.code + '</span>' : '');
 const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 'done' ? chip('제출함', 'pri') : h.due < TODAY ? chip('기한 지남', 'bad') : chip('진행 중', 'warn');
 
 const absOf = (sid, d) => D.abs.find(x => x.sid === sid && x.date === d);
@@ -241,7 +250,9 @@ function pPeople() {
 }
 function pStudents() {
   const left = D.students.filter(s => s.left);
-  return '<p class="sub" style="margin:0 0 10px">학생·학부모 번호와 앱 연결 상태 · 번호 수정은 [수정] · 등록한 번호로만 가입할 수 있어요</p>' +
+  const offs = D.push ? D.members.filter(m => pushOn(m) === false && active().some(s => s.id === m.sid)) : [];
+  return '<p class="sub" style="margin:0 0 10px">학생·학부모 번호와 앱 연결 상태 · 🔔 알림 켜짐 · 번호 수정은 [수정] · 등록한 번호로만 가입할 수 있어요</p>' +
+    (offs.length ? '<p class="sub" style="margin:-4px 0 10px;color:var(--warn)">🔕 가입은 했지만 알림을 안 켠 사람 ' + offs.length + '명 · 앱 첫 화면의 [알림 받기]를 한 번 눌러 달라고 안내해 주세요</p>' : '') +
     '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>학교</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
     (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && m.st === 'none') ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
     '</tbody></table></section>' +
@@ -821,6 +832,7 @@ function subscribe() {
   L(collection(db, 'logs'), s => { D.logs = docs(s); sr(); });
   L(collection(db, 'notices'), s => { D.notices = docs(s); sr(); });
   L(query(collection(db, 'reqs'), where('st', '==', 'pending')), s => { D.req = docs(s); sr(); });
+  L(collection(db, 'push'), s => { D.push = Object.fromEntries(s.docs.map(d => [d.id, (d.data().subs || []).map(x => x.endpoint)])); sr(); });
   L(collection(db, 'members'), s => { D.members = docs(s); codesSoon(); sr(); });
   if (isOwnerMe()) L(collection(db, 'inv'), s => { D.inv = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); codesSoon(); });
   L(collection(db, 'exams'), s => { D.exams = docs(s); sr(); });
