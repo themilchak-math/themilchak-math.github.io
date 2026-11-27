@@ -11,7 +11,7 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -713,8 +713,7 @@ async function myIp(){
   try{const r=await t('https://ipv4.icanhazip.com',5000);return (await r.text()).trim()}catch(e){}
   return '';
 }
-// 등원 시각은 그날 처음 등원 요청한 시각 (요청 취소 후 다시 눌러도 처음 시각 유지)
-const firstReqAt=sid=>{const k='tmm-req-'+TODAY+'-'+sid;try{const v=localStorage.getItem(k);if(v)return v;const t=hm();localStorage.setItem(k,t);return t}catch(e){return hm()}};
+// 등원 시각은 지금 남아 있는 등원 요청의 시각 (취소 후 다시 보내면 가장 최근 요청 시각)
 const wifiOn=()=>!!(D.cfg&&D.cfg.wifiAuto&&(D.cfg.wifiIps||[]).length);
 // 교습소 와이파이 확인됨 → 승인 없이 등원 기록 + 원장님·학부모님 알림
 async function wifiIn(s){
@@ -856,7 +855,7 @@ app.addEventListener('click',async e=>{
   if(a==='absOk'){const x=D.abs.find(y=>y.id===id);if(!x)return;const s=stu(x.sid);await updateDoc(doc(db,'abs',id),{ok:true,okBy:TNAME()});const tx='[결석 확인] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 확인했어요.';push([x.sid+'|parent'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'s',tx).catch(()=>{});return toast(s.name+' 결석 확인 · 학부모님께 알렸어요')}
   if(a==='checkin'){const s=stu(U.me);if((D.att[TODAY]||{})[s.id])return toast('이미 등원했어요');
     if(wifiOn()&&!U.wifiBusy){U.wifiBusy=true;U.wifiState='checking';render();let ok=false;try{const ip=await myIp();ok=!!(ip&&(D.cfg.wifiIps||[]).includes(ip))}catch(e){}U.wifiBusy=false;if(ok){try{await wifiIn(s)}catch(e){U.wifiState='err';toast('등원 기록에 실패했어요. 다시 눌러 주세요')}return render()}U.wifiState='no'}
-    if(myReq(s.id))return toast('이미 요청했어요');const t=firstReqAt(s.id);await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:t,date:TODAY,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생 '+t+' 등원 · 승인해 주세요',{tag:'req'});return toast('원장님께 등원 승인 요청을 보냈어요')}
+    if(myReq(s.id))return toast('이미 요청했어요');const t=hm();await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:t,date:TODAY,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생 '+t+' 등원 · 승인해 주세요',{tag:'req'});return toast('원장님께 등원 승인 요청을 보냈어요')}
   if(a==='forceIn'){const s=stu(id);const pq=(D.req||[]).find(x=>x.sid===id&&x.st==='pending'&&x.date===curDay());const t=pq&&pq.at?pq.at:curDay()===TODAY?hm():(s.time||'16:00');await setDoc(doc(db,'att',curDay()+'_'+id),{sid:id,date:curDay(),st:'출석',at:t,by:'teacher',logged:loggedOn(id,curDay())});const q=(D.req||[]).find(x=>x.sid===id&&x.st==='pending');if(q)updateDoc(doc(db,'reqs',q.id),{st:'ok'}).catch(()=>{});const noti=curDay()===TODAY&&confirm(s.name+' 학생 등원 처리했어요.\n학부모님께 등원 알림을 보낼까요?');if(noti){const tx='[등원 알림] '+s.name+' 학생이 '+t+'에 등원했습니다.';push([id+'|parent'],tx);await msg(id+'|parent',id,'s',tx).catch(()=>{})}return toast(s.name+' 등원 처리 '+t+(noti?' · 학부모 알림 발송':''))}
   if(a==='cancelReq'){await deleteDoc(doc(db,'reqs',id));return toast('요청을 취소했어요')}
   if(a==='checkout'){
