@@ -260,8 +260,13 @@ html.ios-pwa.chat-open:not(.kb) .phone{height:var(--in-h,100%)}
 html.ios-pwa.chat-open:not(.kb) .send{padding-bottom:10px}
 .iosg{position:fixed;inset:0;z-index:200;background:rgba(10,12,30,.62);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
 .iosc{background:var(--scr);color:var(--ink);border-radius:20px;padding:20px;max-width:380px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)}
-.iosa{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 70px);transform:translateX(-50%);animation:iosb 1s ease-in-out infinite}
-@keyframes iosb{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,10px)}}
+.iosa{position:fixed;left:31%;bottom:calc(env(safe-area-inset-bottom) + 64px);transform:translateX(-50%);animation:iosb 1s ease-in-out infinite;pointer-events:none}
+@keyframes iosb{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,12px)}}
+.iosg{justify-content:flex-start;padding-top:calc(env(safe-area-inset-top) + 16px)}
+.iostep{display:flex;gap:10px;margin:0 0 12px;line-height:1.55}.iostep .no{flex:none;width:24px;height:24px;border-radius:50%;background:var(--pri);color:#fff;display:grid;place-items:center;font-size:13px}
+.iosbar{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:15px}.iosbar .ib1{width:34px;height:34px;border-radius:50%;background:var(--soft);display:grid;place-items:center}
+.iosbar .ib2{flex:1;display:flex;align-items:center;gap:8px;height:34px;border-radius:17px;background:var(--soft);padding:0 10px;font-size:12px;min-width:0;overflow:hidden;white-space:nowrap}
+.iosbar .hit{font-size:16px;font-weight:700;color:var(--acc);box-shadow:0 0 0 2px var(--acc);border-radius:50%;width:24px;height:24px;display:grid;place-items:center;flex:none}
 </style>
 <script>
 /* 아이폰 홈 화면 앱: 화면 실제 높이로 맞추기 */

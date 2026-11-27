@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.0.7';
+const APP_VERSION = '2.0.8';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -441,14 +441,17 @@ function installSteps(){
 const installTip=()=>isStandalone()?'':'<div class="card" style="border-color:var(--pri)"><h3>홈 화면에 앱 설치하기</h3>'+(isIOS()?'<button class="btn" style="width:100%" data-act="iosG">홈 화면에 추가하기</button>':U.bip?'<button class="btn" style="width:100%" data-act="install">앱 설치하기 (한 번만 누르면 돼요)</button>':installSteps())+'</div>';
 function installBar(){if(isStandalone()||U.noInstall)return '';return '<div class="upd ib"><span>홈 화면에 앱으로 설치할 수 있어요</span><span style="display:flex;gap:6px"><button class="btn sm" data-act="'+(U.bip?'install':isIOS()?'iosG':'instHow')+'">설치</button><button class="btn sm ghost" data-act="instX" aria-label="닫기">✕</button></span></div>'}
 // 아이폰: '홈 화면에 추가'는 사파리 메뉴에서만 가능(애플 제한) → 공유 창 바로 열기 + 화살표 안내
-async function iosShare(){try{await navigator.share({title:'더밀착수학',url:location.origin+location.pathname})}catch(e){}}
 function iosGuide(){const chrome=/CriOS/i.test(navigator.userAgent),other=/FxiOS|NAVER|KAKAOTALK|Instagram|FBAN|DaumApps/i.test(navigator.userAgent);
-  const arrow='<svg viewBox="0 0 24 24" width="56" height="56" style="fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3v16M5 12l7 7 7-7"/></svg>';
-  return '<div class="iosg"><div class="iosc"><h3 style="margin:0 0 6px">홈 화면에 앱 추가하기</h3>'+
-  (other?'<p style="margin:0 0 10px">지금은 사파리가 아니에요. 오른쪽 아래 <b>⋯</b> 또는 <b>나침반</b>을 눌러 <b>Safari로 열기</b>를 먼저 해 주세요.</p>':'')+
-  (navigator.share&&!other?'<button class="btn" style="width:100%;height:52px;font-size:16px" data-act="iosShare">'+shareIco+'&nbsp; 공유 창 바로 열기</button><p class="sub" style="margin:8px 0 12px;text-align:center">열린 창을 위로 올려 <b>홈 화면에 추가</b>를 누르세요</p>':'')+
-  '<ol class="ist" style="margin:0"><li>'+(chrome?'오른쪽 위 공유 '+shareIco:'아래 주소창 왼쪽 <b>≡</b> 또는 가운데 공유 '+shareIco)+' 누르기</li><li>'+(chrome?'':'<b>공유</b> → ')+'목록을 올려 <b>홈 화면에 추가</b></li><li>오른쪽 위 <b>추가</b> → 홈 화면의 <b>밀착</b> 아이콘으로 열기</li></ol>'+
-  '<button class="btn ghost" style="width:100%;margin-top:12px" data-act="iosX">닫기</button></div>'+(chrome||other?'':'<div class="iosa">'+arrow+'</div>')+'</div>'}
+  const arrow='<svg viewBox="0 0 24 24" width="54" height="54" style="fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))"><path d="M12 3v16M5 12l7 7 7-7"/></svg>';
+  // 사파리 아래 막대 모양 그림: ≡(또는 ⋯)를 빨간 원으로 표시
+  const bar='<div class="iosbar"><span class="ib1">‹</span><span class="ib2"><span class="hit">≡</span><span style="flex:1;opacity:.6">themilchak-math…</span><span>↻</span></span><span class="ib1">⧉</span></div>';
+  const step=(n,t)=>'<div class="iostep"><b class="no">'+n+'</b><div>'+t+'</div></div>';
+  return '<div class="iosg"><div class="iosc"><h3 style="margin:0 0 4px">홈 화면에 앱 추가하기</h3><p class="sub" style="margin:0 0 12px">아이폰은 사파리 메뉴에서 직접 추가해야 해요 (애플 정책). 30초면 끝나요.</p>'+
+  (other?'<p style="margin:0 0 12px;padding:10px;border-radius:12px;background:var(--soft)">지금은 사파리가 아니에요. 오른쪽 아래 <b>⋯</b> 또는 <b>나침반</b> 버튼을 눌러 <b>Safari로 열기</b>를 먼저 해 주세요.</p>':'')+
+  (chrome?step(1,'오른쪽 위 공유 '+shareIco+' 누르기'):step(1,'화면 <b>맨 아래</b> 주소창 왼쪽 <b>≡</b> 누르기<br><span class="sub">≡ 대신 <b>⋯</b>나 공유 '+shareIco+'가 보이면 그걸 누르세요</span>'+bar))+
+  step(2,(chrome?'':'<b>공유</b> '+shareIco+' 누르기 → ')+'목록을 위로 올려 <b>홈 화면에 추가</b>')+
+  step(3,'오른쪽 위 <b>추가</b> → 홈 화면에 생긴 <b>밀착</b> 아이콘으로 열기')+
+  '<button class="btn ghost" style="width:100%;margin-top:6px" data-act="iosX">확인했어요</button></div>'+(chrome||other?'':'<div class="iosa">'+arrow+'</div>')+'</div>'}
 function instSheet(){return '<div class="sheetbg" data-act="close"><div class="sheet"><h3>홈 화면에 앱 설치하기</h3>'+installSteps()+'<p class="sub">설치하면 앱처럼 바로 열리고 로그인도 유지돼요.</p><button type="button" class="btn ghost" style="width:100%" data-act="close">닫기</button></div></div>'}
 const msgBox=()=>U.authMsg?'<div class="card" style="border-color:var(--acc)"><p style="margin:0;color:var(--acc);font-weight:700">'+esc(U.authMsg)+'</p></div>':'';
 
@@ -766,7 +769,6 @@ app.addEventListener('click',async e=>{
   if(a==='instHow'){U.sheet='inst';return render()}
   if(a==='iosG'){U.iosGuide=true;return render()}
   if(a==='iosX'){U.iosGuide=false;return render()}
-  if(a==='iosShare'){iosShare();return}
   if(a==='instX'){U.noInstall=true;try{localStorage.setItem('tmm-noinst','1')}catch(e){}return render()}
   if(a==='pushOn'){if(U.pushBusy)return;U.pushBusy=true;U.pushErr='';U.pushHint=false;render();const hintT=setTimeout(()=>{if(U.pushBusy){U.pushHint=true;render()}},5000);try{await enablePush(db,ME.uid,U.role==='teacher'?['teacher']:ME.ths);clearTimeout(hintT);U.pushBusy=false;U.pushAutoErr='';U.pushHint=false;toast('알림이 켜졌어요')}catch(e){clearTimeout(hintT);U.pushBusy=false;U.pushErr=pushErrorText(e);U.pushHint=/permission|dismissed|denied/.test(String(e.message));render()}return render()}
   if(a==='pushHide'){U.pushHide=true;return render()}
