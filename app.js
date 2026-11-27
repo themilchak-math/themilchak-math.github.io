@@ -10,7 +10,7 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.2.4';
+const APP_VERSION = '2.2.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -405,7 +405,7 @@ function sheetHtml(){
     '<label class="f"><span>날짜 <small class="sub" style="font-weight:400">비워 두면 오늘</small></span><input type="date" id="bD"></label><label class="f"><span>제목</span><input id="nT"></label><label class="f"><span>내용</span><textarea id="nB"></textarea></label>'+
     '<label class="btn ghost" style="display:block;text-align:center;cursor:pointer;margin-bottom:6px">📷 사진·파일 고르기<input type="file" id="bFile" multiple accept="image/*,.pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" hidden></label><p class="sub" style="margin:0 0 6px">사진은 자동으로 줄여서 올려요 · 파일 하나 50MB까지</p>'+
     (q.length?'<ul class="bq">'+q.map((x,i)=>'<li>'+(/^image\//.test(x.type)?'🖼️':'📎')+' <span class="n">'+esc(x.name)+'</span><span class="sub">'+fmtSize(x.size)+'</span><button type="button" class="btn sm ghost" style="padding:2px 8px" data-act="bfDel" data-id="'+i+'">×</button></li>').join('')+'</ul>':'')+
-    '<label class="f"><span>구글 드라이브 링크 (선택)</span><input id="bLu" placeholder="큰 파일·동영상은 링크로"></label>'+(own?'<label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="nP">상단 고정</label>':'')+(U.bBusy?'<p class="sub" style="color:var(--pri);font-weight:700">'+esc(U.bBusy)+'</p>':'');}
+    '<label class="f"><span>구글 드라이브 링크 (선택)</span><input id="bLu" placeholder="큰 파일·동영상은 링크로"></label>'+'<label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="bNoti" checked>🔔 알림 보내기</label>'+(own?'<label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="nP">상단 고정</label>':'')+(U.bBusy?'<p class="sub" style="color:var(--pri);font-weight:700">'+esc(U.bBusy)+'</p>':'');}
   if(t==='log'){
     const f=U.lf;const s=stu(f.sid);const us=unitsOf(f.sid,f.course);
     const chips=(act,val)=>'<div class="pg">'+PCT.map(v=>'<button type="button" data-act="'+act+'" data-v="'+v+'" class="'+(val===v?'on':'')+'">'+v+'</button>').join('')+'</div>';
@@ -952,14 +952,14 @@ app.addEventListener('submit',async e=>{
     if(U.bBusy)return;const cat=g('bCat')||'notice',title=g('nT').trim(),body=g('nB').trim(),lu=g('bLu').trim();
     if(cat==='notice'&&!isOwnerMe())return toast('공지는 원장님만 쓸 수 있어요');
     if(!title)return toast('제목을 입력해 주세요');if(lu&&!okLink(lu))return toast('https:// 로 시작하는 링크를 넣어 주세요');
-    const to=parseTo(g('bTo'));
+    const to=parseTo(g('bTo'));const noti=!!(document.getElementById('bNoti')||{}).checked,pin=!!(document.getElementById('nP')||{}).checked;
     const q=U.bf||[],files=[];
     try{for(let i=0;i<q.length;i++){U.bBusy='올리는 중… '+(i+1)+'/'+q.length;render();files.push(await uploadFile(auth,q[i]))}
       U.bBusy='저장 중…';render();
-      await addDoc(collection(db,'notices'),{cat,title,body,at:g('bD')||TODAY,pin:!!(document.getElementById('nP')||{}).checked,reads:[],ts:now(),by:ME.uid,byName:TNAME(),to,files,links:lu?[{name:'구글 드라이브 자료',url:lu}]:[]});
+      await addDoc(collection(db,'notices'),{cat,title,body,at:g('bD')||TODAY,pin,reads:[],ts:now(),by:ME.uid,byName:TNAME(),to,files,links:lu?[{name:'구글 드라이브 자료',url:lu}]:[]});
     }catch(err){U.bBusy='';await deleteFiles(auth,files.map(x=>x.k));render();return toast(err.message||'올리지 못했어요')}
-    push(pushKeys(to,D.students),title,{title:catPush(cat),tag:'notice'});
-    U.bBusy='';U.bf=[];U.sheet=null;U.tab='comm';U.comm='notice';U.bcat='all';return toast(catLabel(cat)+' 글을 올렸어요');
+    if(noti)push(pushKeys(to,D.students),title,{title:catPush(cat),tag:'notice'});
+    U.bBusy='';U.bf=[];U.sheet=null;U.tab='comm';U.comm='notice';U.bcat='all';return toast(catLabel(cat)+' 글을 올렸어요'+(noti?' · 알림 보냄':' · 알림 없이'));
   }
   if(U.sheet==='log'){
     const f=U.lf;lfStash();const LD=curDay();

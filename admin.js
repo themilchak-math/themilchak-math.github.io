@@ -10,7 +10,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.6.5';
+const ADMIN_VERSION = '2.6.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -685,7 +685,7 @@ function pNotice() {
     '<div class="bar" style="margin:0"><input id="bLn" placeholder="링크 이름 (예: 2학기 기출 모음)" style="flex:1;min-width:0"><input id="bLu" placeholder="구글 드라이브 링크 붙여넣기" style="flex:2;min-width:0"><button type="button" class="btn sm ghost" data-a="blAdd">+ 링크</button></div>' +
     '<p class="sub" style="margin:0">드라이브 파일 → 공유 → 일반 액세스를 <b>링크가 있는 모든 사용자</b>로 → 링크 복사 (큰 파일·동영상은 이렇게)</p>' +
     (ql.length ? '<ul class="bq">' + ql.map((x, i) => '<li>🔗 <span class="n">' + esc(x.name) + '</span><button type="button" class="btn xs ghost" data-a="blDel" data-id="' + i + '">×</button></li>').join('') + '</ul>' : '') +
-    (own ? '<label class="sw"><input type="checkbox" id="bPin"> 상단 고정</label>' : '') +
+    '<div class="bar" style="margin:0;gap:16px"><label class="sw"><input type="checkbox" id="bNoti" checked> 🔔 알림 보내기</label>' + (own ? '<label class="sw"><input type="checkbox" id="bPin"> 상단 고정</label>' : '') + '</div>' +
     '<button class="btn" type="submit"' + (V.bBusy ? ' disabled' : '') + '>' + esc(V.bBusy || '올리기') + '</button></form>' + us + '</section>';
   const pills = '<div class="bar" style="margin:0 0 10px">' + [['all', '전체']].concat(CATS).map(c => '<button class="btn sm ' + (f === c[0] ? '' : 'ghost') + '" data-a="bcat" data-v="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>';
   const items = list.map(n => '<div class="notice"><div><span class="bcat">' + catLabel(catOf(n)) + '</span>' + (n.pin ? chip('고정', 'bad') + ' ' : '') + '<b>' + esc(n.title) + '</b> <span class="sub">' + fmtD(n.at) + (n.byName ? ' · ' + esc(n.byName) : '') + ' · ' + esc(toLabel(n, x => (stu(x) || {}).name)) + ' · 읽음 ' + (n.reads || []).length + '명</span></div>' + (n.body ? '<p>' + esc(n.body) + '</p>' : '') + filesHtml(n, esc) + (canDel(n) ? '<button class="btn xs ghost" data-a="delN" data-id="' + n.id + '">삭제</button>' : '') + '</div>').join('');
@@ -1063,16 +1063,16 @@ app.addEventListener('submit', async e => {
       if (V.bBusy) return; const cat = g('bCat') || 'notice', title = g('bT').trim(), body = g('bB').trim();
       if (cat === 'notice' && !isOwnerMe()) return toast('공지는 원장님만 쓸 수 있어요');
       if (!title) return toast('제목을 입력해 주세요');
-      const to = parseTo(g('bTo'));
+      const to = parseTo(g('bTo')); const noti = !!(document.getElementById('bNoti') || {}).checked, pin = !!(document.getElementById('bPin') || {}).checked;
       const q = V.bf || [], files = [];
       try {
         for (let i = 0; i < q.length; i++) { V.bBusy = '올리는 중… ' + (i + 1) + '/' + q.length; render(); files.push(await uploadFile(auth, q[i])); }
         V.bBusy = '저장 중…'; render();
-        await addDoc(collection(db, 'notices'), { cat, title, body, at: g('bD') || TODAY, pin: !!(document.getElementById('bPin') || {}).checked, reads: [], ts: now(), by: auth.currentUser.uid, byName: TNAME(), to, files, links: V.bl || [] });
+        await addDoc(collection(db, 'notices'), { cat, title, body, at: g('bD') || TODAY, pin, reads: [], ts: now(), by: auth.currentUser.uid, byName: TNAME(), to, files, links: V.bl || [] });
       } catch (err) { V.bBusy = ''; await deleteFiles(auth, files.map(x => x.k)); render(); return toast(err.message || '올리지 못했어요'); }
-      push(pushKeys(to, D.students), title, { title: catPush(cat), tag: 'notice' });
+      if (noti) push(pushKeys(to, D.students), title, { title: catPush(cat), tag: 'notice' });
       ['bT', 'bB', 'bD'].forEach(x => { document.getElementById(x).value = ''; }); V.bf = []; V.bl = []; V.bBusy = ''; V.usage = null; V.usageLoad = 0;
-      return toast(catLabel(cat) + ' 글을 올렸어요' + (files.length ? ' (첨부 ' + files.length + '개)' : ''));
+      return toast(catLabel(cat) + ' 글을 올렸어요' + (files.length ? ' (첨부 ' + files.length + '개)' : '') + (noti ? ' · 알림 보냄' : ' · 알림 없이'));
     }
     if (f === 'attF') {
       const sid = V.attSid, d = V.attDate, isAbs = g('atSt') === 'abs', at = g('atIn'), out = g('atOut');
