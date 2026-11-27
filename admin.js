@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.4.0';
+const ADMIN_VERSION = '2.4.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -33,8 +33,8 @@ const fmtP = d => d && d.length === 11 ? d.slice(0, 3) + '-' + d.slice(3, 7) + '
 const now = () => Date.now();
 const ST = ['출석', '지각', '결석'];
 const REL = { student: '학생', father: '아버님', mother: '어머님' };
-const GRADES = ['중1', '중2', '중3', '고1', '고2', '고3'];
-const DEF_COURSE = { 중1: '중1-2', 중2: '중2-2', 중3: '중3-2', 고1: '공통수학2', 고2: '대수', 고3: '미적분Ⅰ' };
+const GRADES = ['초4', '초5', '초6', '중1', '중2', '중3', '고1', '고2', '고3'];
+const DEF_COURSE = { 초4: '중1-1', 초5: '중1-1', 초6: '중1-1', 중1: '중1-2', 중2: '중2-2', 중3: '중3-2', 고1: '공통수학2', 고2: '대수', 고3: '미적분Ⅰ' };
 const COURSES = Object.keys(BY_SUBJ['수학']);
 const PCT = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
@@ -499,7 +499,7 @@ function finNewMonth() {
 }
 
 /* ---------- 학생명부 ---------- */
-const kindOf = g => /^고/.test(g || '') ? '고등' : /^중/.test(g || '') ? '중등' : '';
+const kindOf = g => /^고/.test(g || '') ? '고등' : /^중/.test(g || '') ? '중등' : /^초/.test(g || '') ? '초등' : '';
 const phoneOf = (s, rel) => { const m = memberOf(s.id, rel); if (m && m.phone) return m.phone; const si = D.sinfo[s.id] || {}; return ((si.phones || {})[rel]) || ''; };
 function pRoster() {
   const list = [...D.students].sort((a, b) => (!!a.left - !!b.left) || a.name.localeCompare(b.name, 'ko'));
@@ -524,7 +524,7 @@ function parseWorkbook(wb) {
   const R = S['학생명부'];
   if (R) for (let r = 5; r < 400; r++) { const name = R['B' + r]; if (!name) continue;
     const g = R['H' + r], kind = R['I' + r] || '';
-    const grade = typeof g === 'string' && /^[중고]\d$/.test(g) ? g : g ? ((/고/.test(kind) ? '고' : '중') + g) : '';
+    const grade = typeof g === 'string' && /^[초중고]\d$/.test(g) ? g : g ? ((/고/.test(kind) ? '고' : /초/.test(kind) ? '초' : '중') + g) : '';
     out.roster.push({ name: String(name).trim(), birth: xlDate(R['C' + r]), phones: { student: digits(R['D' + r]), mother: digits(R['E' + r]), father: digits(R['F' + r]) }, school: R['G' + r] ? String(R['G' + r]).trim() : '', grade, kind, joined: xlDate(R['J' + r]), status: R['K' + r] || '재원', memo: R['L' + r] ? String(R['L' + r]) : '' }); }
   for (const name of wb.order) { const mm = /^(\d{4})\.(\d{1,2})$/.exec(name); if (!mm) continue;
     const M = S[name]; const ym = mm[1] + '-' + mm[2].padStart(2, '0'); const rows = [], idx = {};
@@ -664,7 +664,7 @@ function modalHtml() {
   }
   if (V.modal === 'bulk') {
     const b = V.bulk;
-    return '<div class="mbg" data-a="close"><form class="modal wide" id="bulkF"><h2>엑셀에서 여러 명 붙여넣기</h2><p class="sub">엑셀에서 아래 순서로 열을 맞춰 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣기(Ctrl+V) 하세요. 첫 줄이 제목이면 자동으로 건너뛰어요.<br><b>이름 · 학년(중1~고3) · 수업 시작(16:00) · 학생 번호 · 아버님 번호 · 어머님 번호 · 학교(선택)</b></p><textarea id="bulkIn" rows="7" placeholder="홍길동	중2	16:00	010-1111-2222	010-3333-4444	010-5555-6666"></textarea><button type="button" class="btn ghost" data-a="bulkCheck">미리보기</button>' +
+    return '<div class="mbg" data-a="close"><form class="modal wide" id="bulkF"><h2>엑셀에서 여러 명 붙여넣기</h2><p class="sub">엑셀에서 아래 순서로 열을 맞춰 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣기(Ctrl+V) 하세요. 첫 줄이 제목이면 자동으로 건너뛰어요.<br><b>이름 · 학년(초4~고3) · 수업 시작(16:00) · 학생 번호 · 아버님 번호 · 어머님 번호 · 학교(선택)</b></p><textarea id="bulkIn" rows="7" placeholder="홍길동	중2	16:00	010-1111-2222	010-3333-4444	010-5555-6666"></textarea><button type="button" class="btn ghost" data-a="bulkCheck">미리보기</button>' +
       (b ? '<table><thead><tr><th>이름</th><th>학년</th><th>수업</th><th>학생</th><th>아버님</th><th>어머님</th><th>학교</th><th>확인</th></tr></thead><tbody>' + b.map(r => '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.grade) + '</td><td>' + esc(r.time) + '</td><td>' + esc(fmtP(r.student)) + '</td><td>' + esc(fmtP(r.father)) + '</td><td>' + esc(fmtP(r.mother)) + '</td><td>' + esc(r.school || '') + '</td><td>' + (r.err ? chip(r.err, 'bad') : chip('등록 가능', 'ok')) + '</td></tr>').join('') + '</tbody></table>' : '') +
       '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit"' + (b && b.some(r => !r.err) ? '' : ' disabled') + '>' + (b ? b.filter(r => !r.err).length + '명 등록' : '등록') + '</button></div></form></div>';
   }
@@ -811,7 +811,7 @@ function parseBulk(txt) {
   const seen = new Set(active().map(s => s.name));
   return rows.map(r => {
     const o = { name: r[0] || '', grade: r[1] || '', time: (r[2] || '16:00').replace(/^(\d):/, '0$1:'), student: digits(r[3]), father: digits(r[4]), mother: digits(r[5]), school: (r[6] || '').trim() };
-    o.err = !o.name ? '이름 없음' : !GRADES.includes(o.grade) ? '학년은 중1~고3' : !/^\d\d:\d\d$/.test(o.time) ? '시간 형식(16:00)' : [o.student, o.father, o.mother].some(p => p && (p.length < 10 || p.length > 11)) ? '번호 확인' : ![o.student, o.father, o.mother].some(p => p) ? '번호 없음' : seen.has(o.name) ? '이미 있는 이름' : '';
+    o.err = !o.name ? '이름 없음' : !GRADES.includes(o.grade) ? '학년은 초4~고3' : !/^\d\d:\d\d$/.test(o.time) ? '시간 형식(16:00)' : [o.student, o.father, o.mother].some(p => p && (p.length < 10 || p.length > 11)) ? '번호 확인' : ![o.student, o.father, o.mother].some(p => p) ? '번호 없음' : seen.has(o.name) ? '이미 있는 이름' : '';
     seen.add(o.name); return o;
   });
 }
