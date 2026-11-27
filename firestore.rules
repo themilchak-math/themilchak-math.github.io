@@ -79,10 +79,15 @@ service cloud.firestore {
       allow write: if isTeacher();
     }
     match /notices/{id} {
-      // 공지 작성·삭제는 원장님만, 부원장은 읽기만
+      // 소식 게시판: 공지(cat 없음/'notice')는 원장님만, 자료실·앨범·가정통신문은 원장님·부원장 작성
+      // 학생·학부모는 읽기 + '확인했어요'(reads에 자기 uid 추가)만
+      function catNew() { return request.resource.data.get('cat', 'notice'); }
+      function catOld() { return resource.data.get('cat', 'notice'); }
       allow read: if isTeacher() || hasProfile();
-      allow create, delete: if isOwner();
-      allow update: if isTeacher() || (hasProfile() && onlyKeys(['reads'])
+      allow create: if isOwner() || (isStaff() && catNew() in ['data', 'album', 'letter']);
+      allow delete: if isOwner() || (isStaff() && catOld() != 'notice');
+      allow update: if isOwner() || (isStaff() && catOld() != 'notice' && catNew() != 'notice')
+        || (hasProfile() && onlyKeys(['reads'])
         && request.resource.data.reads.toSet().difference(resource.data.reads.toSet()) == [request.auth.uid].toSet());
     }
     match /push/{id} {

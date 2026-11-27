@@ -6,9 +6,11 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, isAct } from './subjects.js';
 import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
+import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fmtSize, filesHtml, lightbox, visibleTo, toLabel, targetSids, okLink, BOARD_CSS } from './board.js';
+{const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.1.7';
+const APP_VERSION = '2.2.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -61,7 +63,10 @@ const ic=n=>'<svg viewBox="0 0 24 24">'+IC[n]+'</svg>';
 
 const unreadTeacher=()=>Object.values(D.threads).reduce((a,t)=>a+t.filter(m=>m.f==='o'&&!m.r).length,0);
 const unreadMine=()=>fthread(myKey()).filter(m=>(m.f==='t'||m.f==='s')&&!m.r).length;
-const unreadNotice=()=>U.role==='teacher'?0:D.notices.filter(n=>!(n.reads||[]).includes(ME.uid)).length;
+const mySids=()=>U.role==='student'?[U.me]:U.role==='parent'?famSids(U.me):[];
+const seenPosts=()=>U.role==='teacher'?D.notices:D.notices.filter(n=>visibleTo(n,mySids(),x=>(stu(x)||{}).grade));
+const canDelPost=n=>isOwnerMe()||(U.role==='teacher'&&catOf(n)!=='notice');
+const unreadNotice=()=>U.role==='teacher'?0:seenPosts().filter(n=>!(n.reads||[]).includes(ME.uid)).length;
 
 function tabsFor(){
   const c=U.role==='teacher'?unreadTeacher():unreadMine()+unreadNotice();
@@ -131,15 +136,16 @@ const loggedOn=(sid,d)=>D.logs.some(l=>l.sid===sid&&l.date===d);
 const fmtDist=m=>m>=1000?(m/1000).toFixed(1)+'km':m+'m';
 const stars=n=>'<span class="stars" aria-label="이해도 '+n+'/5">'+'★'.repeat(n)+'<span style="opacity:.25">'+'★'.repeat(5-n)+'</span></span>';
 
-function noticeList(limit){
-  const list=[...D.notices].sort((a,b)=>(b.pin-a.pin)||(b.at>a.at?1:-1)).slice(0,limit||99);
-  if(!list.length)return '<div class="empty">등록된 공지가 없어요</div>';
-  const total=D.students.length*2;
+function noticeList(limit,cat){
+  const list=seenPosts().filter(n=>!cat||cat==='all'||catOf(n)===cat).sort((a,b)=>(!!b.pin-!!a.pin)||((b.ts||0)-(a.ts||0))).slice(0,limit||99);
+  if(!list.length)return '<div class="empty">'+(cat&&cat!=='all'?'이 말머리 글이 아직 없어요':'아직 소식이 없어요')+'</div>';
+  const T=U.role==='teacher';
   return list.map(n=>{
     const read=(n.reads||[]).includes(ME.uid);
-    return '<div class="notice"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+(n.pin?'<span class="chip c-bad">고정</span>':'')+'<b>'+esc(n.title)+'</b></div><div class="sub">'+fmtD(n.at)+(U.role==='teacher'?' · 읽음 '+(n.reads||[]).length+'명':(read?' · 읽음':''))+'</div><p>'+esc(n.body)+'</p>'+(U.role!=='teacher'&&!read?'<button class="btn sm ghost" style="margin-top:8px" data-act="readN" data-id="'+n.id+'">확인했어요</button>':'')+(isOwnerMe()?'<button class="btn sm ghost" style="margin-top:8px" data-act="delN" data-id="'+n.id+'">삭제</button>':'')+'</div>';
+    return '<div class="notice"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="bcat">'+catLabel(catOf(n))+'</span>'+(n.pin?'<span class="chip c-bad">고정</span>':'')+'<b>'+esc(n.title)+'</b></div><div class="sub">'+fmtD(n.at)+(n.byName?' · '+esc(n.byName):'')+(T?' · '+esc(toLabel(n,x=>(stu(x)||{}).name))+' · 읽음 '+(n.reads||[]).length+'명':(read?' · 읽음':''))+'</div>'+(n.body?'<p>'+esc(limit?(n.body.length>90?n.body.slice(0,90)+'…':n.body):n.body)+'</p>':'')+filesHtml(n,esc,!!limit)+(!T&&!read&&!limit?'<button class="btn sm ghost" style="margin-top:8px" data-act="readN" data-id="'+n.id+'">확인했어요</button>':'')+(canDelPost(n)&&!limit?'<button class="btn sm ghost" style="margin-top:8px" data-act="delN" data-id="'+n.id+'">삭제</button>':'')+'</div>';
   }).join('');
 }
+const boardPills=()=>'<div class="pills" style="flex-wrap:wrap">'+[['all','전체']].concat(CATS).map(c=>'<button data-act="bcat" data-v="'+c[0]+'" class="'+((U.bcat||'all')===c[0]?'on':'')+'">'+c[1]+'</button>').join('')+'</div>';
 
 const sortLogs=l=>[...l].sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
 const lastOf=(sid,course,unit)=>sortLogs(D.logs.filter(l=>l.sid===sid&&l.course===course&&l.unit===unit)).pop();
@@ -247,7 +253,7 @@ function tHome(){
   (cand.length?'<div style="display:flex;gap:6px;margin-bottom:10px"><select id="exSel" style="flex:1;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--soft);color:var(--ink);min-height:40px"><option value="">보충 올 학생 선택</option>'+cand.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')+'</select><button class="btn sm" data-act="exAdd">+ 보충</button></div>':'')+
   P.order.map(s=>{const g=P.rk(s);return '<div class="row"'+(P.plan&&g===0&&!a[s.id]?' style="opacity:.5"':'')+'><div class="av">'+esc(s.name.slice(-2))+'</div><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(s.grade)+' · '+esc(curUnit(s))+'</div></div>'+(P.plan?P.tag(s)+' ':'')+attChip(a[s.id])+'</div>'}).join('')+'</div>'+
   '<div class="card"><h3>확인할 숙제</h3>'+hwList(toCheck,'teacher')+'</div>'+
-  '<div class="card"><h3>최근 공지 <button class="btn sm ghost" data-act="go" data-tab="comm" data-comm="notice">전체</button></h3>'+noticeList(1)+'</div></div>';
+  '<div class="card"><h3>최근 소식 <button class="btn sm ghost" data-act="go" data-tab="comm" data-comm="notice">전체</button></h3>'+noticeList(1)+'</div></div>';
 }
 
 function calCard(sid,teacher){
@@ -320,18 +326,18 @@ function tLog(){
   '<div class="card"><h3>수업 기록</h3>'+logList(s.id,false)+'</div></div>';
 }
 
-function commTabs(){return '<div class="pills"><button data-act="comm" data-v="msg" class="'+(U.comm==='msg'?'on':'')+'">메시지</button><button data-act="comm" data-v="notice" class="'+(U.comm==='notice'?'on':'')+'">공지사항'+(unreadNotice()?' · '+unreadNotice():'')+'</button></div>'}
+function commTabs(){return '<div class="pills"><button data-act="comm" data-v="msg" class="'+(U.comm==='msg'?'on':'')+'">메시지</button><button data-act="comm" data-v="notice" class="'+(U.comm==='notice'?'on':'')+'">소식'+(unreadNotice()?' · '+unreadNotice():'')+'</button></div>'}
 
 function tComm(){
   let inner;
-  if(U.comm==='notice'){inner=(U.role==='teacher'&&!isOwnerMe()?'<p class="sub" style="margin:0 0 10px">공지 작성은 원장님만 할 수 있어요</p>':'<button class="btn" style="width:100%;margin-bottom:12px" data-act="sheet" data-s="notice">+ 공지 쓰기</button>')+'<div class="card">'+noticeList()+'</div>'}
+  if(U.comm==='notice'){inner='<button class="btn" style="width:100%;margin-bottom:12px" data-act="sheet" data-s="notice">+ 글쓰기 (사진·파일 첨부)</button>'+boardPills()+'<div class="card">'+noticeList(0,U.bcat)+'</div>'}
   else{
     const keys=[];D.students.forEach(s=>{keys.push(...stuKey(s.id));if(famSids(s.id)[0]===s.id)keys.push(...parKeys(s.id))});
     const items=keys.map(k=>{const t=fthread(k);const last=t[t.length-1];return {k,last,un:t.filter(m=>m.f==='o'&&!m.r).length}}).sort((a,b)=>((b.last?b.last.at:'')>(a.last?a.last.at:'')?1:-1));
     const nameK=k=>{const [sd,rr]=k.split('|');return rr!=='student'?famLabel(sd,REL[rr]):stu(sd).name+' 학생'};const empty=items.filter(i=>!i.last);const shown=items.filter(i=>i.last);
     inner=(empty.length?'<select id="newChat" style="width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--ink);font-size:15px"><option value="">+ 새 대화 시작…</option>'+empty.map(i=>'<option value="'+esc(i.k)+'">'+esc(nameK(i.k))+'</option>').join('')+'</select>':'')+(shown.length?'':'<div class="empty">아직 대화가 없어요</div>')+'<div class="card"'+(shown.length?'':' hidden')+'>'+shown.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r==='parent'?' p':'')+'">'+(r==='parent'?'학부':esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r==='parent'?famLabel(sid):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'</button>'}).join('')+'</div>';
   }
-  return header('소통','학생·학부모 메시지와 공지')+'<div class="body">'+commTabs()+inner+'</div>';
+  return header('소통','학생·학부모 메시지와 소식')+'<div class="body">'+commTabs()+inner+'</div>';
 }
 
 // 시스템 자동 알림: 원장님이 직접 보낸 메시지와 구분되게 '자동 알림' 말풍선으로
@@ -355,7 +361,7 @@ function sHome(){
   '<div class="stats"><div><b>'+todo.length+'</b><span>남은 숙제</span></div><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   '<div class="card"><h3>해야 할 숙제</h3>'+hwList(todo,'student')+'</div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
-  '<div class="card"><h3>공지사항</h3>'+noticeList(2)+'</div></div>';
+  '<div class="card"><h3>소식 <button class="btn sm ghost" style="float:right" data-act="go" data-tab="comm" data-comm="notice">전체</button></h3>'+noticeList(2)+'</div></div>';
 }
 function sHw(){const s=stu(U.me);const l=D.hw.filter(h=>h.sid===s.id).sort((a,b)=>(a.st!=='todo')-(b.st!=='todo')||(a.due>b.due?1:-1));return header('내 숙제','완료하면 선생님께 바로 알려져요')+'<div class="body"><div class="card">'+hwList(l,'student')+'</div></div>'}
 function myLog(){const s=stu(U.me);return header(U.role==='student'?'내 진도':s.name+' 학습기록',nowLabel(s))+'<div class="body">'+progressCard(s)+'<div class="card"><h3>수업 기록</h3>'+logList(s.id,true)+'</div></div>'}
@@ -368,7 +374,7 @@ function pHome(){
   '<div class="stats"><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
   '<div class="card"><h3>숙제 현황'+(hs.length>3?' <button class="btn sm ghost" style="float:right" data-act="go" data-tab="hw">전체 보기</button>':'')+'</h3>'+hwList(hwSort(hs).slice(0,3),'parent')+'</div>'+
-  '<div class="card"><h3>공지사항</h3>'+noticeList(2)+'</div></div>';
+  '<div class="card"><h3>소식 <button class="btn sm ghost" style="float:right" data-act="go" data-tab="comm" data-comm="notice">전체</button></h3>'+noticeList(2)+'</div></div>';
 }
 const hwRank=h=>h.st==='todo'?(h.due<TODAY?0:1):h.st==='done'?2:3;
 const hwSort=l=>[...l].sort((a,b)=>hwRank(a)-hwRank(b)||(hwRank(a)<2?(a.due>b.due?1:a.due<b.due?-1:0):(a.due<b.due?1:a.due>b.due?-1:0)));
@@ -380,9 +386,9 @@ function pHw(){const s=stu(U.me);const l=hwSort(D.hw.filter(h=>h.sid===s.id));co
 function pAtt(){const s=stu(U.me);return header('출결 달력',s.name)+'<div class="body">'+absCard(s)+calCard(s.id,false)+'</div>'}
 function oComm(){
   let inner;
-  if(U.comm==='notice')inner='<div class="card">'+noticeList()+'</div>';
+  if(U.comm==='notice')inner=boardPills()+'<div class="card">'+noticeList(0,U.bcat)+'</div>';
   else{const t=fthread(myKey());const last=t[t.length-1];const un=unreadMine();inner='<div class="card"><button class="thr" data-act="open" data-k="'+myKey()+'"><div class="av">'+esc(TNAME().slice(0,1))+'</div><div style="flex:1;min-width:0"><div class="nm">'+esc(TNAME())+'</div><div class="sub ell">'+(last?esc(last.t):'궁금한 점을 보내보세요')+'</div></div>'+(un?'<span class="dot" style="position:static">'+un+'</span>':'')+'</button></div>'}
-  return header('소통','선생님과 메시지·공지')+'<div class="body">'+commTabs()+inner+'</div>';
+  return header('소통','선생님과 메시지·소식')+'<div class="body">'+commTabs()+inner+'</div>';
 }
 
 function sheetHtml(){
@@ -394,7 +400,12 @@ function sheetHtml(){
   if(t==='staff')h='<h3>부원장 등록</h3><label class="f"><span>이름</span><input id="sfN" autocomplete="off" placeholder="예: 홍길동"></label><label class="f"><span>휴대폰 (로그인 아이디)</span><input id="sfP" inputmode="numeric" placeholder="010-0000-0000"></label><p class="sub" style="margin:0 0 10px">부원장님이 이 번호로 가입하면 원장님께 승인 요청이 와요. 승인하면 학생 관리·출결·숙제·기록·메시지를 원장님과 똑같이 쓸 수 있어요. (부원장 등록·앱 설정은 원장님만)</p>';
   if(t==='school'){const s=stu(U.schSid)||{};h='<h3>'+esc(s.name||'')+' 학교</h3><label class="f"><span>학교</span><input id="scIn" list="scInL" value="'+esc(s.school||'')+'" placeholder="예: 동탄중" autocomplete="off"><datalist id="scInL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>'}
   if(t==='abs'){const s=stu(U.me)||{};h='<h3>'+esc(s.name||'')+' 결석 알리기</h3><label class="f"><span>결석하는 날</span><input type="date" id="abD" min="'+TODAY+'" value="'+TODAY+'"></label><label class="f"><span>사유</span><textarea id="abR" placeholder="예: 가족 행사, 병원 진료, 학교 행사"></textarea></label><p class="sub" style="margin:0 0 10px">저장하면 원장님과 선생님께 바로 알림이 가요. 날짜가 지나기 전에는 취소할 수 있어요.</p>'}
-  if(t==='notice')h='<h3>공지 쓰기</h3><label class="f"><span>제목</span><input id="nT"></label><label class="f"><span>내용</span><textarea id="nB"></textarea></label><label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="nP">상단 고정</label>';
+  if(t==='notice'){const own=isOwnerMe();const cats=own?CATS:CATS.filter(c=>c[0]!=='notice');const gs=['초4','초5','초6','중1','중2','중3','고1','고2','고3'].filter(g=>D.students.some(x=>x.grade===g));const q=U.bf||[];
+    h='<h3>소식 글쓰기</h3><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>말머리</span><select id="bCat">'+cats.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('')+'</select></label><label class="f"><span>보는 사람</span><select id="bTo"><option value="all">전체</option>'+gs.map(g=>'<option value="g:'+g+'">'+g+'만</option>').join('')+D.students.map(x=>'<option value="s:'+x.id+'">'+esc(x.name)+'만</option>').join('')+'</select></label></div>'+
+    '<label class="f"><span>제목</span><input id="nT"></label><label class="f"><span>내용</span><textarea id="nB"></textarea></label>'+
+    '<label class="btn ghost" style="display:block;text-align:center;cursor:pointer;margin-bottom:6px">📷 사진·파일 고르기<input type="file" id="bFile" multiple accept="image/*,.pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" hidden></label><p class="sub" style="margin:0 0 6px">사진은 자동으로 줄여서 올려요 · 파일 하나 50MB까지</p>'+
+    (q.length?'<ul class="bq">'+q.map((x,i)=>'<li>'+(/^image\//.test(x.type)?'🖼️':'📎')+' <span class="n">'+esc(x.name)+'</span><span class="sub">'+fmtSize(x.size)+'</span><button type="button" class="btn sm ghost" style="padding:2px 8px" data-act="bfDel" data-id="'+i+'">×</button></li>').join('')+'</ul>':'')+
+    '<label class="f"><span>구글 드라이브 링크 (선택)</span><input id="bLu" placeholder="큰 파일·동영상은 링크로"></label>'+(own?'<label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="nP">상단 고정</label>':'')+(U.bBusy?'<p class="sub" style="color:var(--pri);font-weight:700">'+esc(U.bBusy)+'</p>':'');}
   if(t==='log'){
     const f=U.lf;const s=stu(f.sid);const us=unitsOf(f.sid,f.course);
     const chips=(act,val)=>'<div class="pg">'+PCT.map(v=>'<button type="button" data-act="'+act+'" data-v="'+v+'" class="'+(val===v?'on':'')+'">'+v+'</button>').join('')+'</div>';
@@ -538,7 +549,7 @@ function render(){
   if(U.toast)html+='<div class="toast" role="status">'+esc(U.toast)+'</div>';
   const sameView=app.dataset.v===(U.screen+U.tab+U.chat+U.page+U.role+U.me);
   app.innerHTML=html;app.dataset.v=U.screen+U.tab+U.chat+U.page+U.role+U.me;
-  Object.entries(keep).forEach(([id,k])=>{const el=document.getElementById(id);if(!el)return;if('c' in k){if(el.type==='checkbox'&&id!=='autoN'&&id!=='lgSh')el.checked=k.c}else if(el.tagName!=='SELECT'&&id!=='attDate')el.value=k.v});
+  Object.entries(keep).forEach(([id,k])=>{const el=document.getElementById(id);if(!el)return;if('c' in k){if(el.type==='checkbox'&&id!=='autoN'&&id!=='lgSh')el.checked=k.c}else if((el.tagName!=='SELECT'||id==='bCat'||id==='bTo')&&id!=='attDate')el.value=k.v});
   app.querySelectorAll('input[name=hwS]').forEach(el=>{if(el.value in checks)el.checked=checks[el.value]});
   if(focusId){const el=document.getElementById(focusId);if(el){el.focus();try{if(selS!=null)el.setSelectionRange(selS,selE)}catch(e){}}}
   const nb=app.querySelector('.body');
@@ -597,7 +608,10 @@ function subFamily(){
 function famRole(){U.role=ME.rels[U.me]==='student'?'student':'parent'}
 
 /* ================= 로그인 흐름 ================= */
+document.addEventListener('click',e=>{const im=e.target.closest&&e.target.closest('img[data-lb]');if(im){e.stopPropagation();lightbox(im.dataset.lb)}},true);
+setInterval(()=>{if(auth.currentUser)freshToken(auth,true).then(render).catch(()=>{})},40*60e3);
 onAuthStateChanged(auth,user=>{
+  if(user)freshToken(auth).then(render).catch(()=>{});
   stopAll();U.attReady=false;U.wifiState=null;U.staffSub=false;U.isStaff=false;U.staffDoc=null;U.famStarted=false;U.famSig=null;U.claimed=false;U.comm='msg';U.hwF='all';U.calS='all';U.pushX={};U.me=null;U.logS=null;U.ret=null;U.lf=null;ME.uid=null;U.sheet=null;U.chat=null;U.page=null;U.tab='home';
   if(!user){U.screen='auth';render();return}
   ME.uid=user.uid;ME.phone=phoneOf(user);U.screen='loading';render();
@@ -760,7 +774,7 @@ app.addEventListener('click',async e=>{
   if(a==='sheet'){
     if(el.dataset.s==='log'||el.dataset.s==='hw'){if(!D.students.length)return toast('학생을 먼저 등록해 주세요');}
     U.sheet=el.dataset.s;if(U.sheet==='log'){const c=D.students.filter(x=>isIn((D.att[curDay()]||{})[x.id]));initLf((c.find(x=>x.id===U.logS)||c[0]||stu(U.logS)||D.students[0]).id)}return render()}
-  if(a==='close'){U.sheet=null;U.ret=null;U.lf=null;return render()}
+  if(a==='close'){if(U.bBusy)return;U.bf=[];U.sheet=null;U.ret=null;U.lf=null;return render()}
   if(a==='comm'){U.comm=v;return render()}
   if(a==='hwF'){U.hwF=v;return render()}
   if(a==='logS'){U.logS=v;return render()}
@@ -846,13 +860,16 @@ app.addEventListener('click',async e=>{
   if(a==='togSh'){const x=D.logs.find(l=>l.id===id);await updateDoc(doc(db,'logs',id),{sh:!x.sh});return toast(x.sh?'비공개로 바꿨어요':'공유했어요')}
   if(a==='delLog'){await deleteDoc(doc(db,'logs',id));return toast('기록을 삭제했어요')}
   if(a==='readN'){await updateDoc(doc(db,'notices',id),{reads:arrayUnion(ME.uid)});return}
-  if(a==='delN'){await deleteDoc(doc(db,'notices',id));return toast('공지를 삭제했어요')}
+  if(a==='delN'){const n=D.notices.find(x=>x.id===id);if(!n||!canDelPost(n))return;if(!confirm('"'+n.title+'" 글을 삭제할까요?'))return;await deleteFiles(auth,(n.files||[]).map(x=>x.k));await deleteDoc(doc(db,'notices',id));return toast('글을 삭제했어요')}
+  if(a==='bcat'){U.bcat=v;return render()}
+  if(a==='bfDel'){(U.bf||[]).splice(+id,1);return render()}
   }catch(err){fail(err)}
 });
 
 app.addEventListener('change',async e=>{
   const t=e.target;
   try{
+  if(t.id==='bFile'&&t.files){(U.bf=U.bf||[]).push(...t.files);t.value='';return render()}
   if(t.id==='whoSel'){U.me=t.value;famRole();U.chat=null;U.tab='home';U.wifiState=null;setTimeout(autoCheckin,300);return render()}
   if(t.id==='newChat'&&t.value){U.chat=t.value;return render()}
   if(t.id==='attDate'&&t.value){U.dayPick=t.value===homeDefault()?null:t.value;U.calM=curDay().slice(0,7);return render()}
@@ -931,10 +948,17 @@ app.addEventListener('submit',async e=>{
     U.sheet=null;return toast('원장님께 결석을 알렸어요');
   }
   if(U.sheet==='notice'){
-    if(!isOwnerMe())return toast('공지는 원장님만 쓸 수 있어요');
-    if(!g('nT').trim())return toast('제목을 입력해 주세요');
-    await addDoc(collection(db,'notices'),{title:g('nT').trim(),body:g('nB').trim(),at:TODAY,pin:document.getElementById('nP').checked,reads:[],ts:now()});push(D.students.flatMap(x=>[x.id+'|student',x.id+'|parent']),g('nT').trim(),{title:'새 공지',tag:'notice'});
-    U.sheet=null;U.tab='comm';U.comm='notice';return toast('공지를 올렸어요');
+    if(U.bBusy)return;const cat=g('bCat')||'notice',title=g('nT').trim(),body=g('nB').trim(),lu=g('bLu').trim();
+    if(cat==='notice'&&!isOwnerMe())return toast('공지는 원장님만 쓸 수 있어요');
+    if(!title)return toast('제목을 입력해 주세요');if(lu&&!okLink(lu))return toast('https:// 로 시작하는 링크를 넣어 주세요');
+    const tv=g('bTo')||'all';const to=tv==='all'?{t:'all'}:tv.startsWith('g:')?{t:'grade',v:tv.slice(2)}:{t:'sid',v:tv.slice(2)};
+    const q=U.bf||[],files=[];
+    try{for(let i=0;i<q.length;i++){U.bBusy='올리는 중… '+(i+1)+'/'+q.length;render();files.push(await uploadFile(auth,q[i]))}
+      U.bBusy='저장 중…';render();
+      await addDoc(collection(db,'notices'),{cat,title,body,at:TODAY,pin:!!(document.getElementById('nP')||{}).checked,reads:[],ts:now(),by:ME.uid,byName:TNAME(),to,files,links:lu?[{name:'구글 드라이브 자료',url:lu}]:[]});
+    }catch(err){U.bBusy='';await deleteFiles(auth,files.map(x=>x.k));render();return toast(err.message||'올리지 못했어요')}
+    push(targetSids(to,D.students).flatMap(x=>[x+'|student',x+'|parent']),title,{title:catPush(cat),tag:'notice'});
+    U.bBusy='';U.bf=[];U.sheet=null;U.tab='comm';U.comm='notice';U.bcat='all';return toast(catLabel(cat)+' 글을 올렸어요');
   }
   if(U.sheet==='log'){
     const f=U.lf;lfStash();const LD=curDay();

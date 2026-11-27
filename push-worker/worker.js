@@ -1,7 +1,11 @@
 // 더밀착수학 푸시 알림 서버 (Cloudflare Workers 무료)
 // - GET  /vapid : 알림 구독용 공개키 (처음 호출 때 키를 만들어 KV에 저장)
 // - POST /send  : { subs:[구독...], title, body, url } + Authorization: Bearer <Firebase 로그인 토큰>
-// 필요한 설정: KV 네임스페이스를 변수 이름 KV 로 연결
+// - POST /file?name=&type=  : 소식 첨부 올리기 (원장·부원장만) → { k, size }
+// - GET  /file/<k>?a=<토큰> : 첨부 보기 (로그인한 앱 사용자만)
+// - POST /file-del { keys }  : 첨부 삭제 (원장·부원장만)
+// - GET  /usage              : 저장소 사용량 (원장·부원장만)
+// 필요한 설정: KV 네임스페이스를 변수 이름 KV 로, R2 버킷 themilchak-files 를 변수 이름 FILES 로 연결
 const PROJECT = 'themilchak-math';
 const ORIGINS = ['https://themilchak-math.github.io', 'http://localhost:8765'];
 const JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
@@ -70,10 +74,26 @@ export async function verifyIdToken(token, fetchJwks) {
   return body;
 }
 
+/* ---------- 원장·부원장 확인 ----------
+   원장·부원장만 읽을 수 있는 Firestore 문서(config/qr)를 그 사람 토큰으로 읽어 봐서
+   막히면(403) 선생님이 아님. 결과는 10분 동안 기억 */
+const tCache = new Map();
+async function requireTeacher(req) {
+  const tok = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
+  const u = await verifyIdToken(tok); const c = tCache.get(u.sub);
+  if (c && Date.now() - c < 600e3) return u;
+  const r = await fetch('https://firestore.googleapis.com/v1/projects/' + PROJECT + '/databases/(default)/documents/config/qr', { headers: { Authorization: 'Bearer ' + tok } });
+  if (r.status === 401 || r.status === 403) throw new Error('not teacher');
+  tCache.set(u.sub, Date.now()); return u;
+}
+const MAX_FILE = 50 * 1024 * 1024;
+const extOf = n => { const m = /\.([a-z0-9]{1,6})$/i.exec(n || ''); return m ? '.' + m[1].toLowerCase() : ''; };
+const rid = () => { const a = new Uint8Array(12); crypto.getRandomValues(a); return b64u(a); };
+
 /* ---------- 요청 처리 ---------- */
 function cors(req) {
   const o = req.headers.get('Origin');
-  return { 'Access-Control-Allow-Origin': ORIGINS.includes(o) ? o : ORIGINS[0], 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Vary': 'Origin' };
+  return { 'Access-Control-Allow-Origin': ORIGINS.includes(o) ? o : ORIGINS[0], 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Name', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Vary': 'Origin' };
 }
 const json = (req, obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...cors(req) } });
 
@@ -99,9 +119,37 @@ export default {
         }));
         return json(req, { sent, gone });
       }
-      return json(req, { ok: true, service: 'themilchak push' });
+      // 소식 첨부파일
+      if (url.pathname === '/file' && req.method === 'POST') {
+        await requireTeacher(req);
+        const len = +(req.headers.get('Content-Length') || 0); if (len > MAX_FILE) return json(req, { error: '파일이 너무 커요 (50MB까지)' }, 413);
+        const name = decodeURIComponent(req.headers.get('X-Name') || 'file').slice(0, 120); const type = (req.headers.get('Content-Type') || 'application/octet-stream').slice(0, 100);
+        const d = new Date(); const k = 'b/' + d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + rid() + extOf(name);
+        const obj = await env.FILES.put(k, req.body, { httpMetadata: { contentType: type }, customMetadata: { name } });
+        return json(req, { k, size: obj.size });
+      }
+      if (url.pathname.startsWith('/file/b/') && req.method === 'GET') {
+        await verifyIdToken(url.searchParams.get('a') || '');
+        const k = decodeURIComponent(url.pathname.slice(6)); const obj = await env.FILES.get(k);
+        if (!obj) return new Response('없는 파일이에요', { status: 404, headers: cors(req) });
+        const name = (obj.customMetadata && obj.customMetadata.name) || k.split('/').pop();
+        const h = new Headers(cors(req)); obj.writeHttpMetadata(h); h.set('Cache-Control', 'private, max-age=86400'); h.set('ETag', obj.httpEtag);
+        h.set('Content-Disposition', (url.searchParams.get('dl') ? 'attachment' : 'inline') + "; filename*=UTF-8''" + encodeURIComponent(name));
+        return new Response(obj.body, { headers: h });
+      }
+      if (url.pathname === '/file-del' && req.method === 'POST') {
+        await requireTeacher(req); const { keys } = await req.json();
+        const ks = (Array.isArray(keys) ? keys : []).filter(k => typeof k === 'string' && k.startsWith('b/')).slice(0, 100);
+        if (ks.length) await env.FILES.delete(ks); return json(req, { deleted: ks.length });
+      }
+      if (url.pathname === '/usage') {
+        await requireTeacher(req); let bytes = 0, n = 0, cur;
+        do { const l = await env.FILES.list({ prefix: 'b/', cursor: cur, limit: 1000 }); l.objects.forEach(o => { bytes += o.size; n++; }); cur = l.truncated ? l.cursor : null; } while (cur);
+        return json(req, { bytes, n, free: 10 * 1024 ** 3 });
+      }
+      return json(req, { ok: true, service: 'themilchak push', files: !!env.FILES });
     } catch (e) {
-      return json(req, { error: String(e.message || e) }, 401);
+      const m = String(e.message || e); return json(req, { error: m }, /token|kid|alg|invalid|teacher/.test(m) ? 401 : 500);
     }
   }
 };
