@@ -139,6 +139,11 @@ service cloud.firestore {
       allow update: if isTeacher();
       allow delete: if isTeacher() || (linked(resource.data.sid) && resource.data.uid == request.auth.uid);
     }
+    match /sched/{sid} {
+      // 학생별 수업 예정(등원 요일·보충 날짜): 원장님·부원장 기기가 맞춰 두고, 가족은 자기 아이 것만 읽어요
+      allow read: if isTeacher() || linked(sid);
+      allow write: if isTeacher();
+    }
     match /calls/{id} {
       // 전화 상담 요청: 학부모가 날짜·시간대를 보내고 원장님·부원장이 확정. 요청한 학부모는 자기 요청만 보고 취소 가능
       allow read: if isTeacher() || (signedIn() && resource.data.uid == request.auth.uid);

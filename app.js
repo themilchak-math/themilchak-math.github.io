@@ -8,10 +8,11 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fmtSize, filesHtml, lightbox, visibleTo, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
+import { syncSched, plannedOn } from './sched.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.5.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -379,7 +380,7 @@ function pHome(){
   const hs=D.hw.filter(h=>h.sid===s.id);const doneRate=hs.length?Math.round(hs.filter(h=>h.st!=='todo').length/hs.length*100):0;
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
   return header(s.name+' '+myRel(),s.grade+' · '+nowLabel(s))+'<div class="body">'+pushCard()+examCard(s)+
-  '<div class="card"><h3>오늘 출결 <small>'+fmtD(fd)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(!a&&absOf(s.id,fd)?'<span class="chip c-bad">결석 통보</span>':attChip(a))+'</div></div>'+absCard(s)+callCard(s)+
+  '<div class="card"><h3>오늘 출결 <small>'+fmtD(fd)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(()=>{const pl=plannedOn((D.sched||{})[s.id],fd,(D.exams||[]).some(e=>evKind(e)==='off'&&onDay(e,fd)));return (pl==='extra'?'<span class="chip c-pri">보충</span> ':'')+(a?attChip(a):absOf(s.id,fd)?'<span class="chip c-bad">결석 통보</span>':pl===false?'<span class="chip">오늘은 수업 없는 날</span>':attChip(a))})()+'</div></div>'+absCard(s)+callCard(s)+
   '<div class="stats"><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
   '<div class="card"><h3>숙제 현황'+(hs.length>3?' <button class="btn sm ghost" style="float:right" data-act="go" data-tab="hw">전체 보기</button>':'')+'</h3>'+hwList(hwSort(hs).slice(0,3),'parent')+'</div>'+
@@ -588,8 +589,9 @@ const L=(q,fn)=>dataUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',
 const B=(q,fn)=>baseUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',e.code)));
 const sortMsgs=l=>l.sort((a,b)=>(a.ts||0)-(b.ts||0));
 const sortStu=()=>D.students.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
-function resetD(){Object.assign(D,{calls:[],students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{}})}
+function resetD(){Object.assign(D,{sched:{},calls:[],students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{}})}
 
+let schedT=null;const schedSoon=()=>{clearTimeout(schedT);schedT=setTimeout(()=>syncSched(db,{students:D.students,fin:isOwnerMe()?D.fin:null,extra:D.extra,sched:D.sched,owner:isOwnerMe()&&!!U.finLoaded,today:TODAY}),1500)};
 function subTeacher(){
   resetD();
   L(collection(db,'students'),s=>{D.students=docs(s).filter(x=>!x.left);sortStu();if(!stu(U.logS))U.logS=D.students[0]?D.students[0].id:null;sr()});
@@ -604,10 +606,11 @@ function subTeacher(){
   L(collection(db,'staff'),s=>{D.staff=docs(s);sr()});
   L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
   L(query(collection(db,'calls'),where('st','in',['new','ok'])),s=>{D.calls=docs(s);sr()});
-  L(query(collection(db,'extra'),where('date','>=',off(-60))),s=>{D.extra={};s.docs.forEach(d=>{D.extra[d.id]=d.data()});sr()});
+  D.sched=null;L(collection(db,'sched'),s=>{D.sched=Object.fromEntries(s.docs.map(d=>[d.id,d.data()]));schedSoon()});
+  L(query(collection(db,'extra'),where('date','>=',off(-60))),s=>{D.extra={};s.docs.forEach(d=>{D.extra[d.id]=d.data()});schedSoon();sr()});
   if(isOwnerMe())L(collection(db,'apply'),s=>{D.apply=docs(s).filter(x=>x.st==='new');sr()});
   if(isOwnerMe())L(collection(db,'sinfo'),s=>{D.sinfo={};s.docs.forEach(d=>{D.sinfo[d.id]=d.data()});sr()});
-  if(isOwnerMe())L(collection(db,'fin'),s=>{D.fin={};s.docs.forEach(d=>{if(d.id.startsWith('m_'))D.fin[d.id.slice(2)]=d.data()});sr()});
+  if(isOwnerMe())L(collection(db,'fin'),s=>{D.fin={};s.docs.forEach(d=>{if(d.id.startsWith('m_'))D.fin[d.id.slice(2)]=d.data()});U.finLoaded=true;schedSoon();sr()});
 }
 function subFamily(){
   resetD();const attBy={};
@@ -618,6 +621,7 @@ function subFamily(){
     L(query(collection(db,'hw'),where('sid','==',sid)),s=>{D.hw=D.hw.filter(h=>h.sid!==sid).concat(docs(s));sr()});
     L(query(collection(db,'logs'),where('sid','==',sid),where('sh','==',true)),s=>{D.logs=D.logs.filter(h=>h.sid!==sid).concat(docs(s));sr()});
     L(query(collection(db,'abs'),where('sid','==',sid)),s=>{D.abs=D.abs.filter(x=>x.sid!==sid).concat(docs(s));sr()});
+    L(doc(db,'sched',sid),d=>{D.sched=D.sched||{};D.sched[sid]=d.exists()?d.data():null;sr()});
     L(query(collection(db,'reqs'),where('sid','==',sid),where('st','==','pending')),s=>{D.req=D.req.filter(h=>h.sid!==sid).concat(docs(s).filter(q=>q.date===TODAY));sr()});
   });
   ME.ths.forEach(th=>L(query(collection(db,'msgs'),where('th','==',th)),s=>{D.threads[th]=sortMsgs(docs(s));if(U.chat===th)markRead(th);sr()}));
