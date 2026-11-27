@@ -10,7 +10,7 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.2.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -334,8 +334,8 @@ function tComm(){
   else{
     const keys=[];D.students.forEach(s=>{keys.push(...stuKey(s.id));if(famSids(s.id)[0]===s.id)keys.push(...parKeys(s.id))});
     const items=keys.map(k=>{const t=fthread(k);const last=t[t.length-1];return {k,last,un:t.filter(m=>m.f==='o'&&!m.r).length}}).sort((a,b)=>((b.last?b.last.at:'')>(a.last?a.last.at:'')?1:-1));
-    const nameK=k=>{const [sd,rr]=k.split('|');return rr!=='student'?famLabel(sd,REL[rr]):stu(sd).name+' 학생'};const empty=items.filter(i=>!i.last);const shown=items.filter(i=>i.last);
-    inner=(empty.length?'<select id="newChat" style="width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--ink);font-size:15px"><option value="">+ 새 대화 시작…</option>'+empty.map(i=>'<option value="'+esc(i.k)+'">'+esc(nameK(i.k))+'</option>').join('')+'</select>':'')+(shown.length?'':'<div class="empty">아직 대화가 없어요</div>')+'<div class="card"'+(shown.length?'':' hidden')+'>'+shown.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r==='parent'?' p':'')+'">'+(r==='parent'?'학부':esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r==='parent'?famLabel(sid):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'</button>'}).join('')+'</div>';
+    const nameK=k=>{const [sd,rr]=k.split('|');return rr!=='student'?famLabel(sd,REL[rr]):stu(sd).name+' 학생'};const empty=items.filter(i=>!i.last);const isP=i=>i.k.split('|')[1]!=='student';const mf=U.mf||'all';const allS=items.filter(i=>i.last);const pL=allS.filter(isP),sL=allS.filter(i=>!isP(i));const shown=mf==='parent'?pL:mf==='student'?sL:allS;const unOf=l=>l.reduce((a,i)=>a+i.un,0);const og=(lab,l)=>l.length?'<optgroup label="'+lab+'">'+l.map(i=>'<option value="'+esc(i.k)+'">'+esc(nameK(i.k))+'</option>').join('')+'</optgroup>':'';
+    inner=(empty.length?'<select id="newChat" style="width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--ink);font-size:15px"><option value="">+ 새 대화 시작…</option>'+og('학부모',empty.filter(isP))+og('학생',empty.filter(i=>!isP(i)))+'</select>':'')+(allS.length?'<div class="pills">'+[['all','전체',allS],['parent','👪 학부모',pL],['student','🎒 학생',sL]].map(([v,lab,l])=>'<button data-act="mf" data-v="'+v+'" class="'+(mf===v?'on':'')+'">'+lab+' '+l.length+(unOf(l)?' · '+unOf(l):'')+'</button>').join('')+'</div>':'')+(shown.length?'':'<div class="empty">'+(allS.length?'이쪽 대화가 없어요':'아직 대화가 없어요')+'</div>')+'<div class="card"'+(shown.length?'':' hidden')+'>'+shown.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r!=='student'?' p':'')+'">'+(r!=='student'?esc(REL[r]?REL[r].slice(0,2):'학부'):esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r!=='student'?famLabel(sid,REL[r]):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'</button>'}).join('')+'</div>';
   }
   return header('소통','학생·학부모 메시지와 소식')+'<div class="body">'+commTabs()+inner+'</div>';
 }
@@ -862,6 +862,7 @@ app.addEventListener('click',async e=>{
   if(a==='readN'){await updateDoc(doc(db,'notices',id),{reads:arrayUnion(ME.uid)});return}
   if(a==='delN'){const n=D.notices.find(x=>x.id===id);if(!n||!canDelPost(n))return;if(!confirm('"'+n.title+'" 글을 삭제할까요?'))return;await deleteFiles(auth,(n.files||[]).map(x=>x.k));await deleteDoc(doc(db,'notices',id));return toast('글을 삭제했어요')}
   if(a==='bcat'){U.bcat=v;return render()}
+  if(a==='mf'){U.mf=v;return render()}
   if(a==='bfDel'){(U.bf||[]).splice(+id,1);return render()}
   }catch(err){fail(err)}
 });

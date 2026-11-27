@@ -10,7 +10,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, targetSids, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.6.1';
+const ADMIN_VERSION = '2.6.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -700,15 +700,23 @@ function pMsg() {
   const items = keys.map(k => { const t = fthread(k); const last = t[t.length - 1]; return { k, last, un: t.filter(m => m.f === 'o' && !m.r).length }; }).sort((a, b) => ((b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0)));
   const nameK = k => { const [sd, rr] = k.split('|'); return rr !== 'student' ? famLabel(sd, REL[rr]) : stu(sd).name + ' 학생'; };
   const empty = items.filter(i => !i.last && i.k !== V.chat);
-  const newSel = empty.length ? '<select id="newChat" style="width:100%;margin-bottom:6px"><option value="">+ 새 대화 시작…</option>' + empty.map(i => '<option value="' + esc(i.k) + '">' + esc(nameK(i.k)) + '</option>').join('') + '</select>' : '';
-  const list = items.filter(i => i.last || i.k === V.chat).map(i => { const [sid, r] = i.k.split('|'); const s = stu(sid); return '<button class="th' + (V.chat === i.k ? ' on' : '') + '" data-a="open" data-v="' + esc(i.k) + '"><b>' + esc(r !== 'student' ? famLabel(sid, REL[r]) : s.name + ' 학생') + '</b>' + (i.un ? '<span class="badge">' + i.un + '</span>' : '') + '<span class="sub ell">' + (i.last ? esc(i.last.t) : '새 대화') + '</span></button>'; }).join('');
+  const isP = i => i.k.split('|')[1] !== 'student'; const og = (lab, l) => l.length ? '<optgroup label="' + lab + '">' + l.map(i => '<option value="' + esc(i.k) + '">' + esc(nameK(i.k)) + '</option>').join('') + '</optgroup>' : '';
+  const newSel = empty.length ? '<select id="newChat" style="width:100%;margin-bottom:6px"><option value="">+ 새 대화 시작…</option>' + og('학부모', empty.filter(isP)) + og('학생', empty.filter(i => !isP(i))) + '</select>' : '';
+  // 학부모 / 학생 나눠 보기 (전체에서는 두 묶음으로)
+  const mf = V.mf || 'all'; const shownAll = items.filter(i => i.last || i.k === V.chat); const unOf = l => l.reduce((a, i) => a + i.un, 0);
+  const pL = shownAll.filter(isP), sL = shownAll.filter(i => !isP(i));
+  const pill = (v, lab, l) => '<button class="btn sm ' + (mf === v ? '' : 'ghost') + '" data-a="mf" data-v="' + v + '">' + lab + ' ' + l.length + (unOf(l) ? ' <span class="badge" style="position:static;margin-left:2px">' + unOf(l) + '</span>' : '') + '</button>';
+  const pills = '<div class="bar" style="margin:0 0 8px;gap:4px;flex-wrap:nowrap">' + pill('all', '전체', shownAll) + pill('parent', '학부모', pL) + pill('student', '학생', sL) + '</div>';
+  const row = i => { const [sid, r] = i.k.split('|'); const s = stu(sid); return '<button class="th' + (V.chat === i.k ? ' on' : '') + '" data-a="open" data-v="' + esc(i.k) + '"><b>' + esc(r !== 'student' ? famLabel(sid, REL[r]) : s.name + ' 학생') + '</b>' + (i.un ? '<span class="badge">' + i.un + '</span>' : '') + '<span class="sub ell">' + (i.last ? esc(i.last.t) : '새 대화') + '</span></button>'; };
+  const hd = (lab, l) => '<div class="sub" style="font-weight:700;margin:10px 4px 4px">' + lab + ' · ' + l.length + '</div>';
+  const list = pills + (mf === 'parent' ? (pL.map(row).join('') || '<p class="empty">학부모 대화가 없어요</p>') : mf === 'student' ? (sL.map(row).join('') || '<p class="empty">학생 대화가 없어요</p>') : (pL.length ? hd('👪 학부모', pL) + pL.map(row).join('') : '') + (sL.length ? hd('🎒 학생', sL) + sL.map(row).join('') : ''));
   let chat = '<p class="empty">왼쪽에서 대화를 고르세요</p>';
   if (V.chat) {
     const [sid, r] = V.chat.split('|'); const s = stu(sid); const t = fthread(V.chat);
     const mx = m => m.id ? '<button class="mx" data-a="msgDel" data-id="' + m.id + '" title="이 메시지 삭제 (상대방 화면에서도 사라져요)">×</button>' : '';
     chat = '<h2 style="display:flex;align-items:center;gap:8px">' + esc(r !== 'student' ? famLabel(sid, REL[r]) : (s ? s.name : '') + ' 학생') + (t.length ? '<button class="btn xs ghost" style="margin-left:auto" data-a="chatDel">대화 삭제</button>' : '') + '</h2><div class="chat" id="chatBody">' + (t.length ? t.map(m => m.f === 's' ? sysHtml(m).replace('<div class="m sys">', '<div class="m sys">' + mx(m)) : '<div class="m ' + (m.f === 't' ? 'me' : 'you') + '">' + mx(m) + esc(m.t) + '<small>' + esc((m.at || '').slice(5)) + (m.f === 't' && m.r ? ' · 읽음' : '') + '</small></div>').join('') : '<p class="empty">첫 메시지를 보내보세요</p>') + '</div><form id="sendF" class="send"><input id="msgIn" placeholder="메시지 입력 후 Enter" autocomplete="off"><button class="btn" type="submit">전송</button></form>';
   }
-  return '<h1>메시지</h1><div class="msgs"><section class="card tl">' + newSel + (list || '<p class="empty">아직 대화가 없어요</p>') + '</section><section class="card cv">' + chat + '</section></div>';
+  return '<h1>메시지</h1><div class="msgs"><section class="card tl">' + newSel + (shownAll.length ? list : '<p class="empty">아직 대화가 없어요</p>') + '</section><section class="card cv">' + chat + '</section></div>';
 }
 
 function modalHtml() {
@@ -994,6 +1002,7 @@ app.addEventListener('click', async e => {
     if (a === 'hwCheck') { await updateDoc(doc(db, 'hw', id), { st: 'checked' }); return toast('숙제 확인 완료'); }
     if (a === 'hwDel') { await deleteDoc(doc(db, 'hw', id)); return toast('숙제를 삭제했어요'); }
     if (a === 'bcat') { V.bcat = v; return render(); }
+    if (a === 'mf') { V.mf = v; return render(); }
     if (a === 'bfDel') { (V.bf || []).splice(+id, 1); return render(); }
     if (a === 'blDel') { (V.bl || []).splice(+id, 1); return render(); }
     if (a === 'blAdd') { const u = (document.getElementById('bLu').value || '').trim(), nm = (document.getElementById('bLn').value || '').trim(); if (!okLink(u)) return toast('https:// 로 시작하는 링크를 붙여 주세요'); (V.bl = V.bl || []).push({ name: nm || '구글 드라이브 자료', url: u }); document.getElementById('bLu').value = ''; document.getElementById('bLn').value = ''; return render(); }
