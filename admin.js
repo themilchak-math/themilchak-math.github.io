@@ -50,7 +50,7 @@ const docs = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
 const stu = id => D.students.find(s => s.id === id);
 const active = () => D.students.filter(s => !s.left);
 const thread = k => D.threads[k] || [];
-// 형제: 같은 학부모 번호로 연결된 학생들 → 학부모 대화는 하나로 묶어 "김승효/우현 학부모님"
+// 형제: 같은 학부모 번호로 연결된 학생들 → 학부모 대화는 하나로 묶어 "홍길동/길순 학부모님"
 const famSids = sid => { const ph = new Set(D.members.filter(m => m.sid === sid && m.rel !== 'student' && m.phone).map(m => m.phone)); const l = [...new Set([sid, ...D.members.filter(m => m.rel !== 'student' && ph.has(m.phone)).map(m => m.sid)])].filter(x => stu(x)); return l.sort((a, b) => stu(a).name.localeCompare(stu(b).name, 'ko')); };
 const famLabel = (sid, suf) => { suf = ' ' + (suf || '학부모님'); const l = famSids(sid).map(x => stu(x).name); if (l.length < 2) return (l[0] || (stu(sid) || {}).name || '') + suf; return l[0] + '/' + l.slice(1).map(n => n[0] === l[0][0] ? n.slice(1) : n).join('/') + suf; };
 // 대화: 아버님·어머님 각자 따로(|father, |mother). |parent 는 자동 알림 공용함 → 두 분 대화에 모두 보여요

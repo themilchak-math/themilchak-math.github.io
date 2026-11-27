@@ -36,7 +36,7 @@ const thread=k=>D.threads[k]||(D.threads[k]=[]);
 const noshowAt=sid=>{const m=thread(sid+'|parent').filter(x=>/^\[미등원 안내\]/.test(x.t||'')&&(x.at||'').startsWith(TODAY)).pop();return m?(m.at||'').slice(11,16):''};
 const noshowTxt=s=>'[미등원 안내] '+s.name+' 학생이 아직 등원하지 않았어요. 혹시 늦거나 못 오게 되면 원장님께 알려 주세요.';
 const noshowBtn=(x,day)=>day!==TODAY?'':(noshowAt(x.id)?' <span class="chip c-ok">안내 '+noshowAt(x.id)+'</span>':' <button class="btn sm ghost" style="padding:2px 8px" data-act="noshow" data-id="'+x.id+'">미등원 안내</button>');
-// 형제: 같은 학부모 번호로 연결된 학생들 → 학부모 대화는 하나로 묶어 보여요 ("김승효/우현 학부모님")
+// 형제: 같은 학부모 번호로 연결된 학생들 → 학부모 대화는 하나로 묶어 보여요 ("홍길동/길순 학부모님")
 const famSids=sid=>{let l;if(U.role==='teacher'){const ph=new Set((D.members||[]).filter(m=>m.sid===sid&&m.rel!=='student'&&m.phone).map(m=>m.phone));l=[...new Set([sid,...(D.members||[]).filter(m=>m.rel!=='student'&&ph.has(m.phone)).map(m=>m.sid)])]}else l=U.role==='parent'&&ME&&ME.sids?ME.sids.filter(x=>ME.rels[x]!=='student'):[sid];l=l.filter(x=>stu(x));if(!l.includes(sid)&&stu(sid))l.push(sid);return l.sort((a,b)=>stu(a).name.localeCompare(stu(b).name,'ko'))};
 const famLabel=(sid,suf)=>{suf=' '+(suf||'학부모님');const l=famSids(sid).map(x=>stu(x).name);if(l.length<2)return (l[0]||(stu(sid)||{}).name||'')+suf;return l[0]+'/'+l.slice(1).map(n=>n[0]===l[0][0]?n.slice(1):n).join('/')+suf};
 const myRel=()=>(typeof ME!=='undefined'&&ME&&ME.rels&&REL[ME.rels[U.me]]&&ME.rels[U.me]!=='student')?REL[ME.rels[U.me]]:'학부모님';
