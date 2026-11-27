@@ -13,7 +13,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.16.1';
+const ADMIN_VERSION = '2.16.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -577,11 +577,11 @@ function pLeads() {
   const old = all.filter(l => (l.st === 'lost' || l.st === 'done') && (l.up || l.date || '') && (l.up || l.date) < off(-365));
   const stc = { booked: 'pri', done: 'warn', enrolled: 'ok', lost: '' };
   return '<h1>진단·상담 <span class="sub">무료 정밀진단 예약 → 진단 결과·상담 기록 → 등록하면 학생으로 바로 넘어가요</span></h1>' +
-    '<div class="bar"><button class="btn" data-a="modal" data-v="lead">+ 진단 예약 추가</button>' + ['open', 'enrolled', 'lost', 'all'].map(k => '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-a="leadT" data-v="' + k + '">' + { open: '진행 중', enrolled: '등록함', lost: '등록 안 함', all: '전체' }[k] + ' ' + groups[k].length + '</button>').join(' ') +
+    '<div class="bar"><button class="btn" data-a="modal" data-v="lead">+ 진단 예약 · 방문 상담</button>' + ['open', 'enrolled', 'lost', 'all'].map(k => '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-a="leadT" data-v="' + k + '">' + { open: '진행 중', enrolled: '등록함', lost: '등록 안 함', all: '전체' }[k] + ' ' + groups[k].length + '</button>').join(' ') +
     '<span style="flex:1"></span><span class="sub">이번 달 진단 ' + mon.length + '건 · 등록 ' + monE + '건' + (tot.length ? ' · 누적 등록률 ' + Math.round(totE / tot.length * 100) + '%' : '') + '</span></div>' +
     '<section class="card scroll"><table><thead><tr><th>학생</th><th>진단</th><th>경로</th><th>상태</th><th>진단 결과·상담</th><th></th></tr></thead><tbody>' +
     (list.length ? list.map(l => '<tr><td style="white-space:nowrap"><b>' + esc(l.name) + '</b><div class="sub">' + esc(l.grade || '') + ' ' + esc(l.school || '') + '</div></td><td style="white-space:nowrap">' + leadDays(l) + '</td><td class="sub" style="white-space:nowrap">' + esc(l.src || '') + '</td><td style="white-space:nowrap">' + chip(stLabel(l.st), stc[l.st]) + (l.st === 'done' && l.next ? '<div class="sub"' + (l.next <= TODAY ? ' style="color:var(--acc);font-weight:700"' : '') + '>연락 ' + fmtD(l.next) + '</div>' : '') + (l.react ? '<div class="sub">반응: ' + esc(l.react) + '</div>' : '') + (formOf(l) ? '<div style="margin-top:4px">' + formChips(formOf(l)) + '</div>' : '') + '</td><td class="sub" style="max-width:360px">' + esc([l.level && '수준 ' + l.level, l.weak && '약점 ' + l.weak, l.rec && '추천 ' + l.rec, l.memo].filter(Boolean).join(' · ').slice(0, 140)) + '</td><td class="r" style="white-space:nowrap">' + leadTel(l) + (l.st === 'enrolled' || l.st === 'lost' ? '' : formOf(l) ? ' <a class="btn xs" target="_blank" href="' + esc(formUrl(l.tok)) + '">📋 태블릿</a> <a class="btn xs ghost" target="_blank" href="./brief.html?id=' + l.id + '">📊 브리핑</a>' : ' <button class="btn xs" data-a="formNew" data-id="' + l.id + '">📋 상담 시작</button>') + ' <button class="btn xs ghost" data-a="modal" data-v="lead" data-id="' + l.id + '">기록</button>' +
-      (l.st === 'done' || l.st === 'booked' ? ' <button class="btn xs" data-a="leadEnroll" data-id="' + l.id + '">등록 처리</button> <button class="btn xs ghost" data-a="leadLost" data-id="' + l.id + '">등록 안 함</button>' : '') + (l.st === 'lost' ? ' <button class="btn xs ghost" data-a="leadReopen" data-id="' + l.id + '">다시 진행</button>' : '') + '</td></tr>').join('') : '<tr><td colspan="6" class="empty">' + (t === 'open' ? '진행 중인 진단이 없어요. [+ 진단 예약 추가]로 학생을 먼저 적으면, 이 줄에 <b>[📋 상담 시작]</b>(태블릿·폰 설문 · 입학신청서)과 <b>[📊 브리핑]</b> 버튼이 생겨요' : '없어요') + '</td></tr>') + '</tbody></table></section>' +
+      (l.st === 'done' || l.st === 'booked' ? ' <button class="btn xs" data-a="leadEnroll" data-id="' + l.id + '">등록 처리</button> <button class="btn xs ghost" data-a="leadLost" data-id="' + l.id + '">등록 안 함</button>' : '') + (l.st === 'lost' ? ' <button class="btn xs ghost" data-a="leadReopen" data-id="' + l.id + '">다시 진행</button>' : '') + '</td></tr>').join('') : '<tr><td colspan="6" class="empty">' + (t === 'open' ? '진행 중인 진단이 없어요. [+ 진단 예약 · 방문 상담]에서 이름·학년만 적으면 돼요. 방문 당일이면 [저장하고 바로 상담 시작]' : '없어요') + '</td></tr>') + '</tbody></table></section>' +
     (old.length ? '<p class="sub">등록하지 않고 1년이 지난 진단 기록 ' + old.length + '건이 있어요 (개인정보 처리방침: 1년 후 파기) <button class="btn xs ghost danger" data-a="leadClean">정리하기</button></p>' : '');
 }
 // 미납: 학부모 총 납부액이 있는데 납부 체크가 안 된 줄
@@ -876,7 +876,13 @@ function modalHtml() {
   if (V.modal === 'lead') {
     const l = D.leads.find(x => x.id === V.editId) || { st: 'booked', date: '', src: LEAD_SRC[0], grade: '중1' };
     const inp = (id, v, ph, ex) => '<input id="' + id + '" value="' + esc(v || '') + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + (ex || '') + '>';
-    return '<div class="mbg" data-a="close"><form class="modal wide" id="leadF"><h2>' + (V.editId ? '🔎 ' + esc(l.name) + ' 진단 기록' : '진단 예약 추가') + '</h2>' +
+    if (!V.editId) return '<div class="mbg" data-a="close"><form class="modal" id="leadF"><h2>진단 예약 · 방문 상담</h2>' +
+      '<div class="row2"><label>학생 이름' + inp('ldN', '', '예: 홍길동') + '</label><label>학년<select id="ldG">' + GRADES.map(g => opt(g, '중1')).join('') + '</select></label></div>' +
+      '<div class="row2"><label>어머님 번호 (선택)' + inp('p_ldM', '', '010-0000-0000', ' inputmode="numeric"') + '</label><label>어떻게 알고 왔나요<select id="ldSrc">' + LEAD_SRC.map(x => opt(x, LEAD_SRC[0])).join('') + '</select></label></div>' +
+      '<div class="row2"><label>진단 날짜<input type="date" id="ldD" value="' + TODAY + '"></label><label>시간 (선택)<input type="time" id="ldT" step="1800"></label></div>' +
+      '<p class="sub" style="margin:6px 0 0">이름·학년만 있으면 돼요. 학교·연락처·주소·생년월일은 상담 날 학부모님이 태블릿 입학신청서에 직접 적으시고, [등록 처리] 때 학생명부로 넘어가요.</p>' +
+      '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">닫기</button><button class="btn ghost" type="submit">예약만 저장</button><button class="btn" type="submit" data-go="1">저장하고 바로 상담 시작 →</button></div></form></div>';
+    return '<div class="mbg" data-a="close"><form class="modal wide" id="leadF"><h2>🔎 ' + esc(l.name) + ' 진단 기록</h2>' +
       '<div class="row2"><label>학생 이름' + inp('ldN', l.name, '예: 홍길동') + '</label><label>학년<select id="ldG">' + GRADES.map(g => opt(g, l.grade)).join('') + '</select></label></div>' +
       '<div class="row2"><label>학교' + inp('ldS', l.school, '예: 치동중') + '</label><label>어떻게 알고 왔나요<select id="ldSrc">' + LEAD_SRC.map(x => opt(x, l.src)).join('') + '</select></label></div>' +
       '<div class="row2"><label>어머님 번호' + inp('p_ldM', fmtP(l.pMother || ''), '010-0000-0000', ' inputmode="numeric"') + '</label><label>아버님 번호' + inp('p_ldF', fmtP(l.pFather || ''), '010-0000-0000', ' inputmode="numeric"') + '</label></div>' +
@@ -1137,7 +1143,7 @@ app.addEventListener('click', async e => {
     if (a === 'formCopy') { const l = D.leads.find(x => x.id === id); if (!l || !l.tok) return; const t = '[더밀착수학교습소] ' + l.name + ' 학생 상담 서류\n아래 링크에서 학부모 사전 진단 설문을 작성해 주세요 (약 10분)\n▶ ' + formUrl(l.tok, 'parent'); try { await navigator.clipboard.writeText(t); toast('복사했어요 · 카톡·문자에 붙여넣으세요'); } catch (e) { prompt('복사해서 보내세요', t); } return; }
     if (a === 'formClose' || a === 'formOpen') { const l = D.leads.find(x => x.id === id); if (!l || !l.tok) return; await updateDoc(doc(db, 'forms', l.tok), { st: a === 'formClose' ? 'closed' : 'open', up: Date.now() }); return toast(a === 'formClose' ? '링크를 닫았어요 · 이제 이 링크로는 열리지 않아요' : '링크를 다시 열었어요'); }
     if (a === 'leadEnroll') {
-      const l = D.leads.find(x => x.id === id); if (!l) return; if (!l.pMother && !l.pFather && !l.pStudent && !confirm('연락처가 없어요. 번호 없이 학생만 등록할까요?')) return;
+      const l = D.leads.find(x => x.id === id); if (!l) return; if (!l.pMother && !l.pFather && !l.pStudent && !(formOf(l) && formOf(l).apply && formOf(l).apply.gPhone) && !confirm('연락처가 없어요. 번호 없이 학생만 등록할까요?')) return;
       if (D.students.some(s => s.name === l.name && !s.left) && !confirm('이미 ' + l.name + ' 학생이 있어요. 그래도 새로 등록할까요?')) return;
       if (!confirm(l.name + ' 학생을 등록할까요? 학생·앱 연결 번호·학생명부(진단 결과 메모 포함)·이번 달 정산 줄이 만들어져요.')) return;
       const f = formOf(l), ap = f && f.apply; let a0 = { name: l.name, school: l.school, grade: l.grade, birth: '', pMother: l.pMother, pFather: l.pFather, pStudent: l.pStudent, days: [0, 0, 0, 0, 0, 0], memo: leadSummary(l) + (l.memo ? ' / 상담: ' + l.memo : ''), _lead: l.id, _tok: f ? l.tok : '' };
@@ -1282,12 +1288,17 @@ app.addEventListener('submit', async e => {
       return toast(catLabel(cat) + (wasEdit ? ' 글을 수정했어요' : ' 글을 올렸어요') + (files.length ? (wasEdit ? ' (새 첨부 ' : ' (첨부 ') + files.length + '개)' : '') + (noti ? ' · 알림 보냄' : ' · 알림 없이'));
     }
     if (f === 'leadF') {
+      const goWin = !V.editId && e.submitter && e.submitter.dataset.go ? window.open('about:blank', '_blank') : null;
       const name = g('ldN').trim(); if (!name) return toast('학생 이름을 적어 주세요');
       const ph = id => digits(g(id)); const pM = ph('p_ldM'), pF = ph('p_ldF'), pS = ph('p_ldP');
       if ([pM, pF, pS].some(p => p && !/^01\d{8,9}$/.test(p))) return toast('휴대폰 번호를 확인해 주세요');
-      const rec = { name, grade: g('ldG'), school: g('ldS').trim(), src: g('ldSrc'), pMother: pM, pFather: pF, pStudent: pS, date: g('ldD'), time: g('ldT'), level: g('ldLv').trim(), rec: g('ldRec').trim(), strong: g('ldStr').trim(), weak: g('ldWk').trim(), course: g('ldCo').trim(), score: g('ldSc').trim(), pts: g('ldPts').trim(), mins: g('ldMin').trim(), logic: LOGIC.filter((x, i) => document.getElementById('ldLg' + i).checked), stuck: g('ldStk'), sum: g('ldSum').trim(), book: g('ldBk').trim(), fix: g('ldFix').trim(), memo: g('ldM').trim(), react: g('ldRe'), next: g('ldNx'), up: TODAY };
-      let st = g('ldSt'); if (st === 'booked' && (rec.level || rec.weak || rec.strong || rec.rec || rec.react || rec.pts || rec.sum)) st = 'done'; rec.st = st;
-      if (V.editId) await updateDoc(doc(db, 'leads', V.editId), rec); else await addDoc(collection(db, 'leads'), { ...rec, ts: now() });
+      const rec = { name, grade: g('ldG'), school: g('ldS').trim(), src: g('ldSrc'), pMother: pM, pFather: pF, pStudent: pS, date: g('ldD'), time: g('ldT'), level: g('ldLv').trim(), rec: g('ldRec').trim(), strong: g('ldStr').trim(), weak: g('ldWk').trim(), course: g('ldCo').trim(), score: g('ldSc').trim(), pts: g('ldPts').trim(), mins: g('ldMin').trim(), logic: LOGIC.filter((x, i) => (document.getElementById('ldLg' + i) || {}).checked), stuck: g('ldStk'), sum: g('ldSum').trim(), book: g('ldBk').trim(), fix: g('ldFix').trim(), memo: g('ldM').trim(), react: g('ldRe'), next: g('ldNx'), up: TODAY };
+      let st = g('ldSt') || 'booked'; if (st === 'booked' && (rec.level || rec.weak || rec.strong || rec.rec || rec.react || rec.pts || rec.sum)) st = 'done'; rec.st = st;
+      if (V.editId) await updateDoc(doc(db, 'leads', V.editId), rec);
+      else { const keep = ['name', 'grade', 'src', 'pMother', 'date', 'time', 'st', 'up']; const r0 = Object.fromEntries(keep.map(k => [k, rec[k] ?? ''])); r0.st = 'booked';
+        if (goWin) { const tok = newTok(); const ref = doc(collection(db, 'leads')); const b = writeBatch(db); b.set(ref, { ...r0, tok, ts: now() }); b.set(doc(db, 'forms', tok), { st: 'open', lead: ref.id, name, school: '', grade: r0.grade, pMother: r0.pMother, pFather: '', pStudent: '', src: r0.src, ts: Date.now(), up: Date.now() }); await b.commit();
+          goWin.location.href = formUrl(tok); V.modal = null; render(); return toast(name + ' 상담을 시작했어요 · 새 탭(태블릿 화면)이 열렸어요'); }
+        await addDoc(collection(db, 'leads'), { ...r0, ts: now() }); }
       V.modal = null; V.editId = null; render(); return toast(name + ' ' + (st === 'booked' ? '진단 예약을 저장했어요' : '진단 기록을 저장했어요'));
     }
     if (f === 'attF') {

@@ -16,7 +16,7 @@ const won = n => (+n || 0).toLocaleString('ko-KR');
 const v = x => { const t = ans(x); return t ? esc(t) : '<span class="empty">—</span>'; };
 let L = null, F = null;
 
-const head = (title, sub) => '<div class="hd"><img src="./icon-192.png?v=2" alt=""><div><h1>' + title + '</h1><small>더(The)밀착수학교습소 · 소수정예 1:1 밀착 수학</small></div><div class="r"><div class="who">' + esc(L.name) + '<span>' + esc([L.school, L.grade].filter(Boolean).join(' ')) + '</span></div>' + esc(sub || '') + '</div></div>';
+const head = (title, sub) => '<div class="hd"><img src="./icon-192.png?v=2" alt=""><div><h1>' + title + '</h1><small>더(The)밀착수학교습소 · 소수정예 1:1 밀착 수학</small></div><div class="r"><div class="who">' + esc(L.name) + '<span>' + esc([(F && F.apply && F.apply.school) || L.school, (F && F.apply && F.apply.grade) || L.grade].filter(Boolean).join(' ')) + '</span></div>' + esc(sub || '') + '</div></div>';
 const foot = () => '<div class="foot"><span>더(The)밀착수학교습소 · 화성시 동탄구 영천동 · 010-4318-0075</span><span>원장 김동진</span></div>';
 
 /* ---------- 결과 브리핑 ---------- */
