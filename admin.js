@@ -12,7 +12,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.14.1';
+const ADMIN_VERSION = '2.14.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -541,7 +541,7 @@ function finSync(m) {
 }
 // 미납: 학부모 총 납부액이 있는데 납부 체크가 안 된 줄
 const unpaidOf = (m, set) => { const bm = billMeals(m), bb = billBooks(m); const l = ((m && m.rows) || []).filter(r => r.name).map(r => ({ r, u: unpaidParts(r, calcRow(r, bm, set, bb)) })).filter(x => x.u.length); return { n: l.length, amt: l.reduce((a, x) => a + x.u.reduce((b, y) => b + y.amt, 0), 0), names: l.map(x => x.r.name + '(' + x.u.map(y => y.l).join('·') + ')') }; };
-const PAYSSAM_URL = 'https://payssam.kr/';
+const PAYSSAM_URL = 'https://manager.payssam.kr/dashboard';
 function pFin() {
   if (!isOwnerMe()) return '<h1>정산</h1><section class="card"><p class="empty">원장님만 볼 수 있어요</p></section>';
   const ms = finMonths(); const set = finSet();
