@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.0.2';
+const APP_VERSION = '2.0.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -237,7 +237,7 @@ function tHome(){
   '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button>'+(isOwnerMe()?'<button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button>':'')+''+(isOwnerMe()?'<button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'일정 등록</button>':'')+'</div>'+
   (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
-  (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+absTeacherCard()+
+  (pending().length?'<div class="card" style="border-color:var(--acc)"><h3>등원 승인 대기 <small>'+pending().length+'건</small></h3>'+reqRows()+'</div>':'')+(isOwnerMe()&&(D.apply||[]).length?'<div class="card" style="border-color:var(--acc)"><h3>신규 등록 신청 <small>'+D.apply.length+'건</small></h3>'+D.apply.map(a=>'<div class="row"><div class="grow"><div class="nm">'+esc(a.name)+' <small class="sub">'+esc(a.school)+' '+esc(a.grade)+'</small></div><div class="sub">'+esc(a.memo||'')+'</div></div></div>').join('')+'<p class="sub" style="margin:8px 0 0">PC 관리자 › 학생 관리에서 [승인]을 누르면 등록이 한 번에 끝나요.</p></div>':'')+absTeacherCard()+
   '<div class="stats"><div><b>'+(P.plan?expIn+'/'+P.exp.length:present+'/'+D.students.length)+'</b><span>'+(P.plan?'예정 등원'+(P.ex.length?' (보충 '+P.ex.length+')':''):'등원')+'</span></div><div><b>'+toCheck.length+'</b><span>확인할 숙제</span></div><div><b>'+unreadTeacher()+'</b><span>새 메시지</span></div></div>'+
   (P.ev.length?'<div class="card"'+(P.ev.some(e=>evKind(e)==='off')?' style="border-color:var(--acc)"':'')+'><h3>일정</h3>'+P.ev.map(e=>examRow(e,false)).join('')+'</div>':'')+
   '<div class="card"><h3>출결</h3>'+dayNav(day)+
@@ -405,7 +405,7 @@ function sheetHtml(){
 
 const app=document.getElementById('app');
 /* ================= 상태 ================= */
-const D={sinfo:{},students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{},autoNotify:true,cfg:null};
+const D={apply:[],sinfo:{},students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{},autoNotify:true,cfg:null};
 const ME={uid:null,phone:'',sids:[],rels:{},ths:[]};
 const U={screen:'loading',authMsg:'',authTab:'login',busy:false,wait:[],update:null,
   calM:TODAY.slice(0,7),calS:'all',calD:TODAY,page:null,pc:{},lf:null,pushX:{},
@@ -585,6 +585,7 @@ function subTeacher(){
   L(collection(db,'staff'),s=>{D.staff=docs(s);sr()});
   L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
   L(query(collection(db,'extra'),where('date','>=',off(-60))),s=>{D.extra={};s.docs.forEach(d=>{D.extra[d.id]=d.data()});sr()});
+  if(isOwnerMe())L(collection(db,'apply'),s=>{D.apply=docs(s).filter(x=>x.st==='new');sr()});
   if(isOwnerMe())L(collection(db,'sinfo'),s=>{D.sinfo={};s.docs.forEach(d=>{D.sinfo[d.id]=d.data()});sr()});
   if(isOwnerMe())L(collection(db,'fin'),s=>{D.fin={};s.docs.forEach(d=>{if(d.id.startsWith('m_'))D.fin[d.id.slice(2)]=d.data()});sr()});
 }
