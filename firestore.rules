@@ -38,11 +38,17 @@ service cloud.firestore {
     }
     match /members/{id} {
       // 번호 등록·삭제는 원장님만, 가입 승인은 부원장도 가능
-      allow read: if isTeacher() || (signedIn() && resource.data.phone == myPhone());
+      // 가입한(승인 대기 이후) 본인 번호만 보여요. 아직 가입 안 한 번호의 등록 정보(학생 이름 등)는 가입 코드 없이는 못 봐요
+      allow read: if isTeacher() || (signedIn() && resource.data.phone == myPhone() && resource.data.st != 'none');
       allow create, delete: if isOwner();
       allow update: if isTeacher() || (signedIn() && resource.data.phone == myPhone()
         && resource.data.st == 'none' && request.resource.data.st == 'pending'
         && request.resource.data.uid == request.auth.uid && onlyKeys(['st', 'uid', 'at']));
+    }
+    match /inv/{code} {
+      // 가입 코드: 코드(문서 이름)를 알고 번호가 맞는 사람만 한 건 읽기. 목록·쓰기는 원장님만
+      allow get: if isOwner() || (signedIn() && resource.data.phone == myPhone());
+      allow list, write: if isOwner();
     }
     match /students/{sid} {
       // 학생 등록·수정·퇴원은 원장님만. 부원장은 수업 기록 저장 때 현재 과정(course)만 바뀔 수 있어요

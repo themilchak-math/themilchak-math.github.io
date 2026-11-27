@@ -6,11 +6,12 @@ import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, qu
 import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, isAct } from './subjects.js';
 import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
+import { ensureCodes, claimByCode } from './invcode.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fmtSize, filesHtml, lightbox, visibleTo, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.2.7';
+const APP_VERSION = '2.3.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -89,7 +90,7 @@ const mLabel=m=>{const s=stu(m.sid);return (s?s.name:(m.name||''))+' '+REL[m.rel
 const mChip=m=>m.st==='ok'?'<span class="chip c-ok">연결됨</span>':m.st==='pending'?'<span class="chip c-warn">승인 대기</span>':m.st==='block'?'<span class="chip c-bad">차단</span>':'<span class="chip">미가입</span>';
 function mReqRows(){const l=mPending();if(!l.length)return '<div class="empty">가입 승인 대기가 없어요</div>';return l.map(m=>'<div class="row" style="flex-wrap:wrap"><div class="av'+(m.rel!=='student'?' p':'')+'">'+(m.rel==='student'?'학생':REL[m.rel].slice(0,2))+'</div><div class="grow"><div class="nm">'+esc(mLabel(m))+'</div><div class="sub">'+esc(maskP(m.phone))+' · 등록 번호 일치</div></div><div style="display:flex;gap:6px"><button class="btn sm ghost" data-act="mRej" data-id="'+m.id+'">거절</button><button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button></div></div>').join('')}
 function inviteText(m){const s=stu(m.sid);const nm=s?s.name:(m.name||'');const who=m.rel==='student'?nm+' 학생':nm+' '+REL[m.rel];const tn=(D.cfg&&D.cfg.teacher)||'';
-  return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?'더밀착수학 '+tn+' 원장':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\nhttps://themilchak-math.github.io/install.html\n\n가입할 때 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호를 넣어 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.'+(m.rel==='student'&&m.grade==='중1'?'\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.':'')}
+  return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?'더밀착수학 '+tn+' 원장':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\nhttps://themilchak-math.github.io/install.html\n\n가입할 때 이 번호('+fmtP(m.phone)+')'+(m.code?'와 아래 가입 코드, ':'와 ')+'원하는 비밀번호를 넣어 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'+(m.code?'🔑 가입 코드: '+m.code+'\n':'')+'설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.'+(m.rel==='student'&&m.grade==='중1'?'\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.':'')}
 const smsHref=m=>'sms:'+m.phone+(pushIOS()?'&':'?')+'body='+encodeURIComponent(inviteText(m));
 /* ===== 일정(시험기간·휴무·특수 일정) ===== */
 const EXAM_T=['1학기 중간고사','1학기 기말고사','2학기 중간고사','2학기 기말고사'];
@@ -482,7 +483,7 @@ function authView(){
     '<form id="setupF" class="card"><label class="f"><span>원장님 이름</span><input id="sN" placeholder="예: 김동진" autocomplete="name"></label><label class="f"><span>원장님 휴대폰번호 (로그인 아이디)</span><input id="sP" inputmode="numeric" placeholder="010-0000-0000" autocomplete="tel"></label><label class="f"><span>비밀번호 (6자리 이상)</span><input id="sW" type="password" autocomplete="new-password"></label><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>원장님 계정 만들기</button></form>'+
     '<button class="btn ghost" style="width:100%" data-act="authTab" data-v="login">로그인 화면으로</button></div>';
   if(t==='signup')return authHeader('가입하기','선생님께 등록된 휴대폰번호로 가입해요')+'<div class="body">'+msgBox()+
-    '<form id="signupF" class="card"><label class="f"><span>휴대폰번호</span><input id="jP" inputmode="numeric" autocomplete="tel" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호 (6자리 이상)</span><input id="jW" type="password" autocomplete="new-password"></label><label class="f"><span>비밀번호 확인</span><input id="jW2" type="password" autocomplete="new-password"></label><label class="sw" style="justify-content:flex-start;gap:8px;color:var(--ink)"><input type="checkbox" id="jA">[필수] 개인정보 수집·이용에 동의합니다</label><details class="sub" style="margin:-4px 0 14px"><summary>동의 내용 보기</summary>수집 항목: 이름, 휴대폰번호, 출결·숙제·학습 기록, 메시지 · 목적: 수업 관리와 학부모 안내 · 보관: 퇴원 후 1년까지 보관 뒤 삭제 · 동의하지 않을 수 있으나 앱을 이용할 수 없어요.</details><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>가입하기</button></form>'+
+    '<form id="signupF" class="card"><label class="f"><span>휴대폰번호</span><input id="jP" inputmode="numeric" autocomplete="tel" placeholder="010-0000-0000"></label><label class="f"><span>🔑 가입 코드 <small class="sub" style="font-weight:400">선생님 안내 문자의 6자리</small></span><input id="jC" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6자리 숫자"></label><label class="f"><span>비밀번호 (6자리 이상)</span><input id="jW" type="password" autocomplete="new-password"></label><label class="f"><span>비밀번호 확인</span><input id="jW2" type="password" autocomplete="new-password"></label><label class="sw" style="justify-content:flex-start;gap:8px;color:var(--ink)"><input type="checkbox" id="jA">[필수] 개인정보 수집·이용에 동의합니다</label><details class="sub" style="margin:-4px 0 14px"><summary>동의 내용 보기</summary>수집 항목: 이름, 휴대폰번호, 출결·숙제·학습 기록, 메시지 · 목적: 수업 관리와 학부모 안내 · 보관: 퇴원 후 1년까지 보관 뒤 삭제 · 동의하지 않을 수 있으나 앱을 이용할 수 없어요.</details><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>가입하기</button></form>'+
     '<button class="btn ghost" style="width:100%" data-act="authTab" data-v="login">이미 가입했어요 · 로그인</button>'+installTip()+'</div>';
   return authHeader('더밀착수학','학생·학부모·선생님 로그인')+'<div class="body">'+msgBox()+
     installTip()+'<form id="loginF" class="card"><label class="f"><span>휴대폰번호</span><input id="lP" inputmode="numeric" autocomplete="username" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호</span><input id="lW" type="password" autocomplete="current-password"></label><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>로그인</button></form>'+
@@ -491,6 +492,9 @@ function authView(){
     '<p style="text-align:center"><button class="lnk" data-act="authTab" data-v="setup">원장님 처음 설정</button></p></div>';
 }
 function waitView(){
+  if(!U.wait||!U.wait.length)return authHeader('가입 코드를 넣어 주세요',fmtP(ME.phone||''))+'<div class="body">'+(U.codeErr?'<div class="card" style="border-color:var(--acc)"><p style="margin:0;color:var(--acc);font-weight:700">'+esc(U.codeErr)+'</p></div>':'')+
+    '<form id="codeF2" class="card"><p class="sub" style="margin:0 0 10px">선생님이 보낸 가입 안내 문자에 있는 <b>🔑 가입 코드 6자리</b>를 넣어 주세요.</p><label class="f"><span>가입 코드</span><input id="jC2" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6자리 숫자"></label><button class="btn" style="width:100%" type="submit">확인</button></form>'+
+    '<div class="card"><p class="sub" style="margin:0 0 10px">코드를 못 받으셨으면 선생님께 안내 문자를 다시 요청해 주세요. 번호를 잘못 넣으셨으면 로그아웃 후 다시 가입해 주세요.</p><button class="btn ghost" style="width:100%" data-act="logout">로그아웃</button></div></div>';
   const rows=U.wait.map(m=>{const nm=(m.name||'')+' '+REL[m.rel];
     const st=m.st==='pending'?'<span class="chip c-warn">선생님 승인 대기</span>':m.st==='block'?'<span class="chip c-bad">이용 제한</span>':m.st==='ok'?'<span class="chip c-ok">연결됨</span>':'<button class="btn sm" data-act="reclaim">다시 요청</button>';
     return '<div class="row"><div class="grow nm">'+esc(nm)+'</div>'+st+'</div>'}).join('');
@@ -567,6 +571,7 @@ const fail=(e,m)=>{console.error(e);toast(m||('저장하지 못했어요. 인터
 let baseUnsubs=[],dataUnsubs=[];
 const stopData=()=>{dataUnsubs.forEach(f=>f());dataUnsubs=[]};
 const stopAll=()=>{stopData();baseUnsubs.forEach(f=>f());baseUnsubs=[]};
+let codeT=null;const codesSoon=()=>{if(!isOwnerMe()||!D.inv)return;clearTimeout(codeT);codeT=setTimeout(()=>ensureCodes(db,D.members,D.inv),700)};
 const L=(q,fn)=>dataUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',e.code)));
 const B=(q,fn)=>baseUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',e.code)));
 const sortMsgs=l=>l.sort((a,b)=>(a.ts||0)-(b.ts||0));
@@ -582,7 +587,8 @@ function subTeacher(){
   L(collection(db,'logs'),s=>{D.logs=docs(s);sr()});
   L(collection(db,'notices'),s=>{D.notices=docs(s);sr()});
   L(query(collection(db,'reqs'),where('st','==','pending')),s=>{D.req=docs(s).filter(q=>q.date===TODAY);sr()});
-  L(collection(db,'members'),s=>{D.members=docs(s);sr()});
+  L(collection(db,'members'),s=>{D.members=docs(s);codesSoon();sr()});
+  if(isOwnerMe())L(collection(db,'inv'),s=>{D.inv=Object.fromEntries(s.docs.map(d=>[d.id,d.data()]));codesSoon()});
   L(collection(db,'exams'),s=>{D.exams=docs(s);sr()});
   L(collection(db,'staff'),s=>{D.staff=docs(s);sr()});
   L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
@@ -650,13 +656,20 @@ function startFamily(){
 let memUnsub=null;
 function watchMembers(){
   if(memUnsub)return;
-  memUnsub=onSnapshot(query(collection(db,'members'),where('phone','==',ME.phone)),async s=>{
+  // 가입 신청(승인 대기) 이후의 내 등록만 보여요. 아직이면 가입 코드로 신청해요
+  memUnsub=onSnapshot(query(collection(db,'members'),where('phone','==',ME.phone),where('st','in',['pending','ok','block'])),async s=>{
     const ms=docs(s);U.wait=ms;
-    if(!ms.length){memUnsub();memUnsub=null;const u=auth.currentUser;U.authMsg='등록되지 않은 번호예요. 선생님께 번호 등록을 요청해 주세요.';U.authTab='login';try{await deleteUser(u)}catch(e){await signOut(auth)}return}
-    if(!U.claimed){U.claimed=true;await claim(ms)}
+    if(!ms.length&&U.jCode&&!U.codeTried){U.codeTried=true;await tryCode(U.jCode)}
     sr();
   },e=>console.warn(e));
   baseUnsubs.push(()=>{if(memUnsub){memUnsub();memUnsub=null}});
+}
+async function tryCode(code){
+  U.codeErr='';
+  try{const n=await claimByCode(db,code,ME.uid,hm());if(!n)throw new Error('none');U.jCode='';
+    push(['teacher'],'[가입 요청] '+fmtP(ME.phone)+' 번호로 가입했어요. 승인해 주세요.',{tag:'join'});
+  }catch(e){U.codeErr='가입 코드가 맞지 않아요. 선생님이 보낸 안내 문자의 6자리 코드와 휴대폰번호를 확인해 주세요.'}
+  sr();
 }
 async function claim(ms){
   const go=ms.filter(m=>m.st==='none');
@@ -902,12 +915,14 @@ app.addEventListener('submit',async e=>{
   try{
   if(fid==='loginF'){const ph=digits(g('lP'));if(ph.length<10)return toast('휴대폰번호를 정확히 입력해 주세요');U.busy=true;U.authMsg='';render();
     try{await signInWithEmailAndPassword(auth,ph+MAIL,g('lW'))}catch(err){U.authMsg=authErr(err.code)}U.busy=false;return render()}
+  if(fid==='codeF2'){const c=digits(g('jC2'));if(c.length!==6)return toast('6자리 숫자를 넣어 주세요');return tryCode(c)}
   if(fid==='signupF'){const ph=digits(g('jP'));
     if(ph.length<10)return toast('휴대폰번호를 정확히 입력해 주세요');
+    const jc=digits(g('jC'));if(jc.length!==6)return toast('선생님 안내 문자에 있는 가입 코드 6자리를 넣어 주세요');
     if(g('jW').length<6)return toast('비밀번호는 6자리 이상이에요');
     if(g('jW')!==g('jW2'))return toast('비밀번호 확인이 맞지 않아요');
     if(!document.getElementById('jA').checked)return toast('개인정보 수집·이용 동의가 필요해요');
-    U.busy=true;U.authMsg='';U.claimed=false;render();
+    U.busy=true;U.authMsg='';U.claimed=false;U.jCode=jc;U.codeTried=false;U.codeErr='';render();
     try{await createUserWithEmailAndPassword(auth,ph+MAIL,g('jW'))}catch(err){U.authMsg=authErr(err.code)}U.busy=false;return render()}
   if(fid==='setupF'){const ph=digits(g('sP'));const name=g('sN').trim();
     if(!name||ph.length<10||g('sW').length<6)return toast('이름·번호·비밀번호(6자리 이상)를 확인해 주세요');

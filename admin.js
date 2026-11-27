@@ -7,10 +7,11 @@ import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSumm
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
+import { ensureCodes } from './invcode.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.7.0';
+const ADMIN_VERSION = '2.8.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -82,10 +83,11 @@ function inviteText(m) {
   const tn = (D.cfg && D.cfg.teacher) || '';
   return '[더밀착수학] 안녕하세요, ' + who + '. ' + (tn ? '더밀착수학 ' + tn + ' 원장' : '더밀착수학') + '입니다.\n' + (m.rel === 'student' ? '출결·숙제·수업 기록' : '출결·수업 기록·숙제·공지') + '을 확인하는 교습소 앱 안내드려요.\n\n'
     + '▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\n' + APP_URL + '/install.html\n\n'
-    + '가입할 때 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호를 넣어 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'
+    + '가입할 때 이 번호(' + fmtP(m.phone) + ')' + (m.code ? '와 아래 가입 코드, ' : '와 ') + '원하는 비밀번호를 넣어 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'
+    + (m.code ? '🔑 가입 코드: ' + m.code + '\n' : '')
     + '설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');
 }
-const shortInvite = m => '[더밀착수학] ' + mLabel(m) + ' 앱 안내\n설치: https://themilchak-math.github.io/install.html\n가입 번호: ' + fmtP(m.phone) + ' (비밀번호는 원하는 걸로)';
+const shortInvite = m => '[더밀착수학] ' + mLabel(m) + ' 앱 안내\n설치: https://themilchak-math.github.io/install.html\n가입 번호: ' + fmtP(m.phone) + (m.code ? '\n가입 코드: ' + m.code : '') + ' (비밀번호는 원하는 걸로)';
 const KAKAO_JS_KEY = '1a4da179bbea2afbb606a5d77bf4caf4';
 function kakaoReady() {
   if (window.Kakao && Kakao.isInitialized && Kakao.isInitialized()) return Promise.resolve(true);
@@ -101,7 +103,7 @@ async function kakaoInvite(m) {
   const inst = APP_URL + '/install.html';
   try {
     Kakao.Share.sendDefault({ objectType: 'feed',
-      content: { title: '[더밀착수학] ' + mLabel(m) + ' 앱 설치 안내', description: '가입 번호: ' + fmtP(m.phone) + ' (비밀번호는 원하는 걸로) · 설치 후 [알림 받기]를 꼭 눌러 주세요',
+      content: { title: '[더밀착수학] ' + mLabel(m) + ' 앱 설치 안내', description: '가입 번호: ' + fmtP(m.phone) + (m.code ? ' · 🔑 가입 코드: ' + m.code : '') + ' (비밀번호는 원하는 걸로) · 설치 후 [알림 받기]를 꼭 눌러 주세요',
         imageUrl: APP_URL + '/icon-512.png?v=2', imageWidth: 512, imageHeight: 512, link: { mobileWebUrl: inst, webUrl: inst } },
       buttons: [{ title: '설치 안내 보기', link: { mobileWebUrl: inst, webUrl: inst } }] });
   } catch (e) { toast('카카오톡 공유를 열지 못했어요: ' + (e.message || e)); }
@@ -118,7 +120,7 @@ const noshowBtn = (x, day) => day !== TODAY ? '' : (noshowAt(x.id) ? ' <span cla
 const chip = (t, c) => '<span class="chip ' + (c || '') + '">' + esc(t) + '</span>';
 const isIn = r => !!r && r.st !== '결석';
 const attChip = a => !a ? chip('미등원') : a.st === '결석' ? chip('결석', 'bad') : chip('등원' + (a.at ? ' ' + a.at : ''), 'ok') + (a.out ? ' ' + chip('하원 ' + lateLabel(a.out), 'pri') : '');
-const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입');
+const memChip = m => !m ? '<span class="sub">번호 없음</span>' : m.st === 'ok' ? chip('연결됨', 'ok') : m.st === 'pending' ? chip('승인 대기', 'warn') : m.st === 'block' ? chip('차단', 'bad') : chip('미가입') + (m.code ? ' <span class="sub" title="가입 코드">🔑' + m.code + '</span>' : '');
 const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 'done' ? chip('제출함', 'pri') : h.due < TODAY ? chip('기한 지남', 'bad') : chip('진행 중', 'warn');
 
 const absOf = (sid, d) => D.abs.find(x => x.sid === sid && x.date === d);
@@ -808,6 +810,7 @@ const fail = (e, m) => { console.error(e); toast(m || '저장하지 못했어요
 
 /* ---------- 데이터 ---------- */
 let unsubs = [];
+let codeT = null; const codesSoon = () => { if (!isOwnerMe() || !D.inv) return; clearTimeout(codeT); codeT = setTimeout(() => ensureCodes(db, D.members, D.inv), 700); };
 const L = (q, fn) => unsubs.push(onSnapshot(q, fn, e => console.warn('구독 오류', e.code)));
 function subscribe() {
   L(doc(db, 'config', 'main'), d => { D.cfg = d.exists() ? d.data() : null; sr(); });
@@ -818,7 +821,8 @@ function subscribe() {
   L(collection(db, 'logs'), s => { D.logs = docs(s); sr(); });
   L(collection(db, 'notices'), s => { D.notices = docs(s); sr(); });
   L(query(collection(db, 'reqs'), where('st', '==', 'pending')), s => { D.req = docs(s); sr(); });
-  L(collection(db, 'members'), s => { D.members = docs(s); sr(); });
+  L(collection(db, 'members'), s => { D.members = docs(s); codesSoon(); sr(); });
+  if (isOwnerMe()) L(collection(db, 'inv'), s => { D.inv = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); codesSoon(); });
   L(collection(db, 'exams'), s => { D.exams = docs(s); sr(); });
   L(collection(db, 'staff'), s => { D.staff = docs(s); sr(); });
   L(query(collection(db, 'abs'), where('date', '>=', off(-400))), s => { D.abs = docs(s); sr(); });
