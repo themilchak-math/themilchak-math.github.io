@@ -10,7 +10,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.6.11';
+const ADMIN_VERSION = '2.7.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -507,7 +507,7 @@ function pFin() {
     '<tr class="sub"><td></td><td>1층 정원</td><td colspan="3">하루 최대 ' + set.cap1 + '명</td>' + DAYS6.map((_, k) => '<td class="cen">' + (over(k) ? '<b style="color:var(--bad)">초과</b>' : set.cap1 - C.perDay[k]) + '</td>').join('') + '<td colspan="12"></td></tr>' +
     '</tbody></table><div class="bar" style="margin-top:10px"><span class="sub">학생은 [학생명부]의 첫 등록일이 속한 달부터 정산에 자동으로 들어와요 · 여기서는 Course·요일·원비·보충과목·교재·메모만 입력 · 퇴원생 줄만 ✕로 뺄 수 있어요</span><span style="flex:1"></span><button class="btn sm ghost danger" data-a="finDelMonth">이 달 삭제</button></div></section>';
   const wkCap1 = set.cap1 * 6, wkCap2 = set.cap2 * 6;
-  const sumCard = '<div class="grid2"><section class="card"><h2>② 이번 달 요약</h2><table><tbody>' +
+  const sumCard = '<div class="grid2"><section class="card"><h2>② 이번 달 요약</h2><table class="kv"><tbody>' +
     // 수입(위) → 빼는 것(아래, 빨간 −) → 입금 총액
     (() => { const plus = [['원비 정가 합계', C.price], ['식대 청구 (' + monL(prevYm(ym)) + '분 · 별도 사업자)', C.meal]], minus = [['할인 합계 (형제·장기수강)', C.disc]];
       const net = plus.reduce((a, x) => a + (+x[1] || 0), 0) - minus.reduce((a, x) => a + (+x[1] || 0), 0);
@@ -515,7 +515,7 @@ function pFin() {
         minus.map(([l, v]) => '<tr><td style="color:var(--bad,#e5484d)">' + l + '</td><td class="r" style="color:var(--bad,#e5484d)"><b>' + (+v ? '-' : '') + won(v) + '원</b></td></tr>').join('') +
         '<tr style="border-top:2px solid var(--ink,#222)"><td><b>입금 총액</b><div class="sub">학부모님 납부 합계 (원비 ' + won(C.fee) + ' + 식대 ' + won(C.meal) + ')</div></td><td class="r" style="font-size:1.15em"><b>' + won(net) + '원</b></td></tr>' +
         '<tr><td class="sub">참고 · 원장 · 부원장 식대 (' + monL(prevYm(ym)) + '분) <small>계산에 안 들어가요</small></td><td class="r sub">' + won(C.staff) + '원</td></tr>'; })() + '</tbody></table></section>' +
-    '<section class="card"><h2>③ 주간 정원 <span class="sub">Unit = 학생 1명이 하루 등원</span></h2><table><tbody><tr><td>1층 교습소</td><td class="r">' + wkCap1 + ' Unit</td><td class="sub">평일 ' + set.cap1 * 5 + ' / 토 ' + set.cap1 + '</td></tr><tr><td>2층 공부방</td><td class="r">' + wkCap2 + ' Unit</td><td class="sub">평일 ' + set.cap2 * 5 + ' / 토 ' + set.cap2 + '</td></tr><tr><td>합계</td><td class="r">' + (wkCap1 + wkCap2) + ' Unit</td><td></td></tr><tr><td>1층 현재 주간 등원</td><td class="r"><b>' + C.wk + ' Unit</b></td><td class="sub">학생 ' + C.n + '명</td></tr><tr><td>1층 남은 자리 (주간)</td><td class="r"><b' + (wkCap1 - C.wk < 0 ? ' style="color:var(--bad)"' : '') + '>' + (wkCap1 - C.wk) + ' Unit</b></td><td></td></tr></tbody></table></section></div>';
+    '<section class="card"><h2>③ 주간 정원 <span class="sub">Unit = 학생 1명이 하루 등원</span></h2><table class="kv"><tbody><tr><td>1층 교습소</td><td class="r">' + wkCap1 + ' Unit</td><td class="sub">평일 ' + set.cap1 * 5 + ' / 토 ' + set.cap1 + '</td></tr><tr><td>2층 공부방</td><td class="r">' + wkCap2 + ' Unit</td><td class="sub">평일 ' + set.cap2 * 5 + ' / 토 ' + set.cap2 + '</td></tr><tr><td>합계</td><td class="r">' + (wkCap1 + wkCap2) + ' Unit</td><td></td></tr><tr><td>1층 현재 주간 등원</td><td class="r"><b>' + C.wk + ' Unit</b></td><td class="sub">학생 ' + C.n + '명</td></tr><tr><td>1층 남은 자리 (주간)</td><td class="r"><b' + (wkCap1 - C.wk < 0 ? ' style="color:var(--bad)"' : '') + '>' + (wkCap1 - C.wk) + ' Unit</b></td><td></td></tr></tbody></table></section></div>';
   return head + table + sumCard + finMeals(m, set) + finSummary() + finSettings(set);
 }
 function finMeals(m, set) {
@@ -793,6 +793,7 @@ function render() {
   if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); }
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
   const cb = document.getElementById('chatBody'); if (cb) cb.scrollTop = cb.scrollHeight;
+  if (window.innerWidth <= 800 && V.navSeen !== V.page) { const on = document.querySelector('nav button.on'); if (on) { V.navSeen = V.page; const nv = on.parentElement; nv.scrollLeft = (on.offsetLeft - nv.offsetLeft) - (nv.clientWidth - on.offsetWidth) / 2; } }
   if (V.modal === 'invite' && V.invQR) { const box = document.getElementById('invQRBox'); const m = D.members.find(x => x.id === V.invQR); if (box && m && window.QRCode) { const mk = t => { const txt = 'SMSTO:' + m.phone + ':' + t; box.innerHTML = '';
       if (window.qrcode && window.qrcode.stringToBytesFuncs) { // 한글(UTF-8)을 정확히 계산하는 QR 라이브러리
         window.qrcode.stringToBytes = window.qrcode.stringToBytesFuncs['UTF-8']; const q = window.qrcode(0, 'L'); q.addData(txt, 'Byte'); q.make();
@@ -912,7 +913,7 @@ app.addEventListener('click', async e => {
   if (el.dataset.a === 'close' && e.target !== el) return;
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v;
   try {
-    if (a === 'go') { V.page = v; if (v === 'msg' && V.chat) markRead(V.chat); return render(); }
+    if (a === 'go') { if (window.innerWidth <= 800) window.scrollTo(0, 0); V.page = v; if (v === 'msg' && V.chat) markRead(V.chat); return render(); }
     if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(pushErrorText(e)); } return render(); }
     if (a === 'pushHide') { V.pushHide = true; return render(); }
     if (a === 'logout') { await signOut(auth); return; }
