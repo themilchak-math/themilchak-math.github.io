@@ -13,7 +13,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.19.1';
+const ADMIN_VERSION = '2.20.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -603,7 +603,7 @@ function pLeads() {
   const old = all.filter(l => (l.st === 'lost' || l.st === 'done') && (l.up || l.date || '') && (l.up || l.date) < off(-365));
   const stc = { booked: 'pri', done: 'warn', enrolled: 'ok', lost: '' };
   return '<h1>진단·상담 <span class="sub">무료 정밀진단 예약 → 진단 결과·상담 기록 → 등록하면 학생으로 바로 넘어가요</span></h1>' +
-    '<div class="bar"><button class="btn" data-a="modal" data-v="lead">+ 수동으로 직접 입력</button>' + ['open', 'enrolled', 'lost', 'all'].map(k => '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-a="leadT" data-v="' + k + '">' + { open: '진행 중', enrolled: '등록함', lost: '등록 안 함', all: '전체' }[k] + ' ' + groups[k].length + '</button>').join(' ') +
+    '<div class="bar"><button class="btn" data-a="modal" data-v="lead">+ 수동으로 직접 입력</button><button class="btn ghost" data-a="guidePrint">🖨 교습소 안내문 인쇄</button>' + ['open', 'enrolled', 'lost', 'all'].map(k => '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-a="leadT" data-v="' + k + '">' + { open: '진행 중', enrolled: '등록함', lost: '등록 안 함', all: '전체' }[k] + ' ' + groups[k].length + '</button>').join(' ') +
     '<span style="flex:1"></span><span class="sub">이번 달 진단 ' + mon.length + '건 · 등록 ' + monE + '건' + (tot.length ? ' · 누적 등록률 ' + Math.round(totE / tot.length * 100) + '%' : '') + '</span></div>' +
     '<section class="card" style="padding:12px 16px"><div class="bar" style="margin:0;flex-wrap:wrap"><b>📨 학부모님이 직접 예약 신청</b><span class="sub">링크를 보내면 어머님이 학생 정보·연락처·희망 일정을 적고, 여기 목록에 자동으로 들어와요 (설문도 미리 작성 가능)</span><span style="flex:1"></span><a class="btn sm" href="' + esc(bookSms()) + '">💬 예약문자 발송</a></div></section>' +
     '<section class="card scroll"><table><thead><tr><th>학생</th><th>진단</th><th>경로</th><th>상태</th><th>진단 결과·상담</th><th></th></tr></thead><tbody>' +
@@ -1179,6 +1179,11 @@ app.addEventListener('click', async e => {
       if (touch) { location.href = 'sms:' + ph + (isIOSdev() ? '&' : '?') + 'body=' + encodeURIComponent(txt); return; }
       V.smsQR = { ph, txt, who: (w === 'student' ? l.name + ' 학생' : l.name + ' 학부모님') }; V.modal = 'smsqr'; return render(); }
     if (a === 'smsCopy') { try { await navigator.clipboard.writeText(V.smsQR.txt); toast('복사했어요'); } catch (e) { prompt('복사해서 보내세요', V.smsQR.txt); } return; }
+    if (a === 'guidePrint') { // 학부모 상담 안내서(A4 2쪽) 바로 인쇄 — 파일: guide.pdf
+      const old = document.getElementById('guideFrame'); if (old) old.remove();
+      const f = document.createElement('iframe'); f.id = 'guideFrame'; f.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0'; f.src = './guide.pdf?v=1';
+      f.onload = () => setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { window.open('./guide.pdf?v=1', '_blank'); } }, 400);
+      document.body.appendChild(f); return toast('안내문 인쇄 창을 여는 중…'); }
     if (a === 'bookCopy') { try { await navigator.clipboard.writeText(bookText()); toast('복사했어요 · 카톡·문자에 붙여넣으세요'); } catch (e) { prompt('복사해서 보내세요', bookText()); } return; }
     if (a === 'bookQR') { V.bookQR = !V.bookQR; return render(); }
     if (a === 'formQR') { V.formQR = V.formQR === id ? null : id; return render(); }
