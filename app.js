@@ -10,7 +10,7 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.4.1';
+const APP_VERSION = '2.4.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -444,7 +444,7 @@ const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||
 /* ================= 화면 그리기 ================= */
 function header(title,sub,back){
   const sel=(U.role!=='teacher'&&ME.sids.length>1)?'<div class="who-seg" role="tablist" aria-label="자녀 선택">'+[...ME.sids].sort((a,b)=>((stu(a)||{}).name||'').localeCompare((stu(b)||{}).name||'','ko')).map(id=>{const s=stu(id);return '<button data-act="who" data-id="'+esc(id)+'" class="'+(id===U.me?'on':'')+'">'+esc(s?s.name:'...')+'</button>'}).join('')+'</div>':'';
-  return '<div class="hdr"><div class="sb"><span>더밀착수학</span><button class="lo" data-act="logout">로그아웃</button></div>'+(back?'<button class="back" data-act="back">‹ 뒤로</button>':'')+'<h2>'+esc(title)+'</h2>'+(sub?'<div class="who">'+esc(sub)+'</div>':'')+sel+'</div>';
+  return '<div class="hdr"><div class="sb"><span>더밀착수학</span><button class="lo" data-act="logout">로그아웃</button></div>'+(back?'<button class="back" data-act="back">‹ 뒤로</button>':'')+(U.role==='teacher'?'<div class="h2row"><h2>'+esc(title)+'</h2><a class="adm" href="./admin.html">관리자 페이지 ›</a></div>':'<h2>'+esc(title)+'</h2>')+(sub?'<div class="who">'+esc(sub)+'</div>':'')+sel+'</div>';
 }
 function authHeader(t,s){return '<div class="hdr"><div class="sb"><span>더밀착수학</span><span>v'+APP_VERSION+'</span></div><h2>'+esc(t)+'</h2>'+(s?'<div class="who">'+esc(s)+'</div>':'')+'</div>'}
 const isSamsung=()=>/SamsungBrowser/i.test(navigator.userAgent);
