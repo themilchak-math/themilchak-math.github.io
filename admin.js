@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.4.6';
+const ADMIN_VERSION = '2.4.7';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -530,13 +530,13 @@ const phoneOf = (s, rel) => { const m = memberOf(s.id, rel); if (m && m.phone) r
 function pRoster() {
   const list = [...D.students].sort((a, b) => (!!a.left - !!b.left) || a.name.localeCompare(b.name, 'ko'));
   const sc = schools();
-  return '<p class="sub" style="margin:0 0 10px">재원·퇴원 학생 상세 정보(생년월일·첫 등록일·메모·학교·학년·재원 상태) · 연락처는 [연락처·앱 연결]의 [수정]에서</p>' +
+  return '<p class="sub" style="margin:0 0 10px">재원·퇴원 학생 상세 정보(생년월일·첫 등록일·메모·학교·학년·재원 상태) · 연락처도 여기서 바로 추가·수정 (🔒 = 앱 가입 완료된 로그인 번호라 못 바꿈)</p>' +
     '<datalist id="rsSc">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>' +
     '<section class="card scroll"><form id="rosterF"><table class="fin"><thead><tr><th>No</th><th>이름</th><th>생년월일</th><th>학생 연락처</th><th>모 연락처</th><th>부 연락처</th><th>학교</th><th>학년</th><th>구분</th><th>첫 등록일</th><th>상태</th><th>메모</th></tr></thead><tbody>' +
     (list.length ? list.map((s, i) => { const si = D.sinfo[s.id] || {}; const P = 'rs_' + s.id + '_';
       const nL = list.filter(x => x.left).length; const sep = s.left && (i === 0 || !list[i - 1].left) ? '<tr class="lefthd"><td colspan="12"><button type="button" class="btn sm ghost" data-a="showLeft">' + (V.showLeft ? '▾ 퇴원생 ' + nL + '명 접기' : '▸ 퇴원생 ' + nL + '명 펼치기') + '</button></td></tr>' : '';
       return sep + '<tr' + (s.left ? ' class="left"' + (V.showLeft ? '' : ' style="display:none"') : '') + '><td>' + (s.left ? '' : i + 1) + '</td><td><b>' + esc(s.name) + '</b></td><td><input type="date" id="' + P + 'birth" data-rs="' + s.id + '" value="' + esc(si.birth || '') + '"></td>' +
-        ['student', 'mother', 'father'].map(rel => '<td class="sub">' + esc(fmtP(phoneOf(s, rel))) + '</td>').join('') +
+        ['student', 'mother', 'father'].map(rel => { const m = memberOf(s.id, rel); return m && m.st !== 'none' ? '<td class="sub" title="앱 가입 완료 · 로그인 번호라 여기서 못 바꿔요">' + esc(fmtP(m.phone)) + ' 🔒</td>' : '<td><input id="' + P + 'p_' + rel + '" data-rs="' + s.id + '" inputmode="numeric" placeholder="010-" value="' + esc(fmtP(phoneOf(s, rel))) + '" style="width:118px"></td>'; }).join('') +
         '<td><input id="' + P + 'school" data-rs="' + s.id + '" list="rsSc" value="' + esc(s.school || '') + '" style="width:90px"></td><td><select id="' + P + 'grade" data-rs="' + s.id + '">' + GRADES.map(g => opt(g, s.grade)).join('') + '</select></td><td class="sub">' + kindOf(s.grade) + '</td>' +
         '<td><input type="date" id="' + P + 'joined" data-rs="' + s.id + '" value="' + esc(si.joined || '') + '"></td><td><select id="' + P + 'st" data-rs="' + s.id + '">' + opt('재원', s.left ? '퇴원' : '재원') + opt('퇴원', s.left ? '퇴원' : '재원') + '</select></td>' +
         '<td><input id="' + P + 'memo" data-rs="' + s.id + '" value="' + esc(si.memo || '') + '" style="width:160px"></td></tr>'; }).join('') : '<tr><td colspan="12" class="empty">학생이 없어요</td></tr>') +
@@ -1010,12 +1010,20 @@ app.addEventListener('submit', async e => {
     }
     if (f === 'finSetF') { const meal = +digits(g('fsMeal')), cap1 = +digits(g('fsCap1')), cap2 = +digits(g('fsCap2')); if (!meal || !cap1) return toast('숫자를 확인해 주세요'); await setDoc(doc(db, 'fin', 'settings'), { meal, cap1, cap2: cap2 || 0 }); return toast('설정을 저장했어요'); }
     if (f === 'rosterF') {
-      const b = writeBatch(db); let n = 0;
+      const b = writeBatch(db); let n = 0, auto = false;
       for (const s of D.students) { const P = 'rs_' + s.id + '_'; const el = id => document.getElementById(P + id); if (!el('birth')) continue; const si = D.sinfo[s.id] || {};
+        const phones = { ...(si.phones || {}) }; let pch = false;
+        for (const rel of ['student', 'mother', 'father']) { const inp = el('p_' + rel); if (!inp) continue; const p = digits(inp.value);
+          if (p && (p.length < 10 || p.length > 11)) return toast(s.name + ' ' + REL[rel] + ' 휴대폰번호를 확인해 주세요');
+          if (p === digits(phoneOf(s, rel))) continue;
+          const m = memberOf(s.id, rel);
+          if (!s.left) { if (m && !p) b.delete(doc(db, 'members', m.id)); else if (m) b.update(doc(db, 'members', m.id), { phone: p }); else if (p) auto = addMember(b, s.id, rel, p, s.name, s.grade) || auto; }
+          if (p) phones[rel] = p; else delete phones[rel]; pch = true; n++; }
+        if (pch) b.set(doc(db, 'sinfo', s.id), { phones }, { mergeFields: ['phones'] });
         const birth = el('birth').value, joined = el('joined').value, memo = el('memo').value.trim(), school = el('school').value.trim(), grade = el('grade').value, left = el('st').value === '퇴원';
         if ((si.birth || '') !== birth || (si.joined || '') !== joined || (si.memo || '') !== memo) { b.set(doc(db, 'sinfo', s.id), { birth, joined, memo, kind: kindOf(grade) }, { merge: true }); n++; }
         if ((s.school || '') !== school || s.grade !== grade || !!s.left !== left) { b.update(doc(db, 'students', s.id), { school, grade, left }); n++; } }
-      if (!n) return toast('바뀐 내용이 없어요'); await b.commit(); return toast('학생명부를 저장했어요');
+      if (!n) return toast('바뀐 내용이 없어요'); await b.commit(); return toast('학생명부를 저장했어요' + (auto ? ' · 형제 부모님 계정에 자동 연결' : ''));
     }
     if (f === 'schF') {
       const b = writeBatch(db); let n = 0;
