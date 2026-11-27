@@ -13,7 +13,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.17.0';
+const ADMIN_VERSION = '2.17.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -890,11 +890,11 @@ function modalHtml() {
     const l = D.leads.find(x => x.id === V.editId) || { st: 'booked', date: '', src: LEAD_SRC[0], grade: '중1' };
     const inp = (id, v, ph, ex) => '<input id="' + id + '" value="' + esc(v || '') + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + (ex || '') + '>';
     if (!V.editId) return '<div class="mbg" data-a="close"><form class="modal" id="leadF"><h2>진단 예약 · 방문 상담</h2>' +
-      '<div class="row2"><label>학생 이름' + inp('ldN', '', '예: 홍길동') + '</label><label>학년<select id="ldG">' + GRADES.map(g => opt(g, '중1')).join('') + '</select></label></div>' +
+      '<div class="row2"><label><span>학생 이름 <i style="color:var(--acc);font-style:normal">*</i></span>' + inp('ldN', '', '예: 홍길동', ' autocomplete="off" oninput="this.form.querySelectorAll(\'[type=submit]\').forEach(b => { b.disabled = !this.value.trim(); })"') + '</label><label><span>학년 <i style="color:var(--acc);font-style:normal">*</i></span><select id="ldG">' + GRADES.map(g => opt(g, '중1')).join('') + '</select></label></div>' +
       '<div class="row2"><label>어머님 번호 (선택)' + inp('p_ldM', '', '010-0000-0000', ' inputmode="numeric"') + '</label><label>어떻게 알고 왔나요<select id="ldSrc">' + LEAD_SRC.map(x => opt(x, LEAD_SRC[0])).join('') + '</select></label></div>' +
       '<div class="row2"><label>진단 날짜<input type="date" id="ldD" value="' + TODAY + '"></label><label>시간 (선택)<input type="time" id="ldT" step="1800"></label></div>' +
-      '<p class="sub" style="margin:6px 0 0">이름·학년만 있으면 돼요. 학교·연락처·주소·생년월일은 상담 날 학부모님이 태블릿 입학신청서에 직접 적으시고, [등록 처리] 때 학생명부로 넘어가요.</p>' +
-      '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">닫기</button><button class="btn ghost" type="submit">예약만 저장</button><button class="btn" type="submit" data-go="1">저장하고 바로 상담 시작 →</button></div></form></div>';
+      '<p class="sub" style="margin:6px 0 0"><i style="color:var(--acc);font-style:normal">*</i> 필수 · 이름·학년만 있으면 돼요. 학교·연락처·주소·생년월일은 상담 날 학부모님이 태블릿 입학신청서에 직접 적으시고, [등록 처리] 때 학생명부로 넘어가요.</p>' +
+      '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">닫기</button><button class="btn ghost" type="submit" disabled>예약만 저장</button><button class="btn" type="submit" data-go="1" disabled>저장하고 바로 상담 시작 →</button></div></form></div>';
     return '<div class="mbg" data-a="close"><form class="modal wide" id="leadF"><h2>🔎 ' + esc(l.name) + ' 진단 기록</h2>' +
       '<div class="row2"><label>학생 이름' + inp('ldN', l.name, '예: 홍길동') + '</label><label>학년<select id="ldG">' + GRADES.map(g => opt(g, l.grade)).join('') + '</select></label></div>' +
       '<div class="row2"><label>학교' + inp('ldS', l.school, '예: 치동중') + '</label><label>어떻게 알고 왔나요<select id="ldSrc">' + LEAD_SRC.map(x => opt(x, l.src)).join('') + '</select></label></div>' +
@@ -950,6 +950,7 @@ function render() {
   app.innerHTML = html; app.dataset.p = V.page + V.screen;
   Object.entries(keep).forEach(([id, k]) => { const el = document.getElementById(id); if (!el || el.disabled || id.startsWith('fn_') || id === 'dashD' || id === 'exSel') return; if ('c' in k) { if (id !== 'autoN') el.checked = k.c; } else { el.value = k.v; if (el.tagName === 'SELECT' && el.selectedIndex < 0 && el.options.length) el.selectedIndex = 0; } });
   app.querySelectorAll('input[name=hwS],input[name=schCk]').forEach(el => { if (el.value in hw) el.checked = hw[el.value]; });
+  { const ln = document.getElementById('ldN'); if (ln && V.modal === 'lead' && !V.editId) ln.form.querySelectorAll('[type=submit]').forEach(b => { b.disabled = !ln.value.trim(); }); }
   if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); }
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
   const cb = document.getElementById('chatBody'); if (cb) cb.scrollTop = cb.scrollHeight;
