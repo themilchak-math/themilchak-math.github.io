@@ -11,7 +11,7 @@ import { ensureCodes } from './invcode.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.8.3';
+const ADMIN_VERSION = '2.8.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -77,7 +77,18 @@ const TNAME = () => V.staff && V.staff.name ? V.staff.name + ' 부원장님' : (
 const isOwnerMe = () => !!(D.cfg && auth.currentUser && D.cfg.owner === auth.currentUser.uid);
 const APP_URL = 'https://themilchak-math.github.io';
 const isIOSdev = () => /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// 안내가 필요한 사람: 아직 가입 안 함(가입 안내) 또는 가입했지만 알림을 안 켬(알림 안내)
+const needsInvite = m => m && m.phone && (m.st === 'none' || pushOn(m) === false);
+function pushText(m) {
+  const s = stu(m.sid); const nm = s ? s.name : (m.name || '');
+  const who = m.rel === 'student' ? nm + ' 학생' : nm + ' ' + REL[m.rel];
+  const tn = (D.cfg && D.cfg.teacher) || '';
+  return '[더밀착수학] 안녕하세요, ' + who + '. ' + (tn ? '더밀착수학 ' + tn + ' 원장' : '더밀착수학') + '입니다.\n앱 가입은 잘 되어 있는데 아직 알림이 꺼져 있어요. ' + (m.rel === 'student' ? '숙제·공지' : '등원·하원, 수업 기록, 공지') + ' 소식을 바로 받으시려면 알림을 켜 주세요.\n\n'
+    + '1) 더밀착수학 앱을 열고 첫 화면의 [알림 받기]를 눌러 주세요.\n2) "알림을 허용할까요?" 창이 뜨면 [허용]을 눌러 주세요.\n\n'
+    + '앱이 안 보이시면 설치 안내를 다시 봐 주세요 → ' + APP_URL + '/install.html';
+}
 function inviteText(m) {
+  if (m.st === 'ok') return pushText(m);
   const s = stu(m.sid); const nm = s ? s.name : (m.name || '');
   const who = m.rel === 'student' ? nm + ' 학생' : nm + ' ' + REL[m.rel];
   const tn = (D.cfg && D.cfg.teacher) || '';
@@ -101,6 +112,12 @@ function kakaoReady() {
 async function kakaoInvite(m) {
   if (!(await kakaoReady())) return toast('카카오톡 공유를 불러오지 못했어요. [문구 복사]를 써 주세요');
   const inst = APP_URL + '/install.html';
+  if (m.st === 'ok') try {
+    return Kakao.Share.sendDefault({ objectType: 'feed',
+      content: { title: '[더밀착수학] ' + mLabel(m) + ' 알림을 켜 주세요', description: '앱 첫 화면의 [알림 받기]를 누르고 [허용]을 눌러 주세요. 등원·하원·공지 소식을 바로 받을 수 있어요.',
+        imageUrl: APP_URL + '/icon-512.png?v=2', imageWidth: 512, imageHeight: 512, link: { mobileWebUrl: APP_URL + '/', webUrl: APP_URL + '/' } },
+      buttons: [{ title: '앱 열기', link: { mobileWebUrl: APP_URL + '/', webUrl: APP_URL + '/' } }] });
+  } catch (e) { return toast('카카오톡 공유를 열지 못했어요: ' + (e.message || e)); }
   try {
     Kakao.Share.sendDefault({ objectType: 'feed',
       content: { title: '[더밀착수학] ' + mLabel(m) + ' 앱 설치 안내', description: '가입 번호: ' + fmtP(m.phone) + (m.code ? ' · 🔑 가입 코드: ' + m.code : '') + ' (비밀번호는 원하는 걸로) · 설치 후 [알림 받기]를 꼭 눌러 주세요',
@@ -254,7 +271,7 @@ function pStudents() {
   return '<p class="sub" style="margin:0 0 10px">학생·학부모 번호와 앱 연결 상태 · 🔔 알림 켜짐 · 번호 수정은 [수정] · 등록한 번호로만 가입할 수 있어요</p>' +
     (offs.length ? '<p class="sub" style="margin:-4px 0 10px;color:var(--warn)">🔕 가입은 했지만 알림을 안 켠 사람 ' + new Set(offs.map(m => m.phone)).size + '명 · 앱 첫 화면의 [알림 받기]를 한 번 눌러 달라고 안내해 주세요</p>' : '') +
     '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>학교</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
-    (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && m.st === 'none') ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
+    (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && needsInvite(m)) ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
     '</tbody></table></section>' +
     (left.length ? '<details class="card"><summary>퇴원한 학생 ' + left.length + '명</summary><table><tbody>' + left.map(s => '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.grade) + '</td><td class="r"><button class="btn xs ghost" data-a="rejoin" data-id="' + s.id + '">복귀</button></td></tr>').join('') + '</tbody></table></details>' : '');
 }
@@ -763,10 +780,11 @@ function modalHtml() {
       '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">닫기</button><button type="button" class="btn" data-a="actSave">기록 저장</button></div></div></div>';
   }
   if (V.modal === 'invite') {
-    const list = D.members.filter(m => (V.inviteSids || []).includes(m.sid) && m.phone).sort((a, b) => (V.inviteSids.indexOf(a.sid) - V.inviteSids.indexOf(b.sid)) || ['student', 'father', 'mother'].indexOf(a.rel) - ['student', 'father', 'mother'].indexOf(b.rel));
-    return '<div class="mbg" data-a="close"><div class="modal wide"><h2>가입 안내 문자 보내기</h2><p class="sub"><b>[카톡으로 보내기]</b>를 누르면 카카오톡 공유 창이 열려요 → 받을 사람(친구·채팅방)을 고르고 보내기. 처음 한 번은 카카오 계정 로그인이 필요해요. 문자로 보내려면 [QR]을 폰 카메라로 찍거나, 폰에서 [문자 앱 열기]를 누르세요.</p>' +
-      (list.length ? '<table><tbody>' + list.map(m => '<tr><td><b>' + esc(mLabel(m)) + '</b><div class="sub">' + esc(fmtP(m.phone)) + '</div></td><td>' + memChip(m) + '</td><td class="r"><button class="btn xs" data-a="invKakao" data-id="' + m.id + '" style="background:#FEE500;color:#191919;border-color:#FEE500">카톡으로 보내기</button> <a class="btn xs ghost" href="' + esc(smsHref(m)) + '">문자 앱 열기</a> <button class="btn xs ghost" data-a="invQR" data-id="' + m.id + '">' + (V.invQR === m.id ? 'QR 닫기' : 'QR') + '</button> <button class="btn xs ghost" data-a="invCopy" data-id="' + m.id + '">문구 복사</button></td></tr>' + (V.invQR === m.id ? '<tr><td colspan="3" style="text-align:center"><div id="invQRBox" style="display:inline-block;padding:14px;background:#fff;border:1px solid var(--line);border-radius:14px"></div><p class="sub">폰 기본 카메라로 찍으세요 → 뜨는 알림을 누르면 문자 화면이 열려요</p></td></tr>' : '')).join('') + '</tbody></table>' : '<p class="empty">보낼 번호가 없어요</p>') +
-      '<details style="margin-top:8px"><summary class="sub">보낼 문구 미리보기</summary><pre style="white-space:pre-wrap;font:inherit;background:var(--soft);padding:10px;border-radius:10px">' + esc(list[0] ? inviteText(list[0]) : '') + '</pre></details><div class="mf"><span style="flex:1"></span><button type="button" class="btn" data-a="close">닫기</button></div></div></div>';
+    const list = D.members.filter(m => (V.inviteSids || []).includes(m.sid) && needsInvite(m)).sort((a, b) => (V.inviteSids.indexOf(a.sid) - V.inviteSids.indexOf(b.sid)) || ['student', 'father', 'mother'].indexOf(a.rel) - ['student', 'father', 'mother'].indexOf(b.rel));
+    const pv = [list.find(m => m.st === 'none'), list.find(m => m.st === 'ok')].filter(Boolean);
+    return '<div class="mbg" data-a="close"><div class="modal wide"><h2>가입·알림 안내 보내기</h2><p class="sub">아직 가입 안 한 사람에게는 <b>가입 안내</b>(가입 코드 포함), 가입했지만 알림이 꺼진 사람에게는 <b>알림 켜기 안내</b>가 가요. 이미 다 된 사람은 목록에 안 나와요.<br><b>[카톡으로 보내기]</b>를 누르면 카카오톡 공유 창이 열려요 → 받을 사람(친구·채팅방)을 고르고 보내기. 처음 한 번은 카카오 계정 로그인이 필요해요. 문자로 보내려면 [QR]을 폰 카메라로 찍거나, 폰에서 [문자 앱 열기]를 누르세요.</p>' +
+      (list.length ? '<table><tbody>' + list.map(m => '<tr><td><b>' + esc(mLabel(m)) + '</b><div class="sub">' + esc(fmtP(m.phone)) + '</div></td><td>' + memChip(m) + '<div class="sub" style="margin-top:3px">' + (m.st === 'ok' ? '→ 알림 켜기 안내' : '→ 가입 안내') + '</div></td><td class="r" style="white-space:nowrap"><button class="btn xs" data-a="invKakao" data-id="' + m.id + '" style="background:#FEE500;color:#191919;border-color:#FEE500">카톡으로 보내기</button> <a class="btn xs ghost" href="' + esc(smsHref(m)) + '">문자 앱 열기</a> <button class="btn xs ghost" data-a="invQR" data-id="' + m.id + '">' + (V.invQR === m.id ? 'QR 닫기' : 'QR') + '</button> <button class="btn xs ghost" data-a="invCopy" data-id="' + m.id + '">문구 복사</button></td></tr>' + (V.invQR === m.id ? '<tr><td colspan="3" style="text-align:center"><div id="invQRBox" style="display:inline-block;padding:14px;background:#fff;border:1px solid var(--line);border-radius:14px"></div><p class="sub">폰 기본 카메라로 찍으세요 → 뜨는 알림을 누르면 문자 화면이 열려요</p></td></tr>' : '')).join('') + '</tbody></table>' : '<p class="empty">보낼 번호가 없어요</p>') +
+      pv.map(m => '<details style="margin-top:8px"><summary class="sub">' + (m.st === 'ok' ? '알림 켜기 안내' : '가입 안내') + ' 문구 미리보기</summary><pre style="white-space:pre-wrap;font:inherit;background:var(--soft);padding:10px;border-radius:10px">' + esc(inviteText(m)) + '</pre></details>').join('') + '<div class="mf"><span style="flex:1"></span><button type="button" class="btn" data-a="close">닫기</button></div></div></div>';
   }
   if (V.modal === 'bulk') {
     const b = V.bulk;
