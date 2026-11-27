@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.4.3';
+const ADMIN_VERSION = '2.4.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -421,9 +421,15 @@ const saveBadge = () => V.finSaving === 'saving' || V.finSaving === 'pending' ? 
 const rowStu = r => r.sid ? stu(r.sid) : D.students.find(x => x.name === r.name);
 const blankRow = s => ({ name: s.name, sid: s.id, course: '', d: [0, 0, 0, 0, 0, 0], price: '', disc: '', extra: '', book: '', memo: '' });
 // 이번 달·다음 달 정산에는 재원생이 자동으로 들어가요 (학생은 학생명부에서만 추가)
+// 정산 줄 자동 맞춤: 학생명부의 첫 등록일이 그달 말일 이전인 재원생만 들어와요 (다음 달 1일 시작이면 그 달부터)
+const joinedOf = s => (D.sinfo[s.id] || {}).joined || '';
+const inMonth = (s, ym) => { const j = joinedOf(s); return !j || j.slice(0, 7) <= ym; };
+const blankFinRow = r => !r.price && !r.disc && !r.extra && !r.book && !r.memo && !(r.d || []).some(Boolean);
 function finSync(m) {
   if (!m || m.ym < ymOf(TODAY)) return false; m.rows = m.rows || []; let ch = false;
-  for (const s of active()) { const r = m.rows.find(x => x.sid === s.id || (!x.sid && x.name === s.name)); if (!r) { if (m.rows.length < FIN_MAX) { m.rows.push(blankRow(s)); ch = true; } } else if (!r.sid || r.name !== s.name) { if (r.name !== s.name && m.meals && m.meals[r.name]) { m.meals[s.name] = m.meals[r.name]; delete m.meals[r.name]; } r.sid = s.id; r.name = s.name; ch = true; } }
+  for (const s of active()) { const r = m.rows.find(x => x.sid === s.id || (!x.sid && x.name === s.name));
+    if (!inMonth(s, m.ym)) { if (r && blankFinRow(r) && !((m.meals || {})[r.name] || []).length) { m.rows.splice(m.rows.indexOf(r), 1); ch = true; } continue; }
+    if (!r) { if (m.rows.length < FIN_MAX) { m.rows.push(blankRow(s)); ch = true; } } else if (!r.sid || r.name !== s.name) { if (r.name !== s.name && m.meals && m.meals[r.name]) { m.meals[s.name] = m.meals[r.name]; delete m.meals[r.name]; } r.sid = s.id; r.name = s.name; ch = true; } }
   return ch;
 }
 function pFin() {
@@ -459,7 +465,7 @@ function pFin() {
     (rows || '<tr><td colspan="23" class="empty">학생 줄이 없어요</td></tr>') +
     '<tr class="tot"><td></td><td><b>합계</b></td><td colspan="3">' + C.n + '명</td>' + C.perDay.map((n, k) => '<td class="cen"' + (over(k) ? ' style="color:var(--bad);font-weight:700"' : '') + '>' + n + '</td>').join('') + '<td class="cen"><b>' + C.wk + '</b></td><td class="r">' + won(C.price) + '</td><td class="r">' + won(C.disc) + '</td><td class="r"><b>' + won(C.fee) + '</b></td><td></td><td></td><td class="cen">' + C.mealN + '</td><td class="r">' + won(C.meal) + '</td><td class="r"><b>' + won(C.total) + '</b></td><td colspan="2"></td></tr>' +
     '<tr class="sub"><td></td><td>1층 정원</td><td colspan="3">하루 최대 ' + set.cap1 + '명</td>' + DAYS6.map((_, k) => '<td class="cen">' + (over(k) ? '<b style="color:var(--bad)">초과</b>' : set.cap1 - C.perDay[k]) + '</td>').join('') + '<td colspan="12"></td></tr>' +
-    '</tbody></table><div class="bar" style="margin-top:10px"><span class="sub">학생은 [학생명부]에서 추가하면 이번 달·다음 달 정산에 자동으로 들어와요 · 여기서는 Course·요일·원비·보충과목·교재·메모만 입력 · 퇴원생 줄만 ✕로 뺄 수 있어요</span><span style="flex:1"></span><button class="btn sm ghost danger" data-a="finDelMonth">이 달 삭제</button></div></section>';
+    '</tbody></table><div class="bar" style="margin-top:10px"><span class="sub">학생은 [학생명부]의 첫 등록일이 속한 달부터 정산에 자동으로 들어와요 · 여기서는 Course·요일·원비·보충과목·교재·메모만 입력 · 퇴원생 줄만 ✕로 뺄 수 있어요</span><span style="flex:1"></span><button class="btn sm ghost danger" data-a="finDelMonth">이 달 삭제</button></div></section>';
   const wkCap1 = set.cap1 * 6, wkCap2 = set.cap2 * 6;
   const sumCard = '<div class="grid2"><section class="card"><h2>② 이번 달 요약</h2><table><tbody>' +
     [['교습소 원비 수입', C.fee], ['장기수강 할인 합계', C.disc], ['식대 청구 (' + monL(prevYm(ym)) + '분 · 별도 사업자)', C.meal], ['학부모 총 납부액 (원비+전월 식대)', C.total], ['원장 · 부원장 식대 (' + monL(prevYm(ym)) + '분)', C.staff]].map(([l, v]) => '<tr><td>' + l + '</td><td class="r"><b>' + won(v) + '원</b></td></tr>').join('') + '</tbody></table></section>' +
