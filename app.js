@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.9.9';
+const APP_VERSION = '2.0.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -940,7 +940,8 @@ app.addEventListener('submit',async e=>{
     if(open)b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.',at:stamp(),ts:now(),r:false});
     await b.commit();
     if(open)push([sid+'|student'],'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.');
-    if(f.sh)await notifyParent(sid,'[수업 기록] '+fmtD(LD)+' '+items.map(it=>courseLabel(it.course,it.subj)+(it.unit?' '+it.unit:'')+' ('+(items.length>1?'비중 '+(+it.w||0)+'% · ':'')+'개념 '+(it.c==null?50:it.c)+'% / 문제풀이 '+(100-(it.c==null?50:it.c))+'%)').join(', ')+((f.cm||'').trim()?' · 메모: '+f.cm.trim():''));
+    // 학부모님께는 하원 알림에 수업 내용을 함께 보내요(중간 발송 없음). 이미 하원한 뒤 올린 기록만 따로 보내요.
+    if(f.sh&&r&&r.out&&r.st!=='결석')await notifyParent(sid,'[수업 내용] '+stu(sid).name+' 학생 '+fmtD(LD)+'\n'+lessonSummary(items.map((it,i)=>({...it,sh:true,cm:i?'':(f.cm||'').trim()}))));
     const last=items[items.length-1];U.psj=U.psj||{};U.psj[sid]=last.subj;U.pc[sid]=last.course;U.logS=sid;U.sheet=null;U.lf=null;U.tab=U.ret||'log';U.ret=null;return toast((items.length>1?items.length+'개 항목 · ':'')+(open?'정리 완료 · 하원이 열렸어요':'기록을 저장했어요'));
   }
 

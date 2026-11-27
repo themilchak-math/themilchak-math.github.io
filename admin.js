@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.2.0';
+const ADMIN_VERSION = '2.2.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -756,9 +756,11 @@ async function saveLogFor(sid, b) {
   const math = items.filter(it => it.subj === '수학').pop(); if (math && s.course !== math.course) b.update(doc(db, 'students', sid), { course: math.course });
   if (r) b.update(doc(db, 'att', day + '_' + sid), { logged: true });
   if (open) b.set(doc(collection(db, 'msgs')), { th: sid + '|student', sid, f: 's', t: '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.', at: stamp(), ts: now(), r: false });
-  const txt = '[수업 기록] ' + fmtD(day) + ' ' + items.map(it => courseLabel(it.course, it.subj) + (it.unit ? ' ' + it.unit : '') + ' (' + (items.length > 1 ? '비중 ' + it.w + '% · ' : '') + '개념 ' + it.c + '% / 문제풀이 ' + it.p + '%)').join(', ') + (cm ? ' · 메모: ' + cm : '');
-  if (sh && !(D.cfg && D.cfg.autoNotify === false)) b.set(doc(collection(db, 'msgs')), { th: sid + '|parent', sid, f: 's', t: txt, at: stamp(), ts: now(), r: false });
-  pendingPush.push(() => { if (open) push([sid + '|student'], '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.'); if (sh && !(D.cfg && D.cfg.autoNotify === false)) push([sid + '|parent'], txt); });
+  // 학부모님께는 수업 중간에 보내지 않고, 하원 알림에 수업 내용을 함께 보내요. 이미 하원한 뒤에 기록을 올린 경우에만 따로 보내요.
+  const late = sh && r && r.out && r.st !== '결석' && !(D.cfg && D.cfg.autoNotify === false);
+  const sumTxt = late ? '[수업 내용] ' + s.name + ' 학생 ' + fmtD(day) + '\n' + lessonSummary(items.map((it, i) => ({ ...it, sh: true, cm: i ? '' : cm }))) : '';
+  if (late) b.set(doc(collection(db, 'msgs')), { th: sid + '|parent', sid, f: 's', t: sumTxt, at: stamp(), ts: now(), r: false });
+  pendingPush.push(() => { if (open) push([sid + '|student'], '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.'); if (late) push([sid + '|parent'], sumTxt); });
   if (V.logN) delete V.logN[sid];
   return s.name + (items.length > 1 ? '(' + items.length + ')' : '');
 }
