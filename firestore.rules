@@ -169,6 +169,10 @@ service cloud.firestore {
         && request.resource.data.days is list && request.resource.data.days.size() == 6;
       allow read, update, delete: if isOwner();
     }
+    match /leads/{id} {
+      // 무료 정밀진단·상담 기록(등록 전 학생·학부모 정보): 원장님만
+      allow read, write: if isOwner();
+    }
     match /fin/{id} {
       // 정산(원비·식대): 원장님만
       allow read, write: if isOwner();

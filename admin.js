@@ -6,13 +6,14 @@ import { firebaseConfig } from './firebase-config.js';
 import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, ACT_UNITS, isAct } from './subjects.js';
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { syncSched } from './sched.js';
+import { LEAD_SRC, LEAD_ST, LEAD_REACT, stLabel, leadPhone, leadTodo, leadSummary } from './leads.js';
 import { callOpen, hh, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.14.2';
+const ADMIN_VERSION = '2.15.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -45,7 +46,7 @@ const COURSES = Object.keys(BY_SUBJ['수학']);
 const PCT = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 /* ---------- 상태 ---------- */
-const D = { sched: null, calls: [], students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], abs: [], extra: {}, apply: [], fin: {}, finSet: null, sinfo: {}, cfg: null };
+const D = { leads: [], sched: null, calls: [], students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], abs: [], extra: {}, apply: [], fin: {}, finSet: null, sinfo: {}, cfg: null };
 const V = { screen: 'loading', page: 'dash', msg: '', busy: false, calM: TODAY.slice(0, 7), chat: null, hwF: 'all', modal: null, bulk: null, toast: '' };
 const app = document.getElementById('app');
 const docs = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -152,11 +153,11 @@ const hwChip = h => h.st === 'checked' ? chip('확인 완료', 'ok') : h.st === 
 const absOf = (sid, d) => D.abs.find(x => x.sid === sid && x.date === d);
 const clsChip = (r, e, ab) => r && r.st === '결석' ? chip('결석', 'bad') : r && r.out ? chip('완료', 'pri') : r ? chip('수업중', 'ok') : ab ? chip('결석 통보', 'bad') : e ? chip('예정', 'warn') : chip('없음');
 
-const NAV0 = [['dash', '대시보드'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['students', '학생 관리'], ['fin', '정산'], ['exam', '일정 등록'], ['notice', '소식'], ['msg', '메시지'], ['staff', '부원장']];
+const NAV0 = [['dash', '대시보드'], ['att', '출결'], ['log', '수업 기록'], ['hw', '숙제'], ['students', '학생 관리'], ['lead', '진단·상담'], ['fin', '정산'], ['exam', '일정 등록'], ['notice', '소식'], ['msg', '메시지'], ['staff', '부원장']];
 const STAFF_PAGES = ['dash', 'att', 'log', 'hw', 'notice', 'msg']; // 부원장이 쓸 수 있는 메뉴
 const navList = () => NAV0.filter(([k]) => isOwnerMe() || STAFF_PAGES.includes(k));
 function navBadge(k) {
-  const n = k === 'dash' ? mPending().length + pending().length + D.apply.length : k === 'students' ? mPending().length + D.apply.length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : k === 'staff' ? D.staff.filter(x => x.st === 'pending').length : k === 'school' ? active().filter(s => !s.school).length : 0;
+  const n = k === 'dash' ? mPending().length + pending().length + D.apply.length : k === 'students' ? mPending().length + D.apply.length : k === 'msg' ? unreadAll() : k === 'hw' ? D.hw.filter(h => h.st === 'done').length : k === 'staff' ? D.staff.filter(x => x.st === 'pending').length : k === 'lead' ? leadTodo(D.leads, TODAY, off(1)).n : k === 'school' ? active().filter(s => !s.school).length : 0;
   return n ? '<span class="badge">' + n + '</span>' : '';
 }
 
@@ -202,7 +203,7 @@ function pDash() {
   const toCheck = D.hw.filter(h => h.st === 'done');
   const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>' + dayLbl + ' 등원 (' + WD[new Date(day + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (ex.length ? ' · 보충 ' + ex.length + '명 포함' : '') + (absN ? ' · 결석 통보 ' + absN + '명 제외' : '') + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>' + dayLbl + ' 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
   const rk = x => exSet.has(x.id) ? 2 : expSet.has(x.id) ? 3 : absT.has(x.id) ? 1 : 0; const order = exp ? [...st].sort((x, y) => (rk(y) - rk(x)) || (exSet.has(x.id) && exSet.has(y.id) ? ex.indexOf(x.id) - ex.indexOf(y.id) : x.name.localeCompare(y.name, 'ko'))) : st;
-  return '<h1>' + esc(TNAME()) + ' </h1>' + purgeAlert() + (D.calls.filter(callOpen).length ? '<section class="card hl"><h2>📞 전화 상담 요청 ' + D.calls.filter(callOpen).length + '</h2>' + callsHtml(D.calls.filter(callOpen), { attr: 'data-a', sm: 'xs', esc, fmtD, fmtP }) + '</section>' : '') +
+  return '<h1>' + esc(TNAME()) + ' </h1>' + purgeAlert() + leadDash() + (D.calls.filter(callOpen).length ? '<section class="card hl"><h2>📞 전화 상담 요청 ' + D.calls.filter(callOpen).length + '</h2>' + callsHtml(D.calls.filter(callOpen), { attr: 'data-a', sm: 'xs', esc, fmtD, fmtP }) + '</section>' : '') +
     dayBar(day, isT) + (() => { const l = D.exams.filter(e => onDay(e, day)); return l.length ? '<section class="card' + (l.some(e => evKind(e) === 'off') ? ' hl' : '') + '"><h2>' + dayLbl + ' 일정</h2><p>' + l.map(e => kindChip(e) + ' <b>' + esc((evKind(e) !== 'off' && e.school ? e.school + ' ' : '') + e.title) + '</b>' + (e.memo ? ' <span class="sub">' + esc(e.memo) + '</span>' : '')).join(' &nbsp; ') + '</p></section>' : ''; })() +
     pushCard() + '<div class="kpis">' + kpi + '<div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
     (() => { const cand = st.filter(x => !expSet.has(x.id) && !(exB || []).includes(x.id) && !(a[x.id] && a[x.id].st !== '결석'));
@@ -248,8 +249,8 @@ async function approveApply(a) {
   b.set(ref, { name: a.name, grade, school: a.school || '', course: DEF_COURSE[grade], ts: now() });
   let auto = false; Object.entries(ph).forEach(([rel, p]) => { if (p) auto = addMember(b, sid, rel, p, a.name, grade) || auto; });
   const phones = {}; Object.entries(ph).forEach(([rel, p]) => { if (p) phones[rel] = p; });
-  b.set(doc(db, 'sinfo', sid), { birth: a.birth || '', joined: TODAY, memo: a.memo ? '신청서: ' + a.memo : '', phones }, { merge: true });
-  b.update(doc(db, 'apply', a.id), { st: 'ok', sid });
+  b.set(doc(db, 'sinfo', sid), { birth: a.birth || '', joined: TODAY, memo: a.memo ? (a._lead ? a.memo : '신청서: ' + a.memo) : '', phones }, { merge: true });
+  if (a._lead) b.update(doc(db, 'leads', a._lead), { st: 'enrolled', sid, up: TODAY }); else b.update(doc(db, 'apply', a.id), { st: 'ok', sid });
   await b.commit();
   // 이번 달 정산에 희망 요일로 줄 추가
   const ym = TODAY.slice(0, 7); const m = D.fin[ym];
@@ -271,7 +272,7 @@ const addYear = d => { const [y, m, dd] = d.split('-'); return (+y + 1) + '-' + 
 const isDue = s => !!(s.left && s.leftAt && addYear(s.leftAt) <= TODAY);
 const dueList = () => D.students.filter(isDue);
 const purgeAlert = () => isOwnerMe() && dueList().length ? '<section class="card hl"><h2>개인정보 파기 대상 ' + dueList().length + '명</h2><p class="sub" style="margin:0 0 8px">퇴원 후 1년이 지났어요: ' + dueList().map(s => esc(s.name)).join(', ') + ' · 학생 관리 → 퇴원한 학생에서 [정보 삭제]를 눌러 주세요.</p><button class="btn sm" data-a="goPurge">학생 관리로 가기</button></section>' : '';
-const BK_COLS = ['calls', 'config', 'students', 'sinfo', 'members', 'users', 'staff', 'att', 'abs', 'reqs', 'extra', 'logs', 'hw', 'exams', 'notices', 'msgs', 'fin', 'apply', 'push'];
+const BK_COLS = ['leads', 'calls', 'config', 'students', 'sinfo', 'members', 'users', 'staff', 'att', 'abs', 'reqs', 'extra', 'logs', 'hw', 'exams', 'notices', 'msgs', 'fin', 'apply', 'push'];
 async function backupAll() {
   const out = { app: '더밀착수학', ver: ADMIN_VERSION, at: new Date().toISOString(), data: {} };
   for (const c of BK_COLS) { V.bkBusy = '받는 중… ' + c; render(); const s = await getDocs(collection(db, c)); out.data[c] = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); }
@@ -538,6 +539,34 @@ function finSync(m) {
     if (!inMonth(s, m.ym)) { if (r && blankFinRow(r) && !((m.meals || {})[r.name] || []).length) { m.rows.splice(m.rows.indexOf(r), 1); ch = true; } continue; }
     if (!r) { if (m.rows.length < FIN_MAX) { m.rows.push(blankRow(s)); ch = true; } } else if (!r.sid || r.name !== s.name) { if (r.name !== s.name && m.meals && m.meals[r.name]) { m.meals[s.name] = m.meals[r.name]; delete m.meals[r.name]; } r.sid = s.id; r.name = s.name; ch = true; } }
   return ch;
+}
+/* ---------- 진단·상담 (무료 정밀진단 → 등록) ---------- */
+const leadDays = l => l.date ? fmtD(l.date) + (l.time ? ' ' + l.time : '') : '<span class="sub">날짜 미정</span>';
+const leadTel = l => leadPhone(l) ? '<a class="btn xs ghost" href="tel:' + esc(leadPhone(l)) + '">📞 ' + esc(fmtP(leadPhone(l))) + '</a>' : '';
+function leadDash() {
+  if (!isOwnerMe()) return ''; const t = leadTodo(D.leads, TODAY, off(1)); if (!t.n) return '';
+  const row = (l, sub) => '<div class="row" style="flex-wrap:wrap;gap:6px"><div class="grow"><b>' + esc(l.name) + '</b> <span class="sub">' + esc(l.grade || '') + ' ' + esc(l.school || '') + '</span><div class="sub">' + sub + '</div></div>' + leadTel(l) + '<button class="btn xs" data-a="modal" data-v="lead" data-id="' + l.id + '">기록</button></div>';
+  return '<section class="card hl"><h2>🔎 진단·상담</h2>' +
+    t.soon.map(l => row(l, (l.date === TODAY ? '<b>오늘</b> ' : '내일 ') + (l.time || '') + ' 정밀진단 예약 · ' + esc(l.src || ''))).join('') +
+    t.late.map(l => row(l, fmtD(l.date) + ' 진단 · <b style="color:var(--warn)">결과를 아직 안 적었어요</b>')).join('') +
+    t.call.map(l => row(l, '<b style="color:var(--acc)">연락할 날 ' + fmtD(l.next) + '</b> · ' + (l.react ? esc(l.react) + ' · ' : '') + esc((l.memo || l.rec || '').slice(0, 40)))).join('') + '</section>';
+}
+function pLeads() {
+  const all = D.leads; const t = V.leadT || 'open';
+  const groups = { open: all.filter(l => l.st === 'booked' || l.st === 'done'), enrolled: all.filter(l => l.st === 'enrolled'), lost: all.filter(l => l.st === 'lost'), all };
+  const ord = l => l.st === 'booked' ? '0' + (l.date || '9') : l.st === 'done' ? '1' + (l.next || '9') : '2' + String(9e15 - (l.ts || 0));
+  const list = groups[t].slice().sort((a, b) => ord(a).localeCompare(ord(b)));
+  const ym = TODAY.slice(0, 7); const mon = all.filter(l => (l.date || '').startsWith(ym) && l.st !== 'booked'); const monE = mon.filter(l => l.st === 'enrolled').length;
+  const tot = all.filter(l => l.st === 'enrolled' || l.st === 'lost'); const totE = tot.filter(l => l.st === 'enrolled').length;
+  const old = all.filter(l => (l.st === 'lost' || l.st === 'done') && (l.up || l.date || '') && (l.up || l.date) < off(-365));
+  const stc = { booked: 'pri', done: 'warn', enrolled: 'ok', lost: '' };
+  return '<h1>진단·상담 <span class="sub">무료 정밀진단 예약 → 진단 결과·상담 기록 → 등록하면 학생으로 바로 넘어가요</span></h1>' +
+    '<div class="bar"><button class="btn" data-a="modal" data-v="lead">+ 진단 예약 추가</button>' + ['open', 'enrolled', 'lost', 'all'].map(k => '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-a="leadT" data-v="' + k + '">' + { open: '진행 중', enrolled: '등록함', lost: '등록 안 함', all: '전체' }[k] + ' ' + groups[k].length + '</button>').join(' ') +
+    '<span style="flex:1"></span><span class="sub">이번 달 진단 ' + mon.length + '건 · 등록 ' + monE + '건' + (tot.length ? ' · 누적 등록률 ' + Math.round(totE / tot.length * 100) + '%' : '') + '</span></div>' +
+    '<section class="card scroll"><table><thead><tr><th>학생</th><th>진단</th><th>경로</th><th>상태</th><th>진단 결과·상담</th><th></th></tr></thead><tbody>' +
+    (list.length ? list.map(l => '<tr><td style="white-space:nowrap"><b>' + esc(l.name) + '</b><div class="sub">' + esc(l.grade || '') + ' ' + esc(l.school || '') + '</div></td><td style="white-space:nowrap">' + leadDays(l) + '</td><td class="sub" style="white-space:nowrap">' + esc(l.src || '') + '</td><td style="white-space:nowrap">' + chip(stLabel(l.st), stc[l.st]) + (l.st === 'done' && l.next ? '<div class="sub"' + (l.next <= TODAY ? ' style="color:var(--acc);font-weight:700"' : '') + '>연락 ' + fmtD(l.next) + '</div>' : '') + (l.react ? '<div class="sub">반응: ' + esc(l.react) + '</div>' : '') + '</td><td class="sub" style="max-width:360px">' + esc([l.level && '수준 ' + l.level, l.weak && '약점 ' + l.weak, l.rec && '추천 ' + l.rec, l.memo].filter(Boolean).join(' · ').slice(0, 140)) + '</td><td class="r" style="white-space:nowrap">' + leadTel(l) + ' <button class="btn xs ghost" data-a="modal" data-v="lead" data-id="' + l.id + '">기록</button>' +
+      (l.st === 'done' || l.st === 'booked' ? ' <button class="btn xs" data-a="leadEnroll" data-id="' + l.id + '">등록 처리</button> <button class="btn xs ghost" data-a="leadLost" data-id="' + l.id + '">등록 안 함</button>' : '') + (l.st === 'lost' ? ' <button class="btn xs ghost" data-a="leadReopen" data-id="' + l.id + '">다시 진행</button>' : '') + '</td></tr>').join('') : '<tr><td colspan="6" class="empty">' + (t === 'open' ? '진행 중인 진단이 없어요. [+ 진단 예약 추가]로 네이버 예약이 들어오면 적어 두세요' : '없어요') + '</td></tr>') + '</tbody></table></section>' +
+    (old.length ? '<p class="sub">등록하지 않고 1년이 지난 진단 기록 ' + old.length + '건이 있어요 (개인정보 처리방침: 1년 후 파기) <button class="btn xs ghost danger" data-a="leadClean">정리하기</button></p>' : '');
 }
 // 미납: 학부모 총 납부액이 있는데 납부 체크가 안 된 줄
 const unpaidOf = (m, set) => { const bm = billMeals(m), bb = billBooks(m); const l = ((m && m.rows) || []).filter(r => r.name).map(r => ({ r, u: unpaidParts(r, calcRow(r, bm, set, bb)) })).filter(x => x.u.length); return { n: l.length, amt: l.reduce((a, x) => a + x.u.reduce((b, y) => b + y.amt, 0), 0), names: l.map(x => x.r.name + '(' + x.u.map(y => y.l).join('·') + ')') }; };
@@ -828,6 +857,24 @@ function modalHtml() {
       (list.length ? '<table><tbody>' + list.map(m => '<tr><td><b>' + esc(mLabel(m)) + '</b><div class="sub">' + esc(fmtP(m.phone)) + '</div></td><td>' + memChip(m) + '<div class="sub" style="margin-top:3px">' + (m.st === 'ok' ? '→ 알림 켜기 안내' : '→ 가입 안내') + '</div></td><td class="r" style="white-space:nowrap"><button class="btn xs" data-a="invKakao" data-id="' + m.id + '" style="background:#FEE500;color:#191919;border-color:#FEE500">카톡으로 보내기</button> <a class="btn xs ghost" href="' + esc(smsHref(m)) + '">문자 앱 열기</a> <button class="btn xs ghost" data-a="invQR" data-id="' + m.id + '">' + (V.invQR === m.id ? 'QR 닫기' : 'QR') + '</button> <button class="btn xs ghost" data-a="invCopy" data-id="' + m.id + '">문구 복사</button></td></tr>' + (V.invQR === m.id ? '<tr><td colspan="3" style="text-align:center"><div id="invQRBox" style="display:inline-block;padding:14px;background:#fff;border:1px solid var(--line);border-radius:14px"></div><p class="sub">폰 기본 카메라로 찍으세요 → 뜨는 알림을 누르면 문자 화면이 열려요</p></td></tr>' : '')).join('') + '</tbody></table>' : '<p class="empty">보낼 번호가 없어요</p>') +
       pv.map(m => '<details style="margin-top:8px"><summary class="sub">' + (m.st === 'ok' ? '알림 켜기 안내' : '가입 안내') + ' 문구 미리보기</summary><pre style="white-space:pre-wrap;font:inherit;background:var(--soft);padding:10px;border-radius:10px">' + esc(inviteText(m)) + '</pre></details>').join('') + '<div class="mf"><span style="flex:1"></span><button type="button" class="btn" data-a="close">닫기</button></div></div></div>';
   }
+  if (V.modal === 'lead') {
+    const l = D.leads.find(x => x.id === V.editId) || { st: 'booked', date: '', src: LEAD_SRC[0], grade: '중1' };
+    const inp = (id, v, ph, ex) => '<input id="' + id + '" value="' + esc(v || '') + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + (ex || '') + '>';
+    return '<div class="mbg" data-a="close"><form class="modal wide" id="leadF"><h2>' + (V.editId ? '🔎 ' + esc(l.name) + ' 진단 기록' : '진단 예약 추가') + '</h2>' +
+      '<div class="row2"><label>학생 이름' + inp('ldN', l.name, '예: 홍길동') + '</label><label>학년<select id="ldG">' + GRADES.map(g => opt(g, l.grade)).join('') + '</select></label></div>' +
+      '<div class="row2"><label>학교' + inp('ldS', l.school, '예: 치동중') + '</label><label>어떻게 알고 왔나요<select id="ldSrc">' + LEAD_SRC.map(x => opt(x, l.src)).join('') + '</select></label></div>' +
+      '<div class="row2"><label>어머님 번호' + inp('p_ldM', fmtP(l.pMother || ''), '010-0000-0000', ' inputmode="numeric"') + '</label><label>아버님 번호' + inp('p_ldF', fmtP(l.pFather || ''), '010-0000-0000', ' inputmode="numeric"') + '</label></div>' +
+      '<div class="row2"><label>학생 번호 (선택)' + inp('p_ldP', fmtP(l.pStudent || ''), '010-0000-0000', ' inputmode="numeric"') + '</label><label>상태<select id="ldSt">' + LEAD_ST.filter(x => x[0] !== 'enrolled' || l.st === 'enrolled').map(([v, t]) => opt(v, l.st, t)).join('') + '</select></label></div>' +
+      '<div class="row2"><label>진단 날짜<input type="date" id="ldD" value="' + esc(l.date || '') + '"></label><label>시간<input type="time" id="ldT" step="1800" value="' + esc(l.time || '') + '"></label></div>' +
+      '<h3 style="margin:14px 0 6px">진단 결과 · 상담</h3>' +
+      '<div class="row2"><label>현재 수준·진도' + inp('ldLv', l.level, '예: 중2-1 마무리, 연산 실수 잦음') + '</label><label>추천 과정·요일' + inp('ldRec', l.rec, '예: 중2-2 개념부터 · 주 3회 화목토') + '</label></div>' +
+      '<label>강점' + inp('ldStr', l.strong, '예: 개념 이해 빠름') + '</label>' +
+      '<label>약점·보완할 점<textarea id="ldWk" rows="2" placeholder="예: 일차함수 그래프, 서술형 풀이 과정">' + esc(l.weak || '') + '</textarea></label>' +
+      '<label>상담 메모<textarea id="ldM" rows="3" placeholder="학부모님 고민, 다니는 학원, 원하는 점, 비용 이야기 등">' + esc(l.memo || '') + '</textarea></label>' +
+      '<div class="row2"><label>학부모 반응<select id="ldRe">' + LEAD_REACT.map(x => opt(x, l.react || '', x || '-')).join('') + '</select></label><label>다음 연락할 날<input type="date" id="ldNx" value="' + esc(l.next || '') + '"></label></div>' +
+      '<p class="sub" style="margin:6px 0 0">진단을 마치고 결과를 적으면 상태가 자동으로 "진단 완료"가 돼요. 다음 연락할 날이 되면 대시보드에 떠요.</p>' +
+      '<div class="mf">' + (V.editId ? '<button type="button" class="btn ghost danger" data-a="leadDel" data-id="' + l.id + '">' + (V.confirmLeadDel === l.id ? '한 번 더 누르면 삭제' : '삭제') + '</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">닫기</button><button class="btn" type="submit">저장</button></div></form></div>';
+  }
   if (V.modal === 'bulk') {
     const b = V.bulk;
     return '<div class="mbg" data-a="close"><form class="modal wide" id="bulkF"><h2>엑셀에서 여러 명 붙여넣기</h2><p class="sub">엑셀에서 아래 순서로 열을 맞춰 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣기(Ctrl+V) 하세요. 첫 줄이 제목이면 자동으로 건너뛰어요.<br><b>이름 · 학년(초4~고3) · 학생 번호 · 아버님 번호 · 어머님 번호 · 학교(선택)</b></p><textarea id="bulkIn" rows="7" placeholder="홍길동	중2	010-1111-2222	010-3333-4444	010-5555-6666"></textarea><button type="button" class="btn ghost" data-a="bulkCheck">미리보기</button>' +
@@ -854,7 +901,7 @@ function render() {
   else {
     let page = '';
     if (!isOwnerMe() && !STAFF_PAGES.includes(V.page)) V.page = 'dash';
-    try { page = ({ dash: pDash, qr: pAtt, students: pPeople, att: pAtt, log: pLog, hw: pHw, exam: pExam, school: pPeople, fin: pFin, roster: pPeople, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
+    try { page = ({ dash: pDash, qr: pAtt, students: pPeople, att: pAtt, log: pLog, hw: pHw, exam: pExam, school: pPeople, fin: pFin, lead: pLeads, roster: pPeople, notice: pNotice, msg: pMsg, staff: pStaff }[V.page] || pDash)(); }
     catch (e) { console.error(e); page = '<section class="card"><p class="err">화면 오류: ' + esc(e.message) + '</p></section>'; }
     html = '<aside><div class="brand">더밀착수학<small>관리자</small></div><nav>' + navList().map(([k, l]) => '<button data-a="go" data-v="' + k + '" class="' + (V.page === k ? 'on' : '') + '">' + l + navBadge(k) + '</button>').join('') + '</nav><div class="foot"><a href="./" target="_blank">폰 앱 열기</a><a href="./install.html" target="_blank">설치 안내 페이지</a><a href="./privacy.html" target="_blank">개인정보 처리방침</a><button data-a="logout">로그아웃</button><small>v' + ADMIN_VERSION + '</small></div></aside><main>' + page + '</main>' + modalHtml();
   }
@@ -900,6 +947,7 @@ function subscribe() {
   L(query(collection(db, 'calls'), where('st', 'in', ['new', 'ok'])), s => { D.calls = docs(s); sr(); });
   L(collection(db, 'sched'), s => { D.sched = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); schedSoon(); });
   L(query(collection(db, 'extra'), where('date', '>=', off(-400))), s => { D.extra = {}; s.docs.forEach(d => { D.extra[d.id] = d.data(); }); schedSoon(); sr(); });
+  if (isOwnerMe()) L(collection(db, 'leads'), s => { D.leads = docs(s); sr(); });
   if (isOwnerMe()) L(collection(db, 'apply'), s => { D.apply = docs(s).filter(x => x.st === 'new').sort((a, b) => ((a.ts && a.ts.seconds) || 0) - ((b.ts && b.ts.seconds) || 0)); sr(); });
   if (isOwnerMe()) L(collection(db, 'sinfo'), s => { D.sinfo = {}; s.docs.forEach(d => { D.sinfo[d.id] = d.data(); }); sr(); });
   if (isOwnerMe()) L(collection(db, 'fin'), s => { D.fin = {}; D.finSet = null; s.docs.forEach(d => { if (d.id === 'settings') D.finSet = d.data(); else if (d.id.startsWith('m_')) D.fin[d.id.slice(2)] = d.data(); }); if (V.ym && !V.finDirty) V.finEdit = D.fin[V.ym] ? clone(D.fin[V.ym]) : (V.finEdit && V.finEdit.ym === V.ym ? V.finEdit : null); D.finLoaded = true; schedSoon(); sr(); });
@@ -1055,6 +1103,17 @@ app.addEventListener('click', async e => {
       const at = (document.getElementById('ch_' + id) || {}).value || hh(c.from); await updateDoc(doc(db, 'calls', id), { st: 'ok', at }); const tx = '[상담 확정] ' + fmtD(c.date) + ' ' + at + '에 원장님이 전화드릴게요.'; push([th], tx, { tag: 'call' }); await msg(th, c.sid, 's', tx).catch(() => { });
       const ok = await scheduleRemind(db, auth, { ...c, at }, c.who); return toast(c.who + ' ' + at + ' 상담 확정' + (ok ? ' · 10분 전에 알려 드릴게요' : ' · 알림 예약은 못 했어요'));
     }
+    if (a === 'leadT') { V.leadT = v; return render(); }
+    if (a === 'leadLost' || a === 'leadReopen') { const l = D.leads.find(x => x.id === id); if (!l) return; await updateDoc(doc(db, 'leads', id), { st: a === 'leadLost' ? 'lost' : 'done', up: TODAY }); return toast(l.name + (a === 'leadLost' ? ' · 등록 안 함으로 정리했어요' : ' · 다시 진행 중으로 옮겼어요')); }
+    if (a === 'leadDel') { if (V.confirmLeadDel !== id) { V.confirmLeadDel = id; render(); setTimeout(() => { V.confirmLeadDel = null; }, 4000); return; } V.confirmLeadDel = null; await deleteDoc(doc(db, 'leads', id)); V.modal = null; V.editId = null; render(); return toast('진단 기록을 삭제했어요'); }
+    if (a === 'leadClean') { const old = D.leads.filter(l => (l.st === 'lost' || l.st === 'done') && (l.up || l.date) && (l.up || l.date) < off(-365)); if (!old.length || !confirm('등록하지 않고 1년이 지난 진단 기록 ' + old.length + '건을 영구 삭제할까요?')) return; const b = writeBatch(db); old.forEach(l => b.delete(doc(db, 'leads', l.id))); await b.commit(); return toast(old.length + '건을 정리했어요'); }
+    if (a === 'leadEnroll') {
+      const l = D.leads.find(x => x.id === id); if (!l) return; if (!l.pMother && !l.pFather && !l.pStudent && !confirm('연락처가 없어요. 번호 없이 학생만 등록할까요?')) return;
+      if (D.students.some(s => s.name === l.name && !s.left) && !confirm('이미 ' + l.name + ' 학생이 있어요. 그래도 새로 등록할까요?')) return;
+      if (!confirm(l.name + ' 학생을 등록할까요? 학생·앱 연결 번호·학생명부(진단 결과 메모 포함)·이번 달 정산 줄이 만들어져요.')) return;
+      const r = await approveApply({ name: l.name, school: l.school, grade: l.grade, birth: '', pMother: l.pMother, pFather: l.pFather, pStudent: l.pStudent, days: [0, 0, 0, 0, 0, 0], memo: leadSummary(l) + (l.memo ? ' / 상담: ' + l.memo : ''), _lead: l.id });
+      V.page = 'students'; V.modal = 'invite'; V.inviteSids = [r.sid]; V.invQR = null; render(); return toast(l.name + ' 등록 완료' + (r.auto ? ' · 형제 부모님 계정에 자동 연결' : '') + ' · 설치 안내 문자를 보내 주세요');
+    }
     if (a === 'goPurge') { V.page = 'students'; V.stuV = 'list'; V.openLeft = true; return render(); }
     if (a === 'backup') { if (V.bkBusy) return; V.bkBusy = '받는 중…'; render(); try { const n = await backupAll(); V.bkBusy = ''; render(); return toast('백업 파일을 내려받았어요 (' + n + '건)'); } catch (e) { V.bkBusy = ''; render(); return toast('백업하지 못했어요: ' + (e.code || e.message)); } }
     if (a === 'purge') {
@@ -1186,6 +1245,15 @@ app.addEventListener('submit', async e => {
       if (noti) push(pushKeys(to, D.students), title, { title: catPush(cat), tag: 'notice' });
       const wasEdit = !!V.bEdit; ['bT', 'bB', 'bD'].forEach(x => { document.getElementById(x).value = ''; }); V.bf = []; V.bl = []; V.bKeep = []; V.bEdit = null; V.bBusy = ''; V.usage = null; V.usageLoad = 0; render(); { const nt = document.getElementById('bNoti'); if (nt) nt.checked = true; }
       return toast(catLabel(cat) + (wasEdit ? ' 글을 수정했어요' : ' 글을 올렸어요') + (files.length ? (wasEdit ? ' (새 첨부 ' : ' (첨부 ') + files.length + '개)' : '') + (noti ? ' · 알림 보냄' : ' · 알림 없이'));
+    }
+    if (f === 'leadF') {
+      const name = g('ldN').trim(); if (!name) return toast('학생 이름을 적어 주세요');
+      const ph = id => digits(g(id)); const pM = ph('p_ldM'), pF = ph('p_ldF'), pS = ph('p_ldP');
+      if ([pM, pF, pS].some(p => p && !/^01\d{8,9}$/.test(p))) return toast('휴대폰 번호를 확인해 주세요');
+      const rec = { name, grade: g('ldG'), school: g('ldS').trim(), src: g('ldSrc'), pMother: pM, pFather: pF, pStudent: pS, date: g('ldD'), time: g('ldT'), level: g('ldLv').trim(), rec: g('ldRec').trim(), strong: g('ldStr').trim(), weak: g('ldWk').trim(), memo: g('ldM').trim(), react: g('ldRe'), next: g('ldNx'), up: TODAY };
+      let st = g('ldSt'); if (st === 'booked' && (rec.level || rec.weak || rec.strong || rec.rec || rec.react)) st = 'done'; rec.st = st;
+      if (V.editId) await updateDoc(doc(db, 'leads', V.editId), rec); else await addDoc(collection(db, 'leads'), { ...rec, ts: now() });
+      V.modal = null; V.editId = null; render(); return toast(name + ' ' + (st === 'booked' ? '진단 예약을 저장했어요' : '진단 기록을 저장했어요'));
     }
     if (f === 'attF') {
       const sid = V.attSid, d = V.attDate, isAbs = g('atSt') === 'abs', at = g('atIn'), out = g('atOut');
