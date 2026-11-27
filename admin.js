@@ -11,7 +11,7 @@ import { ensureCodes } from './invcode.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.8.5';
+const ADMIN_VERSION = '2.8.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -338,7 +338,7 @@ function attModal() {
   const st = r ? (isIn(r) ? 'in' : 'abs') : 'in';
   return '<div class="mbg" data-a="close"><form class="modal" id="attF"><h2>' + esc(s.name || '') + ' · ' + fmtD(d) + '</h2>' +
     '<label>상태<select id="atSt">' + opt('in', st, '등원') + opt('abs', st, '결석') + '</select></label>' +
-    '<div class="row2"><label>등원 시각<input type="time" id="atIn" value="' + esc(r && r.at ? r.at : '') + '"></label><label>하원 시각<input type="time" id="atOut" value="' + esc(r && r.out ? r.out : '') + '"></label></div>' +
+    '<div class="row2"><label>등원 시각<input type="time" id="atIn" value="' + esc(r && r.at ? r.at : ((D.req || []).find(x => x.sid === V.attSid && x.st === 'pending' && x.date === V.attDate) || {}).at || '') + '"></label><label>하원 시각<input type="time" id="atOut" value="' + esc(r && r.out ? r.out : '') + '"></label></div>' +
     '<label class="sw" style="justify-content:flex-start;gap:8px;margin:4px 0 8px"><input type="checkbox" id="atNoti"' + (d === TODAY ? ' checked' : '') + '> 학부모님께 알림 보내기</label>' +
     '<p class="sub">하원이 자정을 넘기면 그대로 01:30처럼 넣으세요 (새벽 3시까지는 이 날 하원으로 기록). 하원 시각을 비우면 하원 전 상태로 남아요. 알림을 끄고 저장하면 기록만 조용히 고쳐져요.</p>' +
     '<div class="mf">' + (r ? '<button type="button" class="btn ghost danger" data-a="attDel">기록 삭제</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit">저장</button></div></form></div>';
