@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.0.9';
+const APP_VERSION = '2.1.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -429,7 +429,7 @@ const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||
 
 /* ================= 화면 그리기 ================= */
 function header(title,sub,back){
-  const sel=(U.role!=='teacher'&&ME.sids.length>1)?'<select id="whoSel" class="who-sel" aria-label="자녀 선택">'+ME.sids.map(id=>{const s=stu(id);return '<option value="'+esc(id)+'"'+(id===U.me?' selected':'')+'>'+esc(s?s.name:'...')+'</option>'}).join('')+'</select>':'';
+  const sel=(U.role!=='teacher'&&ME.sids.length>1)?'<div class="who-seg" role="tablist" aria-label="자녀 선택">'+[...ME.sids].sort((a,b)=>((stu(a)||{}).name||'').localeCompare((stu(b)||{}).name||'','ko')).map(id=>{const s=stu(id);return '<button data-act="who" data-id="'+esc(id)+'" class="'+(id===U.me?'on':'')+'">'+esc(s?s.name:'...')+'</button>'}).join('')+'</div>':'';
   return '<div class="hdr"><div class="sb"><span>더밀착수학</span><button class="lo" data-act="logout">로그아웃</button></div>'+(back?'<button class="back" data-act="back">‹ 뒤로</button>':'')+'<h2>'+esc(title)+'</h2>'+(sub?'<div class="who">'+esc(sub)+'</div>':'')+sel+'</div>';
 }
 function authHeader(t,s){return '<div class="hdr"><div class="sb"><span>더밀착수학</span><span>v'+APP_VERSION+'</span></div><h2>'+esc(t)+'</h2>'+(s?'<div class="who">'+esc(s)+'</div>':'')+'</div>'}
@@ -782,6 +782,7 @@ app.addEventListener('click',async e=>{
   if(a==='authTab'){U.authTab=v;U.authMsg='';return render()}
   if(a==='logout'){qrStop();stopScan();U.famStarted=false;U.claimed=false;U.famSig=null;U.authMsg='';U.authTab='login';await signOut(auth);return}
   if(a==='reclaim'){await claim(U.wait);return toast('다시 요청했어요')}
+  if(a==='who'){if(id===U.me)return;U.me=id;famRole();U.chat=null;U.wifiState=null;setTimeout(autoCheckin,300);return render()}
   if(a==='go'){U.tab=el.dataset.tab;if(el.dataset.comm)U.comm=el.dataset.comm;U.chat=null;U.page=null;return render()}
   if(a==='back'){U.chat=null;U.page=null;return render()}
   if(a==='page'){if((v==='mng'||v==='exam')&&!isOwnerMe())return toast('원장님만 쓸 수 있는 메뉴예요');U.page=v;return render()}
