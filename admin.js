@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.4.7';
+const ADMIN_VERSION = '2.4.8';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -29,7 +29,9 @@ const hm = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.
 const stamp = () => ds(new Date()) + ' ' + hm();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const digits = x => String(x || '').replace(/\D/g, '');
-const fmtP = d => d && d.length === 11 ? d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7) : (d || '');
+const fmtP = d => d && d.length === 11 ? d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7) : d && d.length === 10 ? d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6) : (d || '');
+const hyP = v => { const d = String(v || '').replace(/\D/g, '').slice(0, 11); return d.length < 4 ? d : d.length < 8 ? d.slice(0, 3) + '-' + d.slice(3) : d.length < 11 ? d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7) : fmtP(d); };
+const isTelInput = t => t && t.tagName === 'INPUT' && /^(p_|lP$|sfP$)|_p_/.test(t.id || '');
 const now = () => Date.now();
 const ST = ['출석', '지각', '결석'];
 const REL = { student: '학생', father: '아버님', mother: '어머님' };
@@ -1099,4 +1101,4 @@ function finField(t) {
   else r[k] = t.value;
   finTouch();
 }
-app.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.fi !== undefined && t.type !== 'checkbox' && t.dataset.k !== 'name') { const m = finCur(); const r = m && m.rows[+t.dataset.fi]; if (r) { r[t.dataset.k] = (t.dataset.k === 'price' || t.dataset.k === 'disc') ? numOr(digits(t.value)) : t.value; V.finDirty = true; } } });
+app.addEventListener('input', e => { const t = e.target; if (isTelInput(t)) { const v = hyP(t.value); if (v !== t.value) t.value = v; return; } if (t.dataset && t.dataset.fi !== undefined && t.type !== 'checkbox' && t.dataset.k !== 'name') { const m = finCur(); const r = m && m.rows[+t.dataset.fi]; if (r) { r[t.dataset.k] = (t.dataset.k === 'price' || t.dataset.k === 'disc') ? numOr(digits(t.value)) : t.value; V.finDirty = true; } } });
