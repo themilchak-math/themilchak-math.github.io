@@ -10,7 +10,7 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.4.2';
+const APP_VERSION = '2.4.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -216,6 +216,8 @@ const evKind=e=>e.kind||'exam';const onDay=(e,d)=>e.start<=d&&(e.end||e.start)>=
 // 기본 날짜: 새벽 3시 기준 영업일. 자정이 지났고 그날 등원생이 모두 하원했으면 달력상 오늘
 function homeDefault(){const biz=off(0),cal=ds(new Date());if(cal===biz)return biz;const rs=Object.values(D.att[biz]||{}).filter(r=>r.st!=='결석');return rs.every(r=>r.out)?cal:biz}
 const curDay=()=>U.dayPick||homeDefault();
+// 학부모 홈 날짜: 우리 아이가 등원해서 아직 하원 안 했으면 그 등원 날(하원하면 넘어감), 하원했거나 안 왔으면 밤 12시에 넘어감
+function famDay(sid){const biz=off(0),cal=ds(new Date());if(cal===biz)return biz;const r=(D.att[biz]||{})[sid];return r&&r.st!=='결석'&&!r.out?biz:cal}
 function regOf(day){ // 정산 등원 요일(원장님만) → 정규 예정 학생 id
   if((D.exams||[]).some(e=>evKind(e)==='off'&&onDay(e,day)))return [];
   const m=(D.fin||{})[day.slice(0,7)];if(!m||!(m.rows||[]).length)return null;const w=new Date(day+'T00:00').getDay();if(w===0)return [];
@@ -366,11 +368,11 @@ function sHome(){
 function sHw(){const s=stu(U.me);const l=D.hw.filter(h=>h.sid===s.id).sort((a,b)=>(a.st!=='todo')-(b.st!=='todo')||(a.due>b.due?1:-1));return header('내 숙제','완료하면 선생님께 바로 알려져요')+'<div class="body"><div class="card">'+hwList(l,'student')+'</div></div>'}
 function myLog(){const s=stu(U.me);return header(U.role==='student'?'내 진도':s.name+' 학습기록',nowLabel(s))+'<div class="body">'+progressCard(s)+'<div class="card"><h3>수업 기록</h3>'+logList(s.id,true)+'</div></div>'}
 function pHome(){
-  const s=stu(U.me);const a=(D.att[TODAY]||{})[s.id];
+  const s=stu(U.me);const fd=famDay(s.id);const a=(D.att[fd]||{})[s.id];
   const hs=D.hw.filter(h=>h.sid===s.id);const doneRate=hs.length?Math.round(hs.filter(h=>h.st!=='todo').length/hs.length*100):0;
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
   return header(s.name+' '+myRel(),s.grade+' · '+nowLabel(s))+'<div class="body">'+pushCard()+examCard(s)+
-  '<div class="card"><h3>오늘 출결 <small>'+fmtD(TODAY)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(!a&&absOf(s.id,TODAY)?'<span class="chip c-bad">결석 통보</span>':attChip(a))+'</div></div>'+absCard(s)+
+  '<div class="card"><h3>오늘 출결 <small>'+fmtD(fd)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(!a&&absOf(s.id,fd)?'<span class="chip c-bad">결석 통보</span>':attChip(a))+'</div></div>'+absCard(s)+
   '<div class="stats"><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
   '<div class="card"><h3>숙제 현황'+(hs.length>3?' <button class="btn sm ghost" style="float:right" data-act="go" data-tab="hw">전체 보기</button>':'')+'</h3>'+hwList(hwSort(hs).slice(0,3),'parent')+'</div>'+
@@ -1054,6 +1056,6 @@ if('serviceWorker' in navigator){
 try{U.noInstall=localStorage.getItem('tmm-noinst')==='1'}catch(e){}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();U.bip=e;render()});
 window.addEventListener('appinstalled',()=>{U.bip=null;toast('설치됐어요! 홈 화면에서 열어 주세요')});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&off(0)!==TODAY)return location.reload();if(document.visibilityState==='visible'){U.fresh=Date.now();U.wifiState=null;setTimeout(autoCheckin,500);if(U.reg)U.reg.update().catch(()=>{});if(U.chat)markRead(U.chat);autoPush();if(isOwnerMe())announceUpdate(db,auth)}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&off(0)!==TODAY)return location.reload();if(document.visibilityState==='visible'){U.fresh=Date.now();if(U.role!=='teacher')render();U.wifiState=null;setTimeout(autoCheckin,500);if(U.reg)U.reg.update().catch(()=>{});if(U.chat)markRead(U.chat);autoPush();if(isOwnerMe())announceUpdate(db,auth)}});
 window.addEventListener('focus',()=>{if(U.chat)markRead(U.chat)});
 render();
