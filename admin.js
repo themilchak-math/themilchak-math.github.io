@@ -94,7 +94,7 @@ function inviteText(m) {
   return '[더밀착수학] 안녕하세요, ' + who + '. ' + (tn ? '더밀착수학 ' + tn + ' 원장' : '더밀착수학') + '입니다.\n' + (m.rel === 'student' ? '출결·숙제·수업 기록' : '출결·수업 기록·숙제·공지') + '을 확인하는 교습소 앱 안내드려요.\n\n'
     + '▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\n' + APP_URL + '/install.html\n\n'
     + '가입할 때 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호를 넣고, 문자로 오는 인증번호 6자리를 입력해 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'
-    + '설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');
+    + '설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.';
 }
 const shortInvite = m => '[더밀착수학] ' + mLabel(m) + ' 앱 안내\n설치: https://themilchak-math.github.io/install.html\n가입 번호: ' + fmtP(m.phone) + ' (가입할 때 문자 인증 · 비밀번호는 원하는 걸로)';
 const KAKAO_JS_KEY = '1a4da179bbea2afbb606a5d77bf4caf4';
