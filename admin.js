@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.5.4';
+const ADMIN_VERSION = '2.5.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -199,12 +199,18 @@ function memCell(s, rel) {
 /* ---------- 학생 관리 (연락처·앱 연결 / 학생명부 / 재학 학교 통합) ---------- */
 /* ---------- 신규 등록 신청 (join.html) ---------- */
 const JOIN_URL = 'https://themilchak-math.github.io/join.html';
+const joinText = () => { const tn = (D.cfg && D.cfg.teacher) || '';
+  return '[더밀착수학교습소] 입학 등록 안내\n\n안녕하세요, 더밀착수학교습소' + (tn ? ' 원장 ' + tn : '') + '입니다.\n저희 교습소와 함께해 주셔서 감사합니다.\n\n'
+    + '아래 링크에서 입학 등록 신청서를 작성해 주세요. (2~3분이면 끝나요)\n▶ ' + JOIN_URL + '\n\n'
+    + '📝 적어 주실 내용\n· 학생 이름, 학교, 학년, 생년월일\n· 학생 휴대폰, 어머님 또는 아버님 휴대폰\n· 희망 등원 요일 (2일 이상)\n\n'
+    + '신청서를 확인하고 등록이 완료되면, 출결·수업 기록·숙제를 확인하실 수 있는 교습소 앱 설치 안내를 보내 드릴게요.\n'
+    + '궁금하신 점은 언제든 편하게 연락 주세요. 감사합니다.'; };
 function applyCard(withLink) {
   const l = D.apply; if (!l.length && !withLink) return '';
   const dd = a => (a.days || []).map((x, i) => x ? DAYS6[i] : '').filter(Boolean).join('·') || '-';
   return '<section class="card' + (l.length ? ' hl' : '') + '"><h2>신규 등록 신청 <span class="sub">' + (l.length ? l.length + '건 · [승인]을 누르면 학생 등록·앱 연결 번호·학생명부·정산 줄이 한 번에 만들어져요' : '학부모님께 아래 신청 링크를 보내면 여기로 들어와요') + '</span></h2>' +
     (l.length ? '<table><thead><tr><th>학생</th><th>학교·학년</th><th>생년월일</th><th>연락처</th><th>희망 요일</th><th>남긴 말</th><th></th></tr></thead><tbody>' + l.map(a => '<tr><td><b>' + esc(a.name) + '</b>' + (D.students.some(s => s.name === a.name) ? ' ' + chip('같은 이름 있음', 'warn') : '') + '</td><td>' + esc(a.school) + ' ' + esc(a.grade) + '</td><td>' + esc(a.birth || '-') + '</td><td class="sub">' + [['모', a.pMother], ['부', a.pFather], ['학생', a.pStudent]].filter(x => x[1]).map(x => x[0] + ' ' + fmtP(x[1])).join('<br>') + '</td><td>' + dd(a) + '</td><td class="sub" style="max-width:260px;white-space:normal">' + esc(a.memo || '') + '</td><td class="r" style="white-space:nowrap"><button class="btn sm" data-a="apOk" data-id="' + a.id + '">승인</button> <button class="btn xs ghost" data-a="apDel" data-id="' + a.id + '">삭제</button></td></tr>').join('') + '</tbody></table>' : '') +
-    (withLink ? '<div class="bar" style="margin-top:8px"><input readonly value="' + JOIN_URL + '" style="flex:1;min-width:0"><button class="btn sm ghost" data-a="apCopy">신청 링크 복사</button></div>' : '') + '</section>';
+    (withLink ? '<div class="bar" style="margin-top:8px"><input readonly value="' + JOIN_URL + '" style="flex:1;min-width:0"><button class="btn sm ghost" data-a="apCopy">안내 문구 복사</button></div><details style="margin-top:6px"><summary class="sub">복사되는 안내 문구 미리보기</summary><pre style="white-space:pre-wrap;font:inherit;background:var(--soft);padding:10px;border-radius:10px;margin:6px 0 0">' + esc(joinText()) + '</pre></details>' : '') + '</section>';
 }
 async function approveApply(a) {
   const ph = { student: a.pStudent || '', father: a.pFather || '', mother: a.pMother || '' };
@@ -881,7 +887,7 @@ app.addEventListener('click', async e => {
       if (!confirm(s.name + ' 학생 부모님께 미등원 안내를 보낼까요?\n\n받는 분: ' + (ps.length ? ps.join('·') : '앱에 가입한 부모님이 아직 없어요 (가입하면 대화에서 볼 수 있어요)') + '\n\n' + tx)) return;
       await msg(id + '|parent', id, 's', tx); push([id + '|parent'], tx, { title: '미등원 안내', tag: 'ns' + id }); return toast(s.name + ' 부모님께 미등원 안내를 보냈어요'); }
     if (a === 'chatDel') { const pr = PREL.includes(V.chat.split('|')[1]); const l = fthread(V.chat).filter(m => m.id && !(pr && /\|parent$/.test(m.th))); if (!l.length || !confirm('이 대화 전체(' + l.length + '개)를 삭제할까요?\n학생·학부모님 화면에서도 모두 사라지고 되돌릴 수 없어요.')) return; for (let i = 0; i < l.length; i += 400) { const b = writeBatch(db); l.slice(i, i + 400).forEach(m => b.delete(doc(db, 'msgs', m.id))); await b.commit(); } V.chat = null; return toast('대화를 삭제했어요'); }
-    if (a === 'apCopy') { try { await navigator.clipboard.writeText(JOIN_URL); toast('신청 링크를 복사했어요 · 카톡이나 문자로 보내 주세요'); } catch (e) { toast(JOIN_URL); } return; }
+    if (a === 'apCopy') { try { await navigator.clipboard.writeText(joinText()); toast('입학 안내 문구와 신청 링크를 복사했어요 · 카톡이나 문자에 붙여넣으세요'); } catch (e) { toast('복사하지 못했어요. 미리보기의 문구를 직접 복사해 주세요'); } return; }
     if (a === 'apDel') { const x = D.apply.find(y => y.id === id); if (!x || !confirm(x.name + ' 학생 신청서를 삭제할까요?')) return; await deleteDoc(doc(db, 'apply', id)); return toast('신청서를 삭제했어요'); }
     if (a === 'apOk') { const x = D.apply.find(y => y.id === id); if (!x) return; if (D.students.some(s => s.name === x.name) && !confirm('이미 ' + x.name + ' 학생이 있어요. 그래도 새로 등록할까요?')) return;
       const r = await approveApply(x); V.page = 'students'; V.modal = 'invite'; V.inviteSids = [r.sid]; V.invQR = null; render(); return toast(x.name + ' 등록 완료' + (r.auto ? ' · 형제 부모님 계정에 자동 연결' : '') + ' · 설치 안내 문자를 보내 주세요'); }
