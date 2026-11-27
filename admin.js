@@ -11,7 +11,7 @@ import { ensureCodes } from './invcode.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.8.1';
+const ADMIN_VERSION = '2.8.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -252,7 +252,7 @@ function pStudents() {
   const left = D.students.filter(s => s.left);
   const offs = D.push ? D.members.filter(m => pushOn(m) === false && active().some(s => s.id === m.sid)) : [];
   return '<p class="sub" style="margin:0 0 10px">학생·학부모 번호와 앱 연결 상태 · 🔔 알림 켜짐 · 번호 수정은 [수정] · 등록한 번호로만 가입할 수 있어요</p>' +
-    (offs.length ? '<p class="sub" style="margin:-4px 0 10px;color:var(--warn)">🔕 가입은 했지만 알림을 안 켠 사람 ' + offs.length + '명 · 앱 첫 화면의 [알림 받기]를 한 번 눌러 달라고 안내해 주세요</p>' : '') +
+    (offs.length ? '<p class="sub" style="margin:-4px 0 10px;color:var(--warn)">🔕 가입은 했지만 알림을 안 켠 사람 ' + new Set(offs.map(m => m.phone)).size + '명 · 앱 첫 화면의 [알림 받기]를 한 번 눌러 달라고 안내해 주세요</p>' : '') +
     '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>학교</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
     (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && m.st === 'none') ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
     '</tbody></table></section>' +
