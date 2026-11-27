@@ -63,6 +63,14 @@ textarea{height:auto;min-height:84px;padding:10px 12px;resize:vertical}
     <h2>희망 등원 요일 <span class="req">*</span> <span style="font-size:12.5px;font-weight:400;color:var(--mut)">2일 이상 골라 주세요</span></h2>
     <div class="days" id="days"><button type="button">월</button><button type="button">화</button><button type="button">수</button><button type="button">목</button><button type="button">금</button><button type="button">토</button></div>
     <label style="margin-top:14px">원장님께 하실 말씀 (선택)<textarea id="memo" maxlength="500" placeholder="현재 진도, 성적, 상담 받고 싶은 점 등"></textarea></label>
+    <div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:6px;font-size:13px;color:var(--mut);line-height:1.6">
+      <b style="color:var(--ink)">개인정보 수집·이용 동의 (필수)</b><br>
+      수집 항목: 학생 이름·학교·학년·생년월일, 학생·학부모 휴대폰번호, 희망 요일, 메모<br>
+      목적: 등록 상담, 등록 후 출결·수업 관리와 학부모 안내(교습소 앱 이용 포함)<br>
+      보관: 퇴원 후 1년까지(등록하지 않으면 상담 후 3개월 안에 파기)<br>
+      만 14세 미만 학생은 학부모님이 동의해 주세요. 동의하지 않으실 수 있으나, 그 경우 온라인 신청을 할 수 없어요. <a href="./privacy.html" target="_blank" style="color:var(--pri)">처리방침 전문 보기</a>
+      <label style="display:flex;gap:8px;align-items:center;margin:10px 0 0;color:var(--ink);font-weight:700"><input type="checkbox" id="agree" style="width:20px;height:20px;margin:0">위 내용에 동의합니다 (학부모)</label>
+    </div>
     <button class="go" id="go" type="submit">신청하기</button>
     <p class="err" id="err"></p>
     <p class="note">적어 주신 정보는 교습소 등록과 앱 연결에만 사용해요.</p>
@@ -94,6 +102,7 @@ $('f').onsubmit = async e => {
   if (!ph.pMother && !ph.pFather) return err('어머님이나 아버님 휴대폰 번호를 적어 주세요');
   if (!ph.pStudent) return err('학생 휴대폰 번호를 적어 주세요');
   if (Object.values(ph).some(p => p && !/^01\d{8,9}$/.test(p))) return err('휴대폰 번호를 확인해 주세요');
+  if (!$('agree').checked) return err('개인정보 수집·이용에 동의해 주세요');
   if (days.filter(Boolean).length < 2) return err('희망 등원 요일을 2일 이상 골라 주세요');
   $('go').disabled = true; err('');
   try {

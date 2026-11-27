@@ -10,7 +10,7 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.4.0';
+const APP_VERSION = '2.4.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -482,13 +482,13 @@ function authView(){
     '<form id="setupF" class="card"><label class="f"><span>원장님 이름</span><input id="sN" placeholder="예: 김동진" autocomplete="name"></label><label class="f"><span>원장님 휴대폰번호 (로그인 아이디)</span><input id="sP" inputmode="numeric" placeholder="010-0000-0000" autocomplete="tel"></label><label class="f"><span>비밀번호 (6자리 이상)</span><input id="sW" type="password" autocomplete="new-password"></label><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>원장님 계정 만들기</button></form>'+
     '<button class="btn ghost" style="width:100%" data-act="authTab" data-v="login">로그인 화면으로</button></div>';
   if(t==='signup')return authHeader('가입하기','선생님께 등록된 휴대폰번호로 가입해요')+'<div class="body">'+msgBox()+
-    '<form id="signupF" class="card"><label class="f"><span>휴대폰번호</span><input id="jP" inputmode="numeric" autocomplete="tel" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호 (6자리 이상)</span><input id="jW" type="password" autocomplete="new-password"></label><label class="f"><span>비밀번호 확인</span><input id="jW2" type="password" autocomplete="new-password"></label><label class="sw" style="justify-content:flex-start;gap:8px;color:var(--ink)"><input type="checkbox" id="jA">[필수] 개인정보 수집·이용에 동의합니다</label><details class="sub" style="margin:-4px 0 14px"><summary>동의 내용 보기</summary>수집 항목: 이름, 휴대폰번호, 출결·숙제·학습 기록, 메시지 · 목적: 수업 관리와 학부모 안내 · 보관: 퇴원 후 1년까지 보관 뒤 삭제 · 동의하지 않을 수 있으나 앱을 이용할 수 없어요.</details><p class="sub" style="margin:0 0 12px">가입하기를 누르면 다음 화면에서 이 번호로 <b>문자 인증번호</b>를 보내요.</p><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>가입하기</button></form>'+
+    '<form id="signupF" class="card"><label class="f"><span>휴대폰번호</span><input id="jP" inputmode="numeric" autocomplete="tel" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호 (6자리 이상)</span><input id="jW" type="password" autocomplete="new-password"></label><label class="f"><span>비밀번호 확인</span><input id="jW2" type="password" autocomplete="new-password"></label><label class="sw" style="justify-content:flex-start;gap:8px;color:var(--ink)"><input type="checkbox" id="jA">[필수] 개인정보 수집·이용에 동의합니다</label><details class="sub" style="margin:-4px 0 14px"><summary>동의 내용 보기</summary>수집 항목: 이름, 휴대폰번호, 출결·숙제·학습 기록, 메시지 · 목적: 수업 관리와 학부모 안내 · 보관: 퇴원 후 1년까지 보관 뒤 삭제 · 동의하지 않을 수 있으나 앱을 이용할 수 없어요. <a href="./privacy.html" target="_blank" style="color:var(--pri)">처리방침 전문 보기</a></details><p class="sub" style="margin:0 0 12px">가입하기를 누르면 다음 화면에서 이 번호로 <b>문자 인증번호</b>를 보내요.</p><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>가입하기</button></form>'+
     '<button class="btn ghost" style="width:100%" data-act="authTab" data-v="login">이미 가입했어요 · 로그인</button>'+installTip()+'</div>';
   return authHeader('더밀착수학','학생·학부모·선생님 로그인')+'<div class="body">'+msgBox()+
     installTip()+'<form id="loginF" class="card"><label class="f"><span>휴대폰번호</span><input id="lP" inputmode="numeric" autocomplete="username" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호</span><input id="lW" type="password" autocomplete="current-password"></label><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>로그인</button></form>'+
     '<button class="btn ghost" style="width:100%;margin-bottom:12px" data-act="authTab" data-v="signup">처음이에요 · 가입하기</button>'+
     '<p class="sub" style="text-align:center;margin:0 0 12px">비밀번호를 잊으셨으면 선생님께 말씀해 주세요.</p>'+
-    '<p style="text-align:center"><button class="lnk" data-act="authTab" data-v="setup">원장님 처음 설정</button></p></div>';
+    '<p style="text-align:center"><button class="lnk" data-act="authTab" data-v="setup">원장님 처음 설정</button></p><p style="text-align:center;margin:0"><a class="sub" href="./privacy.html" target="_blank">개인정보 처리방침</a></p></div>';
 }
 function waitView(){
   const outCard='<div class="card"><p class="sub" style="margin:0 0 10px">번호를 잘못 넣으셨으면 로그아웃 후 다시 가입해 주세요.</p><button class="btn ghost" style="width:100%" data-act="logout">로그아웃</button></div>';
