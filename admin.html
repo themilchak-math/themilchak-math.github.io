@@ -83,6 +83,8 @@ table.mealh{width:100%;table-layout:fixed}table.mealh th,table.mealh td{padding:
 input[type=checkbox],input[type=radio]{min-height:0;padding:0;width:18px;height:18px;flex:none;margin:0;accent-color:var(--pri);border-radius:4px}
 .ck label{white-space:nowrap;font-size:14px}
 .btn{white-space:nowrap}table.log tr.sub2 td{border-top:1px dashed var(--line)}
+/* 파일 선택용 label 버튼이 일반 label 스타일(세로 배치·테두리)을 받지 않게 */
+label.btn{display:inline-flex;flex-direction:row;align-items:center;gap:0;border:0;padding:0 16px;min-height:40px;font-size:inherit;border-radius:10px;font-weight:700}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" defer></script>
