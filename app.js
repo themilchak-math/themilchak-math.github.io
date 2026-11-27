@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.1.4';
+const APP_VERSION = '2.1.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -32,7 +32,7 @@ const PCT=[0,10,20,30,40,50,60,70,80,90,100];
 const stu=id=>D.students.find(s=>s.id===id);
 const thread=k=>D.threads[k]||(D.threads[k]=[]);
 const noshowAt=sid=>{const m=thread(sid+'|parent').filter(x=>/^\[미등원 안내\]/.test(x.t||'')&&(x.at||'').startsWith(TODAY)).pop();return m?(m.at||'').slice(11,16):''};
-const noshowTxt=s=>'[미등원 안내] '+s.name+' 학생이 아직 등원하지 않았어요'+(s.time?' (오늘 수업 '+s.time+')':'')+'. 혹시 늦거나 못 오게 되면 원장님께 알려 주세요.';
+const noshowTxt=s=>'[미등원 안내] '+s.name+' 학생이 아직 등원하지 않았어요. 혹시 늦거나 못 오게 되면 원장님께 알려 주세요.';
 const noshowBtn=(x,day)=>day!==TODAY?'':(noshowAt(x.id)?' <span class="chip c-ok">안내 '+noshowAt(x.id)+'</span>':' <button class="btn sm ghost" style="padding:2px 8px" data-act="noshow" data-id="'+x.id+'">미등원 안내</button>');
 // 형제: 같은 학부모 번호로 연결된 학생들 → 학부모 대화는 하나로 묶어 보여요 ("김승효/우현 학부모님")
 const famSids=sid=>{let l;if(U.role==='teacher'){const ph=new Set((D.members||[]).filter(m=>m.sid===sid&&m.rel!=='student'&&m.phone).map(m=>m.phone));l=[...new Set([sid,...(D.members||[]).filter(m=>m.rel!=='student'&&ph.has(m.phone)).map(m=>m.sid)])]}else l=U.role==='parent'&&ME&&ME.sids?ME.sids.filter(x=>ME.rels[x]!=='student'):[sid];l=l.filter(x=>stu(x));if(!l.includes(sid)&&stu(sid))l.push(sid);return l.sort((a,b)=>stu(a).name.localeCompare(stu(b).name,'ko'))};
@@ -129,7 +129,7 @@ function mngView(){
   '<div class="card"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>'+
   (isOwnerMe()?'<div class="card"><h3>부원장 <button class="btn sm" data-act="sheet" data-s="staff">+ 등록</button></h3>'+staffRows()+'</div>':'')+
   '<button class="btn" style="width:100%;margin-bottom:12px" data-act="sheet" data-s="stu">+ 학생 등록</button>'+
-  D.students.map(s=>'<div class="card"><h3>'+esc(s.name)+' <small>'+esc(s.grade)+' · '+(s.school?esc(s.school):'학교 미입력')+' · 수업 '+esc(s.time)+' <button class="btn sm ghost" data-act="schEdit" data-id="'+s.id+'">학교</button></small></h3>'+['student','father','mother'].map(rel=>{const m=(D.members||[]).find(x=>x.sid===s.id&&x.rel===rel);return '<div class="row"><div class="grow"><div class="nm" style="font-weight:500">'+REL[rel]+'</div><div class="sub">'+(m?esc(fmtP(m.phone)):'번호 미등록')+'</div></div>'+(m?mChip(m):'<span class="chip">없음</span>')+(m&&m.st==='ok'?'<button class="btn sm ghost" data-act="mReset" data-id="'+m.id+'">비번 분실</button><button class="btn sm ghost" data-act="mBlock" data-id="'+m.id+'">차단</button>':m&&m.st==='block'?'<button class="btn sm ghost" data-act="mUnblock" data-id="'+m.id+'">해제</button>':m&&m.st==='pending'?'<button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button>':m&&m.st==='none'?'<a class="btn sm" style="display:inline-flex;align-items:center;text-decoration:none" href="'+esc(smsHref(m))+'">안내 문자</a>':'')+'</div>'}).join('')+'</div>').join('')+'</div>';
+  D.students.map(s=>'<div class="card"><h3>'+esc(s.name)+' <small>'+esc(s.grade)+' · '+(s.school?esc(s.school):'학교 미입력')+' <button class="btn sm ghost" data-act="schEdit" data-id="'+s.id+'">학교</button></small></h3>'+['student','father','mother'].map(rel=>{const m=(D.members||[]).find(x=>x.sid===s.id&&x.rel===rel);return '<div class="row"><div class="grow"><div class="nm" style="font-weight:500">'+REL[rel]+'</div><div class="sub">'+(m?esc(fmtP(m.phone)):'번호 미등록')+'</div></div>'+(m?mChip(m):'<span class="chip">없음</span>')+(m&&m.st==='ok'?'<button class="btn sm ghost" data-act="mReset" data-id="'+m.id+'">비번 분실</button><button class="btn sm ghost" data-act="mBlock" data-id="'+m.id+'">차단</button>':m&&m.st==='block'?'<button class="btn sm ghost" data-act="mUnblock" data-id="'+m.id+'">해제</button>':m&&m.st==='pending'?'<button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button>':m&&m.st==='none'?'<a class="btn sm" style="display:inline-flex;align-items:center;text-decoration:none" href="'+esc(smsHref(m))+'">안내 문자</a>':'')+'</div>'}).join('')+'</div>').join('')+'</div>';
 }
 const pending=()=>(D.req||[]).filter(q=>q.st==='pending');
 const myReq=sid=>pending().find(q=>q.sid===sid);
@@ -285,7 +285,7 @@ function tAtt(){
   '<div class="card"><h3>출결 규칙</h3><p class="sub" style="margin:0">학생이 앱에서 [등원하기]를 누르면 원장님께 승인 요청이 와요. 승인해야 등원이 기록되고, 하원은 그날 학습 정리를 올린 뒤에만 열려요. 시각 수정·삭제는 PC 관리자 [출결]에서 할 수 있어요.</p></div>'+wifiCard()+
   (()=>{const P=dayPlan(curDay());return '<div class="card"><h3>학생별 등·하원</h3>'+dayNav(curDay())+P.order.map(s=>{const g=P.rk(s);
     const r=a[s.id];const lg=loggedOn(s.id,curDay());
-    const ab=absOf(s.id,curDay());const line=!r&&ab?'결석 통보 · '+ab.reason+(ab.ok?'':' (확인 전)'):!r?'등원 전 · 수업 '+s.time:r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+lateLabel(r.out):lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
+    const ab=absOf(s.id,curDay());const line=!r&&ab?'결석 통보 · '+ab.reason+(ab.ok?'':' (확인 전)'):!r?'등원 전':r.st==='결석'?'결석 처리됨':'등원 '+r.at+(r.out?' · 하원 '+lateLabel(r.out):lg?' · 학습 정리 완료, 하원 대기':' · 수업 중');
     let act='';
     if(r&&r.st!=='결석'&&!r.out&&!lg&&isT)act='<button class="btn sm" data-act="logFor" data-id="'+s.id+'">오늘 학습 정리 올리기</button>';
     else if(!r)act='<button class="btn sm" data-act="forceIn" data-id="'+s.id+'">등원 처리</button><button class="btn sm ghost" data-act="absent" data-id="'+s.id+'">결석 처리</button>';
@@ -397,7 +397,7 @@ function sheetHtml(){
   const opts=D.students.map(s=>'<option value="'+s.id+'"'+(s.id===U.logS?' selected':'')+'>'+esc(s.name)+' ('+esc(s.grade)+')</option>').join('');
   let h='';
   if(t==='hw')h='<h3>숙제 내기</h3><div class="f"><span>받을 학생</span><div class="ck">'+D.students.map(s=>'<label><input type="checkbox" name="hwS" value="'+s.id+'"'+((U.hwF===s.id)?' checked':'')+'>'+esc(s.name)+'</label>').join('')+'</div></div><label class="f"><span>숙제 제목</span><input id="hwT" placeholder="예: 쎈 B단계 유형 3"></label><label class="f"><span>범위</span><input id="hwR" placeholder="예: p.40~45 짝수"></label><label class="f"><span>마감일</span><input type="date" id="hwD" value="'+off(2)+'"></label>';
-  if(t==='stu')h='<h3>학생 등록</h3><label class="f"><span>학생 이름</span><input id="stN" autocomplete="off"></label><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>학년</span><select id="stG">'+['초4','초5','초6','중1','중2','중3','고1','고2','고3'].map(g=>'<option>'+g+'</option>').join('')+'</select></label><label class="f"><span>수업 시작</span><input type="time" id="stT" value="16:00"></label></div><label class="f"><span>학교 (선택)</span><input id="stSc" list="stScL" placeholder="예: 동탄중" autocomplete="off"><datalist id="stScL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label><label class="f"><span>학생 휴대폰</span><input id="pS" inputmode="numeric" placeholder="010-0000-0000"></label><label class="f"><span>아버님 휴대폰</span><input id="pF" inputmode="numeric" placeholder="없으면 비워두세요"></label><label class="f"><span>어머님 휴대폰</span><input id="pM" inputmode="numeric" placeholder="없으면 비워두세요"></label><p class="sub" style="margin:0 0 10px">가족이 이 번호로 가입하면 원장님께 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 한 번 가입으로 함께 연결돼요.</p>';
+  if(t==='stu')h='<h3>학생 등록</h3><label class="f"><span>학생 이름</span><input id="stN" autocomplete="off"></label><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>학년</span><select id="stG">'+['초4','초5','초6','중1','중2','중3','고1','고2','고3'].map(g=>'<option>'+g+'</option>').join('')+'</select></label></div><label class="f"><span>학교 (선택)</span><input id="stSc" list="stScL" placeholder="예: 동탄중" autocomplete="off"><datalist id="stScL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label><label class="f"><span>학생 휴대폰</span><input id="pS" inputmode="numeric" placeholder="010-0000-0000"></label><label class="f"><span>아버님 휴대폰</span><input id="pF" inputmode="numeric" placeholder="없으면 비워두세요"></label><label class="f"><span>어머님 휴대폰</span><input id="pM" inputmode="numeric" placeholder="없으면 비워두세요"></label><p class="sub" style="margin:0 0 10px">가족이 이 번호로 가입하면 원장님께 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 한 번 가입으로 함께 연결돼요.</p>';
   if(t==='staff')h='<h3>부원장 등록</h3><label class="f"><span>이름</span><input id="sfN" autocomplete="off" placeholder="예: 홍길동"></label><label class="f"><span>휴대폰 (로그인 아이디)</span><input id="sfP" inputmode="numeric" placeholder="010-0000-0000"></label><p class="sub" style="margin:0 0 10px">부원장님이 이 번호로 가입하면 원장님께 승인 요청이 와요. 승인하면 학생 관리·출결·숙제·기록·메시지를 원장님과 똑같이 쓸 수 있어요. (부원장 등록·앱 설정은 원장님만)</p>';
   if(t==='school'){const s=stu(U.schSid)||{};h='<h3>'+esc(s.name||'')+' 학교</h3><label class="f"><span>학교</span><input id="scIn" list="scInL" value="'+esc(s.school||'')+'" placeholder="예: 동탄중" autocomplete="off"><datalist id="scInL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>'}
   if(t==='abs'){const s=stu(U.me)||{};h='<h3>'+esc(s.name||'')+' 결석 알리기</h3><label class="f"><span>결석하는 날</span><input type="date" id="abD" min="'+TODAY+'" value="'+TODAY+'"></label><label class="f"><span>사유</span><textarea id="abR" placeholder="예: 가족 행사, 병원 진료, 학교 행사"></textarea></label><p class="sub" style="margin:0 0 10px">저장하면 원장님과 선생님께 바로 알림이 가요. 날짜가 지나기 전에는 취소할 수 있어요.</p>'}
@@ -1005,7 +1005,7 @@ app.addEventListener('submit',async e=>{
     if(!Object.values(ph).some(x=>x))return toast('번호를 하나 이상 등록해 주세요');
     const grade=g('stG');const course={초4:'중1-1',초5:'중1-1',초6:'중1-1',중1:'중1-2',중2:'중2-2',중3:'중3-2',고1:'공통수학2',고2:'대수',고3:'미적분Ⅰ'}[grade];
     const b=writeBatch(db);const sref=doc(collection(db,'students'));const sid=sref.id;
-    b.set(sref,{name,grade,school:g('stSc').trim(),time:g('stT')||'16:00',course,ts:now()});
+    b.set(sref,{name,grade,school:g('stSc').trim(),course,ts:now()});
     const autoLinked=[];
     Object.entries(ph).forEach(([rel,p])=>{if(!p)return;const ex=rel!=='student'&&D.members.find(m=>m.phone===p&&m.st==='ok'&&m.uid);const mref=doc(collection(db,'members'));
       const m={sid,rel,phone:p,st:ex?'ok':'none',name,grade,guardianOk:false};if(ex){m.uid=ex.uid;autoLinked.push(ex)}b.set(mref,m);

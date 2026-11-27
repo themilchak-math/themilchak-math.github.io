@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.5.2';
+const ADMIN_VERSION = '2.5.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -111,7 +111,7 @@ const thsOf = (sid, rel) => rel === 'student' ? [sid + '|student'] : [sid + '|pa
 /* ---------- 화면 조각 ---------- */
 // 미등원 안내: 오늘 이미 보냈으면 보낸 시각
 const noshowAt = sid => { const m = thread(sid + '|parent').filter(x => /^\[미등원 안내\]/.test(x.t || '') && (x.at || '').startsWith(TODAY)).pop(); return m ? (m.at || '').slice(11, 16) : ''; };
-const noshowTxt = s => '[미등원 안내] ' + s.name + ' 학생이 아직 등원하지 않았어요' + (s.time ? ' (오늘 수업 ' + s.time + ')' : '') + '. 혹시 늦거나 못 오게 되면 원장님께 알려 주세요.';
+const noshowTxt = s => '[미등원 안내] ' + s.name + ' 학생이 아직 등원하지 않았어요. 혹시 늦거나 못 오게 되면 원장님께 알려 주세요.';
 const noshowBtn = (x, day) => day !== TODAY ? '' : (noshowAt(x.id) ? ' <span class="chip ok" title="부모님께 미등원 안내를 보냈어요">안내 ' + noshowAt(x.id) + '</span>' : ' <button class="btn xs ghost" data-a="noshow" data-id="' + x.id + '">미등원 안내</button>');
 const chip = (t, c) => '<span class="chip ' + (c || '') + '">' + esc(t) + '</span>';
 const isIn = r => !!r && r.st !== '결석';
@@ -189,7 +189,7 @@ function pDash() {
 
 function pQR() {
   const q = V.qr || {}; const left = q.exp ? Math.max(0, Math.ceil((q.exp - 5000 - now()) / 1000)) : 0;
-  return '<h1>등원 QR <span class="sub">학생이 폰 앱으로 이 화면을 찍으면 승인 요청이 와요</span></h1><div class="grid2"><section class="card qrcard"><div id="qrBox"></div><p class="code">' + (q.code ? q.code.slice(0, 3) + ' ' + q.code.slice(3) : '...') + '</p><p class="sub"><b id="qrLeft">' + left + '</b>초 후 새 코드로 바뀌어요 · 카메라가 안 되면 학생이 숫자를 입력해도 돼요</p><p class="sub">이 화면을 열어 둔 동안만 등원 요청을 받을 수 있어요.</p></section><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '<h2 style="margin-top:20px">오늘 출결</h2><table><tbody>' + active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>수업 ' + esc(s.time) + '</td><td>' + attChip((D.att[TODAY] || {})[s.id]) + '</td></tr>').join('') + '</tbody></table></section></div>';
+  return '<h1>등원 QR <span class="sub">학생이 폰 앱으로 이 화면을 찍으면 승인 요청이 와요</span></h1><div class="grid2"><section class="card qrcard"><div id="qrBox"></div><p class="code">' + (q.code ? q.code.slice(0, 3) + ' ' + q.code.slice(3) : '...') + '</p><p class="sub"><b id="qrLeft">' + left + '</b>초 후 새 코드로 바뀌어요 · 카메라가 안 되면 학생이 숫자를 입력해도 돼요</p><p class="sub">이 화면을 열어 둔 동안만 등원 요청을 받을 수 있어요.</p></section><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '<h2 style="margin-top:20px">오늘 출결</h2><table><tbody>' + active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + attChip((D.att[TODAY] || {})[s.id]) + '</td></tr>').join('') + '</tbody></table></section></div>';
 }
 
 function memCell(s, rel) {
@@ -214,7 +214,7 @@ function applyCard(withLink) {
 async function approveApply(a) {
   const ph = { student: a.pStudent || '', father: a.pFather || '', mother: a.pMother || '' };
   const b = writeBatch(db); const ref = doc(collection(db, 'students')); const sid = ref.id; const grade = GRADES.includes(a.grade) ? a.grade : '중1';
-  b.set(ref, { name: a.name, grade, time: '16:00', school: a.school || '', course: DEF_COURSE[grade], ts: now() });
+  b.set(ref, { name: a.name, grade, school: a.school || '', course: DEF_COURSE[grade], ts: now() });
   let auto = false; Object.entries(ph).forEach(([rel, p]) => { if (p) auto = addMember(b, sid, rel, p, a.name, grade) || auto; });
   const phones = {}; Object.entries(ph).forEach(([rel, p]) => { if (p) phones[rel] = p; });
   b.set(doc(db, 'sinfo', sid), { birth: a.birth || '', joined: TODAY, memo: a.memo ? '신청서: ' + a.memo : '', phones }, { merge: true });
@@ -237,8 +237,8 @@ function pPeople() {
 function pStudents() {
   const left = D.students.filter(s => s.left);
   return '<p class="sub" style="margin:0 0 10px">학생·학부모 번호와 앱 연결 상태 · 번호 수정은 [수정] · 등록한 번호로만 가입할 수 있어요</p>' +
-    '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>학교</th><th>수업</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
-    (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.time) + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && m.st === 'none') ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
+    '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>학교</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
+    (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && m.st === 'none') ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
     '</tbody></table></section>' +
     (left.length ? '<details class="card"><summary>퇴원한 학생 ' + left.length + '명</summary><table><tbody>' + left.map(s => '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.grade) + '</td><td class="r"><button class="btn xs ghost" data-a="rejoin" data-id="' + s.id + '">복귀</button></td></tr>').join('') + '</tbody></table></details>' : '');
 }
@@ -305,7 +305,7 @@ function attModal() {
   const st = r ? (isIn(r) ? 'in' : 'abs') : 'in';
   return '<div class="mbg" data-a="close"><form class="modal" id="attF"><h2>' + esc(s.name || '') + ' · ' + fmtD(d) + '</h2>' +
     '<label>상태<select id="atSt">' + opt('in', st, '등원') + opt('abs', st, '결석') + '</select></label>' +
-    '<div class="row2"><label>등원 시각<input type="time" id="atIn" value="' + esc(r && r.at ? r.at : (s.time || '')) + '"></label><label>하원 시각<input type="time" id="atOut" value="' + esc(r && r.out ? r.out : '') + '"></label></div>' +
+    '<div class="row2"><label>등원 시각<input type="time" id="atIn" value="' + esc(r && r.at ? r.at : '') + '"></label><label>하원 시각<input type="time" id="atOut" value="' + esc(r && r.out ? r.out : '') + '"></label></div>' +
     '<label class="sw" style="justify-content:flex-start;gap:8px;margin:4px 0 8px"><input type="checkbox" id="atNoti"' + (d === TODAY ? ' checked' : '') + '> 학부모님께 알림 보내기</label>' +
     '<p class="sub">하원이 자정을 넘기면 그대로 01:30처럼 넣으세요 (새벽 3시까지는 이 날 하원으로 기록). 하원 시각을 비우면 하원 전 상태로 남아요. 알림을 끄고 저장하면 기록만 조용히 고쳐져요.</p>' +
     '<div class="mf">' + (r ? '<button type="button" class="btn ghost danger" data-a="attDel">기록 삭제</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit">저장</button></div></form></div>';
@@ -604,7 +604,7 @@ async function xlCommit() {
   for (const r of p.roster) {
     let sid = nameToSid[r.name]; const left = r.status === '퇴원'; const grade = r.grade || (stu(sid) || {}).grade || '중2';
     if (!sid) { const ref = doc(collection(db, 'students')); sid = ref.id; nameToSid[r.name] = sid;
-      b.set(ref, { name: r.name, grade, school: r.school, time: '16:00', course: DEF_COURSE[grade] || '중2-2', left, ts: now() }); ops++;
+      b.set(ref, { name: r.name, grade, school: r.school, course: DEF_COURSE[grade] || '중2-2', left, ts: now() }); ops++;
       if (!left) for (const rel of ['student', 'mother', 'father']) { const ph = r.phones[rel]; if (ph && ph.length >= 10) { addMember(b, sid, rel, ph, r.name, grade); ops += 2; } } }
     else { const upd = { left }; if (r.school) upd.school = r.school; if (r.grade) upd.grade = r.grade; b.update(doc(db, 'students', sid), upd); ops++; }
     b.set(doc(db, 'sinfo', sid), { birth: r.birth, joined: r.joined, kind: r.kind, memo: r.memo, phones: r.phones }, { merge: true }); ops++;
@@ -697,7 +697,7 @@ function modalHtml() {
   if (V.modal === 'stu') {
     const s = V.editId ? stu(V.editId) : null;
     const ph = rel => { const m = s && memberOf(s.id, rel); const lock = m && m.st !== 'none'; return '<label>' + REL[rel] + ' 휴대폰' + (lock ? ' <span class="sub">(' + (m.st === 'ok' ? '연결됨' : m.st === 'pending' ? '승인 대기' : '차단') + ' · 바꾸려면 차단 후 새로 등록)</span>' : '') + '<input id="p_' + rel + '" inputmode="numeric" placeholder="없으면 비워두세요" value="' + esc(m ? fmtP(m.phone) : '') + '"' + (lock ? ' disabled' : '') + '></label>'; };
-    return '<div class="mbg" data-a="close"><form class="modal" id="stuF"><h2>' + (s ? esc(s.name) + ' 정보 수정' : '학생 등록') + '</h2><label>학생 이름<input id="sN" value="' + esc(s ? s.name : '') + '"></label><div class="row2"><label>학년<select id="sG">' + GRADES.map(g => opt(g, s ? s.grade : '중2')).join('') + '</select></label><label>수업 시작<input type="time" id="sT" value="' + esc(s ? s.time : '16:00') + '"></label></div><label>학교 (선택)<input id="sSc" list="sScL" value="' + esc(s ? (s.school || '') : '') + '" placeholder="예: 동탄중" autocomplete="off"><datalist id="sScL">' + schools().map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></label>' + (s ? '<label>현재 과정<select id="sC">' + COURSES.map(c => opt(c, s.course)).join('') + '</select></label>' : '') + ph('student') + ph('father') + ph('mother') +
+    return '<div class="mbg" data-a="close"><form class="modal" id="stuF"><h2>' + (s ? esc(s.name) + ' 정보 수정' : '학생 등록') + '</h2><label>학생 이름<input id="sN" value="' + esc(s ? s.name : '') + '"></label><div class="row2"><label>학년<select id="sG">' + GRADES.map(g => opt(g, s ? s.grade : '중2')).join('') + '</select></label></div><label>학교 (선택)<input id="sSc" list="sScL" value="' + esc(s ? (s.school || '') : '') + '" placeholder="예: 동탄중" autocomplete="off"><datalist id="sScL">' + schools().map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></label>' + (s ? '<label>현재 과정<select id="sC">' + COURSES.map(c => opt(c, s.course)).join('') + '</select></label>' : '') + ph('student') + ph('father') + ph('mother') +
       '<p class="sub">가족이 이 번호로 가입하면 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 이미 가입한 부모님 계정에 자동 연결돼요.</p><div class="mf">' + (s ? '<button type="button" class="btn ghost danger" data-a="leave" data-id="' + s.id + '">퇴원 처리</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit">저장</button></div></form></div>';
   }
   if (V.modal === 'invite') {
@@ -708,8 +708,8 @@ function modalHtml() {
   }
   if (V.modal === 'bulk') {
     const b = V.bulk;
-    return '<div class="mbg" data-a="close"><form class="modal wide" id="bulkF"><h2>엑셀에서 여러 명 붙여넣기</h2><p class="sub">엑셀에서 아래 순서로 열을 맞춰 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣기(Ctrl+V) 하세요. 첫 줄이 제목이면 자동으로 건너뛰어요.<br><b>이름 · 학년(초4~고3) · 수업 시작(16:00) · 학생 번호 · 아버님 번호 · 어머님 번호 · 학교(선택)</b></p><textarea id="bulkIn" rows="7" placeholder="홍길동	중2	16:00	010-1111-2222	010-3333-4444	010-5555-6666"></textarea><button type="button" class="btn ghost" data-a="bulkCheck">미리보기</button>' +
-      (b ? '<table><thead><tr><th>이름</th><th>학년</th><th>수업</th><th>학생</th><th>아버님</th><th>어머님</th><th>학교</th><th>확인</th></tr></thead><tbody>' + b.map(r => '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.grade) + '</td><td>' + esc(r.time) + '</td><td>' + esc(fmtP(r.student)) + '</td><td>' + esc(fmtP(r.father)) + '</td><td>' + esc(fmtP(r.mother)) + '</td><td>' + esc(r.school || '') + '</td><td>' + (r.err ? chip(r.err, 'bad') : chip('등록 가능', 'ok')) + '</td></tr>').join('') + '</tbody></table>' : '') +
+    return '<div class="mbg" data-a="close"><form class="modal wide" id="bulkF"><h2>엑셀에서 여러 명 붙여넣기</h2><p class="sub">엑셀에서 아래 순서로 열을 맞춰 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣기(Ctrl+V) 하세요. 첫 줄이 제목이면 자동으로 건너뛰어요.<br><b>이름 · 학년(초4~고3) · 학생 번호 · 아버님 번호 · 어머님 번호 · 학교(선택)</b></p><textarea id="bulkIn" rows="7" placeholder="홍길동	중2	010-1111-2222	010-3333-4444	010-5555-6666"></textarea><button type="button" class="btn ghost" data-a="bulkCheck">미리보기</button>' +
+      (b ? '<table><thead><tr><th>이름</th><th>학년</th><th>학생</th><th>아버님</th><th>어머님</th><th>학교</th><th>확인</th></tr></thead><tbody>' + b.map(r => '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.grade) + '</td><td>' + esc(fmtP(r.student)) + '</td><td>' + esc(fmtP(r.father)) + '</td><td>' + esc(fmtP(r.mother)) + '</td><td>' + esc(r.school || '') + '</td><td>' + (r.err ? chip(r.err, 'bad') : chip('등록 가능', 'ok')) + '</td></tr>').join('') + '</tbody></table>' : '') +
       '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit"' + (b && b.some(r => !r.err) ? '' : ' disabled') + '>' + (b ? b.filter(r => !r.err).length + '명 등록' : '등록') + '</button></div></form></div>';
   }
   return '';
@@ -854,8 +854,8 @@ function parseBulk(txt) {
   if (rows.length && !GRADES.includes(rows[0][1]) && /이름|학생/.test(rows[0][0])) rows.shift();
   const seen = new Set(active().map(s => s.name));
   return rows.map(r => {
-    const o = { name: r[0] || '', grade: r[1] || '', time: (r[2] || '16:00').replace(/^(\d):/, '0$1:'), student: digits(r[3]), father: digits(r[4]), mother: digits(r[5]), school: (r[6] || '').trim() };
-    o.err = !o.name ? '이름 없음' : !GRADES.includes(o.grade) ? '학년은 초4~고3' : !/^\d\d:\d\d$/.test(o.time) ? '시간 형식(16:00)' : [o.student, o.father, o.mother].some(p => p && (p.length < 10 || p.length > 11)) ? '번호 확인' : ![o.student, o.father, o.mother].some(p => p) ? '번호 없음' : seen.has(o.name) ? '이미 있는 이름' : '';
+    const o = { name: r[0] || '', grade: r[1] || '', student: digits(r[2]), father: digits(r[3]), mother: digits(r[4]), school: (r[5] || '').trim() };
+    o.err = !o.name ? '이름 없음' : !GRADES.includes(o.grade) ? '학년은 초4~고3' : [o.student, o.father, o.mother].some(p => p && (p.length < 10 || p.length > 11)) ? '번호 확인' : ![o.student, o.father, o.mother].some(p => p) ? '번호 없음' : seen.has(o.name) ? '이미 있는 이름' : '';
     seen.add(o.name); return o;
   });
 }
@@ -1072,11 +1072,11 @@ app.addEventListener('submit', async e => {
     }
     if (f === 'stuF') {
       const name = g('sN').trim(); if (!name) return toast('이름을 입력해 주세요');
-      const grade = g('sG'), time = g('sT') || '16:00'; const ph = { student: digits(g('p_student')), father: digits(g('p_father')), mother: digits(g('p_mother')) };
+      const grade = g('sG'); const ph = { student: digits(g('p_student')), father: digits(g('p_father')), mother: digits(g('p_mother')) };
       if (Object.values(ph).some(x => x && (x.length < 10 || x.length > 11))) return toast('휴대폰번호를 확인해 주세요');
       const b = writeBatch(db); let auto = false; let newSid = null;
       if (V.editId) {
-        const sid = V.editId; b.update(doc(db, 'students', sid), { name, grade, time, school: g('sSc').trim(), course: g('sC') || stu(sid).course });
+        const sid = V.editId; b.update(doc(db, 'students', sid), { name, grade, school: g('sSc').trim(), course: g('sC') || stu(sid).course });
         for (const rel of ['student', 'father', 'mother']) {
           const m = memberOf(sid, rel); const p = ph[rel];
           if (m && m.st !== 'none') continue;
@@ -1087,7 +1087,7 @@ app.addEventListener('submit', async e => {
         }
       } else {
         if (!Object.values(ph).some(x => x)) return toast('번호를 하나 이상 등록해 주세요');
-        const ref = doc(collection(db, 'students')); newSid = ref.id; b.set(ref, { name, grade, time, school: g('sSc').trim(), course: DEF_COURSE[grade], ts: now() });
+        const ref = doc(collection(db, 'students')); newSid = ref.id; b.set(ref, { name, grade, school: g('sSc').trim(), course: DEF_COURSE[grade], ts: now() });
         Object.entries(ph).forEach(([rel, p]) => { if (p) auto = addMember(b, ref.id, rel, p, name, grade) || auto; });
       }
       await b.commit(); V.modal = null; const ed = V.editId; V.editId = null;
@@ -1097,7 +1097,7 @@ app.addEventListener('submit', async e => {
     if (f === 'bulkF') {
       const ok = (V.bulk || []).filter(r => !r.err); if (!ok.length) return;
       const b = writeBatch(db);
-      const sids = []; ok.forEach(r => { const ref = doc(collection(db, 'students')); sids.push(ref.id); b.set(ref, { name: r.name, grade: r.grade, time: r.time, school: r.school || '', course: DEF_COURSE[r.grade], ts: now() }); ['student', 'father', 'mother'].forEach(rel => { if (r[rel]) addMember(b, ref.id, rel, r[rel], r.name, r.grade); }); });
+      const sids = []; ok.forEach(r => { const ref = doc(collection(db, 'students')); sids.push(ref.id); b.set(ref, { name: r.name, grade: r.grade, school: r.school || '', course: DEF_COURSE[r.grade], ts: now() }); ['student', 'father', 'mother'].forEach(rel => { if (r[rel]) addMember(b, ref.id, rel, r[rel], r.name, r.grade); }); });
       await b.commit(); V.bulk = null; V.modal = 'invite'; V.inviteSids = sids; V.invQR = null; return toast(ok.length + '명 등록 완료 · 가입 안내 문자를 보내 주세요');
     }
   } catch (err) { fail(err); }
