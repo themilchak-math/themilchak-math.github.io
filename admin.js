@@ -10,7 +10,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, targetSids, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.6.2';
+const ADMIN_VERSION = '2.6.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -505,7 +505,7 @@ function pFin() {
   const wkCap1 = set.cap1 * 6, wkCap2 = set.cap2 * 6;
   const sumCard = '<div class="grid2"><section class="card"><h2>② 이번 달 요약</h2><table><tbody>' +
     [['교습소 원비 수입', C.fee], ['장기수강 할인 합계', C.disc], ['식대 청구 (' + monL(prevYm(ym)) + '분 · 별도 사업자)', C.meal], ['학부모 총 납부액 (원비+전월 식대)', C.total], ['원장 · 부원장 식대 (' + monL(prevYm(ym)) + '분)', C.staff]].map(([l, v]) => '<tr><td>' + l + '</td><td class="r"><b>' + won(v) + '원</b></td></tr>').join('') + '</tbody></table></section>' +
-    '<section class="card"><h2>③ 주간 정원 (최대 인원)</h2><table><tbody><tr><td>1층 교습소</td><td class="r">' + wkCap1 + '명</td><td class="sub">평일 ' + set.cap1 * 5 + ' / 토 ' + set.cap1 + '</td></tr><tr><td>2층 공부방</td><td class="r">' + wkCap2 + '명</td><td class="sub">평일 ' + set.cap2 * 5 + ' / 토 ' + set.cap2 + '</td></tr><tr><td>합계</td><td class="r">' + (wkCap1 + wkCap2) + '명</td><td></td></tr><tr><td>1층 현재 주간 등원</td><td class="r"><b>' + C.wk + '명</b></td><td></td></tr><tr><td>1층 남은 자리 (주간)</td><td class="r"><b' + (wkCap1 - C.wk < 0 ? ' style="color:var(--bad)"' : '') + '>' + (wkCap1 - C.wk) + '명</b></td><td></td></tr></tbody></table></section></div>';
+    '<section class="card"><h2>③ 주간 정원 <span class="sub">Unit = 학생 1명이 하루 등원</span></h2><table><tbody><tr><td>1층 교습소</td><td class="r">' + wkCap1 + ' Unit</td><td class="sub">평일 ' + set.cap1 * 5 + ' / 토 ' + set.cap1 + '</td></tr><tr><td>2층 공부방</td><td class="r">' + wkCap2 + ' Unit</td><td class="sub">평일 ' + set.cap2 * 5 + ' / 토 ' + set.cap2 + '</td></tr><tr><td>합계</td><td class="r">' + (wkCap1 + wkCap2) + ' Unit</td><td></td></tr><tr><td>1층 현재 주간 등원</td><td class="r"><b>' + C.wk + ' Unit</b></td><td class="sub">학생 ' + C.n + '명</td></tr><tr><td>1층 남은 자리 (주간)</td><td class="r"><b' + (wkCap1 - C.wk < 0 ? ' style="color:var(--bad)"' : '') + '>' + (wkCap1 - C.wk) + ' Unit</b></td><td></td></tr></tbody></table></section></div>';
   return head + table + sumCard + finMeals(m, set) + finSummary() + finSettings(set);
 }
 function finMeals(m, set) {
