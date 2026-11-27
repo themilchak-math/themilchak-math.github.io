@@ -1,12 +1,12 @@
 // 상담 서류 작성 화면 (교습소 태블릿 또는 학부모님 폰) — consult.html?t=<상담 링크 코드>&w=hub|parent|student|apply
 // 로그인 없이, 원장님이 만든 상담 링크(추측할 수 없는 긴 코드)로만 열려요. 상담이 끝나 링크를 닫으면 더는 열리지 않아요.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getFirestore, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { PARENT, STUDENT, CLASSES, RULES, CONSENT, DAYS5, priceOf, isHigh, progress } from './forms.js';
 
 const db = getFirestore(initializeApp(firebaseConfig));
-const P = new URLSearchParams(location.search); const TOK = P.get('t') || '';
+const P = new URLSearchParams(location.search); const TOK = P.get('t') || ''; const REMOTE = !TOK && P.get('remote') === '1';
 const S = { w: P.get('w') || 'hub', f: null, a: {}, page: 0, err: '', busy: false };
 const app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -72,13 +72,13 @@ function prefillApply() {
   const c = { 'A반 (주 2회)': 'A', 'B반 (주 3회)': 'B', 'C반 (주 4회)': 'C', '초등 고학년반': 'E' }[p.cls]; if (c) set('cls', c);
   if (!a.days && p.days) a.days = p.days.slice();
   set('cur', p.cur); set('score', p.score); set('src', { '네이버 예약': '온라인', '블로그·검색': '온라인', '지인 소개': '지인', '전단·현수막': '간판' }[f.src] || '');
-  set('date', today());
+  set('date', today()); if (REMOTE) set('grade', '중1');
 }
 function applyForm() {
   const a = S.a; const g = a.grade || ''; const radio = (k, opts) => '<div class="opts sm">' + opts.map(o => '<button type="button" class="opt' + (a[k] === o ? ' on' : '') + '" data-k="' + k + '" data-v="' + esc(o) + '" data-t="r">' + esc(o) + '</button>').join('') + '</div>';
   const inp = (k, ph, type) => '<input type="' + (type || 'text') + '" data-in="' + k + '" value="' + esc(a[k] || '') + '" placeholder="' + esc(ph || '') + '"' + (type === 'tel' ? ' inputmode="numeric"' : '') + '>';
   const grades = ['초5', '초6', '중1', '중2', '중3', '고1', '고2', '고3'];
-  return top('입학신청서') + '<main><h1>입학신청서</h1><p class="lead">설문에 적어 주신 내용을 미리 채워 두었어요. 확인하고 비어 있는 곳만 적어 주세요.</p>' +
+  return top('입학신청서') + '<main><h1>입학신청서</h1><p class="lead">' + (REMOTE ? '적어 주신 내용은 원장님만 보고, 확인 후 첫 등원 일정과 교습소 앱 설치 안내를 보내 드려요. (약 3분)' : '설문에 적어 주신 내용을 미리 채워 두었어요. 확인하고 비어 있는 곳만 적어 주세요.') + '</p>' +
     '<div class="card"><h2>01 학생 · 보호자 정보</h2>' +
     '<div class="row2"><div class="q"><span class="ql">학생 성명</span>' + inp('name') + '</div><div class="q"><span class="ql">생년월일</span>' + inp('birth', '', 'date') + '</div></div>' +
     '<div class="row2"><div class="q"><span class="ql">학교</span>' + inp('school', '예: 치동중') + '</div><div class="q"><span class="ql">학년</span><select data-in="grade">' + grades.map(x => '<option' + (x === g ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></div></div>' +
@@ -97,7 +97,7 @@ function applyForm() {
     '<p class="rule"><b>4. 개인정보</b><span class="mut">' + esc(CONSENT) + ' <a href="./privacy.html" target="_blank">처리방침 전문</a></span></p>' + radio('agree', ['동의합니다', '동의하지 않습니다']) +
     '<div class="row2" style="margin-top:16px"><div class="q"><span class="ql">보호자 서명</span><div class="sigw"><canvas class="sig" id="sigP"></canvas><span class="ph">여기에 손가락으로 서명</span><button type="button" class="clr" data-clr="sigP">지우기</button></div></div><div class="q"><span class="ql">학생 서명</span><div class="sigw"><canvas class="sig" id="sigS"></canvas><span class="ph">여기에 손가락으로 서명</span><button type="button" class="clr" data-clr="sigS">지우기</button></div></div></div>' +
     '<p class="mut">위 운영 원칙을 확인하고 입학을 신청합니다. · 신청일 ' + esc(a.date || today()) + '</p>' + (S.err ? '<p class="err">' + esc(S.err) + '</p>' : '') + '</div></main>' +
-    '<div class="foot"><div class="in"><button class="btn ghost" data-act="hub">처음으로</button><button class="btn grow" data-act="applyGo"' + (S.busy ? ' disabled' : '') + '>입학 신청하기</button></div></div>';
+    '<div class="foot"><div class="in">' + (REMOTE ? '' : '<button class="btn ghost" data-act="hub">처음으로</button>') + '<button class="btn grow" data-act="applyGo"' + (S.busy ? ' disabled' : '') + '>입학 신청하기</button></div></div>';
 }
 const sigs = {};
 function setupSig(id) {
@@ -117,7 +117,7 @@ function sigData(id) { const st = sigs[id]; if (!st || !st.strokes.length) retur
 /* ---------- 완료 ---------- */
 function done(w) {
   const qrBox = w === 'apply' ? '<p style="margin:22px 0 4px"><b>지금 휴대폰으로 교습소 앱을 설치해 주세요</b></p><p class="mut" style="margin:0">출결·수업 기록·알림을 받는 재원생·학부모 전용 앱이에요. 휴대폰 카메라로 찍으세요.</p><div class="qr" id="qrBox"></div>' : '';
-  return top() + '<main><div class="card done"><div class="ic">' + (w === 'apply' ? '🎉' : '✅') + '</div><h1>' + (w === 'apply' ? '입학 신청이 완료됐어요' : '감사합니다!') + '</h1><p class="lead">' + (w === 'apply' ? '원장님이 확인 후 첫 등원 일정과 앱 가입 안내를 보내 드려요.' : TITLE[w] + '를 원장님께 전달했어요.' + (w === 'parent' ? ' 테스트가 끝나면 1:1 결과 브리핑에서 함께 보실 거예요.' : '')) + '</p>' + qrBox + '<div style="margin-top:14px"><button class="btn" data-act="hub">처음 화면으로</button></div></div></main>';
+  return top() + '<main><div class="card done"><div class="ic">' + (w === 'apply' ? '🎉' : '✅') + '</div><h1>' + (w === 'apply' ? '입학 신청이 완료됐어요' : '감사합니다!') + '</h1><p class="lead">' + (w === 'apply' ? '원장님이 확인 후 첫 등원 일정과 앱 가입 안내를 보내 드려요.' : TITLE[w] + '를 원장님께 전달했어요.' + (w === 'parent' ? ' 테스트가 끝나면 1:1 결과 브리핑에서 함께 보실 거예요.' : '')) + '</p>' + qrBox + (REMOTE ? '' : '<div style="margin-top:14px"><button class="btn" data-act="hub">처음 화면으로</button></div>') + '</div></main>';
 }
 
 function render() {
@@ -160,7 +160,9 @@ app.addEventListener('click', async e => {
     if (A.agree !== '동의합니다') { S.err = '개인정보 수집·이용에 동의해 주셔야 신청할 수 있어요'; return render(); }
     const sp = sigData('sigP'); if (!sp) { S.err = '보호자 서명을 해 주세요'; return render(); }
     S.busy = true; render();
-    try { await save('apply', { signP: sp, signS: sigData('sigS'), price: priceOf(A.cls, A.grade), date: A.date || today() }); S.busy = false; S.w = 'done-apply'; render(); scrollTo(0, 0); }
+    try { const ex = { signP: sp, signS: sigData('sigS'), price: priceOf(A.cls, A.grade), date: A.date || today() };
+      if (REMOTE) { const ref = doc(collection(db, 'forms')); await setDoc(ref, { st: 'remote', name: String(A.name).slice(0, 20), grade: A.grade || '', school: A.school || '', src: '온라인 신청', apply: { ...A, ...ex, savedAt: Date.now() }, ts: Date.now(), up: Date.now() }); }
+      else await save('apply', ex); S.busy = false; S.w = 'done-apply'; render(); scrollTo(0, 0); }
     catch (er) { S.busy = false; S.err = '저장하지 못했어요. 인터넷 연결을 확인해 주세요.'; render(); }
   }
 });
@@ -173,6 +175,7 @@ app.addEventListener('change', e => { const k = e.target.dataset && e.target.dat
 let lastNarrow = narrow(); addEventListener('resize', () => { if (narrow() !== lastNarrow) { lastNarrow = narrow(); S.page = 0; if (S.w === 'parent' || S.w === 'student') render(); } });
 
 (async () => {
+  if (REMOTE) { S.f = { src: '' }; document.title = '더밀착수학 · 입학신청서'; go('apply'); return; }
   if (!TOK || TOK.length < 20) { app.innerHTML = top() + '<main><div class="card done"><div class="ic">🔗</div><h1>상담 링크가 필요해요</h1><p class="lead">교습소에서 받은 링크로 열어 주세요.</p></div></main>'; return; }
   try { const d = await getDoc(doc(db, 'forms', TOK)); if (!d.exists()) throw new Error('none'); S.f = d.data(); }
   catch (e) { app.innerHTML = top() + '<main><div class="card done"><div class="ic">⏰</div><h1>링크가 만료됐어요</h1><p class="lead">상담이 끝난 링크이거나 주소가 잘못됐어요. 교습소(010-4318-0075)로 문의해 주세요.</p></div></main>'; return; }

@@ -177,7 +177,12 @@ service cloud.firestore {
       // 상담 서류(consult.html): 원장님이 만든 추측 불가능한 링크로만, 링크가 열려 있을 때만 읽고 작성
       // 목록 조회·생성·삭제는 원장님만. 학부모·학생은 설문·신청서 칸만 쓸 수 있고, 제출된 입학신청서는 고칠 수 없어요
       allow get: if isOwner() || (resource.data.st == 'open');
-      allow list, create, delete: if isOwner();
+      allow list, delete: if isOwner();
+      // 비대면 입학신청서(join.html): 로그인 없이 새 문서만 만들 수 있고, 만든 뒤에는 읽기·수정 불가
+      allow create: if isOwner() || (request.resource.data.st == 'remote'
+        && request.resource.data.keys().hasOnly(['st', 'name', 'grade', 'school', 'src', 'apply', 'ts', 'up'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 20
+        && request.resource.data.apply is map && request.resource.data.up is int);
       allow update: if isOwner() || (resource.data.st == 'open'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['parent', 'student', 'apply', 'up'])
         && (!('apply' in resource.data) || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['apply']))

@@ -4,112 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2b44ff">
-<title>더밀착수학 등록 신청</title>
-<meta name="description" content="더밀착수학교습소 신규 등록 신청서">
-<meta property="og:title" content="더밀착수학 등록 신청서">
-<meta property="og:description" content="학생 정보를 적어 주시면 원장님 확인 후 앱 설치 안내를 보내드려요">
+<title>더밀착수학 입학신청서</title>
+<meta name="description" content="더밀착수학교습소 입학신청서">
+<meta property="og:title" content="더밀착수학 입학신청서">
+<meta property="og:description" content="학생 정보와 수강 과정을 적고 서명해 주시면 원장님 확인 후 앱 설치 안내를 보내드려요">
 <meta property="og:image" content="https://themilchak-math.github.io/icon-512.png?v=2">
 <link rel="icon" href="./icon-192.png?v=2">
 <script>(function(){if(/KAKAOTALK/i.test(navigator.userAgent||''))location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(location.href)})();</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
-<style>
-:root{--pri:#2b44ff;--ink:#11152b;--mut:#5b6180;--line:#e2e5f3;--soft:#f1f3ff;--bg:#f6f7fc;--bad:#e0401f}
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Noto Sans KR",system-ui,sans-serif;word-break:keep-all}
-.wrap{max-width:520px;margin:0 auto;padding:0 0 calc(40px + env(safe-area-inset-bottom))}
-.hero{background:linear-gradient(160deg,#2b44ff,#5a69ff);color:#fff;padding:calc(env(safe-area-inset-top) + 28px) 22px 26px;border-radius:0 0 26px 26px;display:flex;gap:16px;align-items:center}
-.hero img{width:60px;height:60px;border-radius:16px;box-shadow:0 6px 18px rgba(0,0,0,.18);flex:none}
-.hero h1{font:700 22px/1.3 "IBM Plex Sans KR","Noto Sans KR",sans-serif;margin:0 0 2px;letter-spacing:-.02em}
-.hero p{margin:0;font-size:13.5px;opacity:.9}
-form,.done{margin:18px 16px 0;background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px}
-h2{font:700 16px/1.4 "IBM Plex Sans KR","Noto Sans KR",sans-serif;margin:18px 0 8px}h2:first-child{margin-top:0}
-label{display:block;margin-bottom:12px;font-size:13.5px;font-weight:500;color:var(--mut)}
-.req{color:var(--bad);font-weight:700;font-size:11px;vertical-align:2px;margin-left:1px}
-input,select,textarea{display:block;width:100%;margin-top:5px;border:1px solid var(--line);border-radius:12px;padding:0 12px;height:46px;font:16px "Noto Sans KR",sans-serif;color:var(--ink);background:var(--soft)}
-textarea{height:auto;min-height:84px;padding:10px 12px;resize:vertical}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.days{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:6px}
-.days button{height:44px;border:1px solid var(--line);border-radius:12px;background:#fff;font:700 15px "Noto Sans KR",sans-serif;color:var(--mut);cursor:pointer}
-.days button.on{background:var(--pri);border-color:var(--pri);color:#fff}
-.go{display:block;width:100%;height:54px;border:0;border-radius:14px;background:var(--pri);color:#fff;font:700 17px "Noto Sans KR",sans-serif;margin-top:8px;cursor:pointer}
-.go:disabled{opacity:.6}
-.note{font-size:12.5px;color:var(--mut);margin:10px 0 0;text-align:center}
-.err{color:var(--bad);font-size:13.5px;text-align:center;margin:10px 0 0;min-height:1em}
-.done{text-align:center;padding:30px 18px}.done h2{font-size:19px;margin:8px 0}
-.done a{display:inline-block;margin-top:14px;color:var(--pri);font-weight:700}
-[hidden]{display:none!important}
-</style>
+<script>location.replace('./consult.html?remote=1');</script>
 </head>
-<body>
-<div class="wrap">
-  <header class="hero">
-    <img src="./icon-192.png?v=2" alt="">
-    <div><h1>더밀착수학 등록 신청</h1><p>적어 주시면 원장님 확인 후 연락드려요</p></div>
-  </header>
-
-  <form id="f" novalidate>
-    <h2>학생 정보</h2>
-    <label>학생 이름 <span class="req">*</span><input id="name" maxlength="20" autocomplete="off"></label>
-    <div class="row">
-      <label>학교 <span class="req">*</span><input id="school" maxlength="20" placeholder="예: 한백중"></label>
-      <label>학년 <span class="req">*</span><select id="grade"><option value="">선택</option><option>초4</option><option>초5</option><option>초6</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option></select></label>
-    </div>
-    <label>생년월일 <span class="req">*</span><input id="birth" type="date"></label>
-    <h2>연락처 <span style="font-size:12.5px;font-weight:400;color:var(--mut)">어머님·아버님 중 한 분은 꼭 적어 주세요</span></h2>
-    <label>어머님 휴대폰 <span class="req">*</span><input id="pMother" inputmode="tel" maxlength="13" placeholder="010-0000-0000"></label>
-    <label>아버님 휴대폰<input id="pFather" inputmode="tel" maxlength="13" placeholder="010-0000-0000"></label>
-    <label>학생 휴대폰 <span class="req">*</span><input id="pStudent" inputmode="tel" maxlength="13" placeholder="010-0000-0000"></label>
-    <h2>희망 등원 요일 <span class="req">*</span> <span style="font-size:12.5px;font-weight:400;color:var(--mut)">2일 이상 골라 주세요</span></h2>
-    <div class="days" id="days"><button type="button">월</button><button type="button">화</button><button type="button">수</button><button type="button">목</button><button type="button">금</button><button type="button">토</button></div>
-    <label style="margin-top:14px">원장님께 하실 말씀 (선택)<textarea id="memo" maxlength="500" placeholder="현재 진도, 성적, 상담 받고 싶은 점 등"></textarea></label>
-    <div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:6px;font-size:13px;color:var(--mut);line-height:1.6">
-      <b style="color:var(--ink)">개인정보 수집·이용 동의 (필수)</b><br>
-      수집 항목: 학생 이름·학교·학년·생년월일, 학생·학부모 휴대폰번호, 희망 요일, 메모<br>
-      목적: 등록 상담, 등록 후 출결·수업 관리와 학부모 안내(교습소 앱 이용 포함)<br>
-      보관: 퇴원 후 1년까지(등록하지 않으면 상담 후 3개월 안에 파기)<br>
-      만 14세 미만 학생은 학부모님이 동의해 주세요. 동의하지 않으실 수 있으나, 그 경우 온라인 신청을 할 수 없어요. <a href="./privacy.html" target="_blank" style="color:var(--pri)">처리방침 전문 보기</a>
-      <label style="display:flex;gap:8px;align-items:center;margin:10px 0 0;color:var(--ink);font-weight:700"><input type="checkbox" id="agree" style="width:20px;height:20px;margin:0">위 내용에 동의합니다 (학부모)</label>
-    </div>
-    <button class="go" id="go" type="submit">신청하기</button>
-    <p class="err" id="err"></p>
-    <p class="note">적어 주신 정보는 교습소 등록과 앱 연결에만 사용해요.</p>
-  </form>
-
-  <div class="done" id="done" hidden>
-    <div style="font-size:42px">✅</div>
-    <h2>신청이 접수됐어요</h2>
-    <p style="margin:0;color:var(--mut)">원장님이 확인한 뒤, 적어 주신 번호로<br>앱 설치 안내 문자를 보내드려요.</p>
-    <a href="./install.html">앱 설치 안내 미리 보기 →</a>
-  </div>
-</div>
-<script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { firebaseConfig } from './firebase-config.js';
-const db = getFirestore(initializeApp(firebaseConfig));
-const $ = id => document.getElementById(id);
-const days = [0, 0, 0, 0, 0, 0];
-[...$('days').children].forEach((b, i) => b.onclick = () => { days[i] = days[i] ? 0 : 1; b.classList.toggle('on', !!days[i]); });
-const dig = v => (v || '').replace(/\D/g, '');
-['pMother', 'pFather', 'pStudent'].forEach(id => $(id).addEventListener('input', e => { const d = dig(e.target.value).slice(0, 11); e.target.value = d.length > 7 ? d.slice(0, 3) + '-' + d.slice(3, d.length - 4) + '-' + d.slice(-4) : d.length > 3 ? d.slice(0, 3) + '-' + d.slice(3) : d; }));
-$('f').onsubmit = async e => {
-  e.preventDefault(); const err = m => { $('err').textContent = m; };
-  const name = $('name').value.trim(), school = $('school').value.trim(), grade = $('grade').value;
-  const ph = { pMother: dig($('pMother').value), pFather: dig($('pFather').value), pStudent: dig($('pStudent').value) };
-  if (!name) return err('학생 이름을 적어 주세요'); if (!school) return err('학교를 적어 주세요'); if (!grade) return err('학년을 골라 주세요');
-  if (!$('birth').value) return err('생년월일을 적어 주세요');
-  if (!ph.pMother && !ph.pFather) return err('어머님이나 아버님 휴대폰 번호를 적어 주세요');
-  if (!ph.pStudent) return err('학생 휴대폰 번호를 적어 주세요');
-  if (Object.values(ph).some(p => p && !/^01\d{8,9}$/.test(p))) return err('휴대폰 번호를 확인해 주세요');
-  if (!$('agree').checked) return err('개인정보 수집·이용에 동의해 주세요');
-  if (days.filter(Boolean).length < 2) return err('희망 등원 요일을 2일 이상 골라 주세요');
-  $('go').disabled = true; err('');
-  try {
-    await addDoc(collection(db, 'apply'), { name, school, grade, birth: $('birth').value || '', ...ph, days, memo: $('memo').value.trim(), st: 'new', ts: serverTimestamp() });
-    $('f').hidden = true; $('done').hidden = false; scrollTo(0, 0);
-  } catch (x) { console.warn(x); $('go').disabled = false; err('신청을 보내지 못했어요. 잠시 후 다시 눌러 주세요.'); }
-};
-</script>
-</body>
+<body><p style="font-family:sans-serif;text-align:center;margin-top:40vh"><a href="./consult.html?remote=1">입학신청서 열기</a></p></body>
 </html>
