@@ -1,7 +1,7 @@
 // 더밀착수학 PC 관리자 페이지 (원장님 전용) - 폰 앱(app.js)과 같은 Firebase 데이터를 씀
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, ACT_UNITS, isAct } from './subjects.js';
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
@@ -10,7 +10,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.9.1';
+const ADMIN_VERSION = '2.10.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -200,7 +200,7 @@ function pDash() {
   const toCheck = D.hw.filter(h => h.st === 'done');
   const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>' + dayLbl + ' 등원 (' + WD[new Date(day + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (ex.length ? ' · 보충 ' + ex.length + '명 포함' : '') + (absN ? ' · 결석 통보 ' + absN + '명 제외' : '') + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>' + dayLbl + ' 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
   const rk = x => exSet.has(x.id) ? 2 : expSet.has(x.id) ? 3 : absT.has(x.id) ? 1 : 0; const order = exp ? [...st].sort((x, y) => (rk(y) - rk(x)) || (exSet.has(x.id) && exSet.has(y.id) ? ex.indexOf(x.id) - ex.indexOf(y.id) : x.name.localeCompare(y.name, 'ko'))) : st;
-  return '<h1>' + esc(TNAME()) + ' </h1>' +
+  return '<h1>' + esc(TNAME()) + ' </h1>' + purgeAlert() +
     dayBar(day, isT) + (() => { const l = D.exams.filter(e => onDay(e, day)); return l.length ? '<section class="card' + (l.some(e => evKind(e) === 'off') ? ' hl' : '') + '"><h2>' + dayLbl + ' 일정</h2><p>' + l.map(e => kindChip(e) + ' <b>' + esc((evKind(e) !== 'off' && e.school ? e.school + ' ' : '') + e.title) + '</b>' + (e.memo ? ' <span class="sub">' + esc(e.memo) + '</span>' : '')).join(' &nbsp; ') + '</p></section>' : ''; })() +
     pushCard() + '<div class="kpis">' + kpi + '<div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
     (() => { const cand = st.filter(x => !expSet.has(x.id) && !(exB || []).includes(x.id) && !(a[x.id] && a[x.id].st !== '결석'));
@@ -263,6 +263,34 @@ function pPeople() {
     '<div class="bar" style="margin:4px 0 12px">' + tabs.map(([k, l]) => '<button class="btn sm ' + (v === k ? '' : 'ghost') + '" data-a="stuV" data-v="' + k + '">' + l + '</button>').join(' ') + '</div>' +
     (v === 'roster' ? pRoster() : v === 'school' ? pSchool() : pStudents());
 }
+// 퇴원 후 1년 지난 학생 = 개인정보 파기 대상
+const ymdDot = d => d.replace(/-/g, '.');
+const addYear = d => { const [y, m, dd] = d.split('-'); return (+y + 1) + '-' + m + '-' + dd; };
+const isDue = s => !!(s.left && s.leftAt && addYear(s.leftAt) <= TODAY);
+const dueList = () => D.students.filter(isDue);
+const purgeAlert = () => isOwnerMe() && dueList().length ? '<section class="card hl"><h2>개인정보 파기 대상 ' + dueList().length + '명</h2><p class="sub" style="margin:0 0 8px">퇴원 후 1년이 지났어요: ' + dueList().map(s => esc(s.name)).join(', ') + ' · 학생 관리 → 퇴원한 학생에서 [정보 삭제]를 눌러 주세요.</p><button class="btn sm" data-a="goPurge">학생 관리로 가기</button></section>' : '';
+const BK_COLS = ['config', 'students', 'sinfo', 'members', 'users', 'staff', 'att', 'abs', 'reqs', 'extra', 'logs', 'hw', 'exams', 'notices', 'msgs', 'fin', 'apply', 'push'];
+async function backupAll() {
+  const out = { app: '더밀착수학', ver: ADMIN_VERSION, at: new Date().toISOString(), data: {} };
+  for (const c of BK_COLS) { V.bkBusy = '받는 중… ' + c; render(); const s = await getDocs(collection(db, c)); out.data[c] = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); }
+  download(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }), '더밀착수학_백업_' + TODAY + '.json');
+  await setDoc(doc(db, 'config', 'main'), { lastBackup: TODAY }, { merge: true });
+  return Object.values(out.data).reduce((n, o) => n + Object.keys(o).length, 0);
+}
+// 퇴원생 개인정보 영구 삭제 (정산 기록은 남김)
+async function purgeStudent(sid) {
+  const refs = [];
+  for (const c of ['att', 'abs', 'logs', 'hw', 'reqs', 'msgs', 'members']) { const s = await getDocs(query(collection(db, c), where('sid', '==', sid))); s.docs.forEach(d => refs.push(doc(db, c, d.id))); }
+  ['student', 'parent', 'father', 'mother'].forEach(r => refs.push(doc(db, 'push', sid + '|' + r)));
+  refs.push(doc(db, 'sinfo', sid));
+  const ms = D.members.filter(m => m.sid === sid && m.uid);
+  for (let i = 0; i < refs.length; i += 400) { const b = writeBatch(db); refs.slice(i, i + 400).forEach(r => b.delete(r)); await b.commit(); }
+  const b = writeBatch(db);
+  ms.forEach(m => b.set(doc(db, 'users', m.uid), { sids: arrayRemove(sid), ths: arrayRemove(...thsOf(sid, m.rel)) }, { merge: true }));
+  Object.entries(D.extra).forEach(([d, x]) => { if ((x.sids || []).includes(sid)) b.set(doc(db, 'extra', d), { sids: arrayRemove(sid) }, { merge: true }); });
+  b.delete(doc(db, 'students', sid)); await b.commit();
+  return refs.length;
+}
 function pStudents() {
   const left = D.students.filter(s => s.left);
   const offs = D.push ? D.members.filter(m => pushOn(m) === false && active().some(s => s.id === m.sid)) : [];
@@ -271,7 +299,8 @@ function pStudents() {
     '<section class="card"><table class="stu"><thead><tr><th>이름</th><th>학년</th><th>학교</th><th>현재 과정</th><th>학생</th><th>아버님</th><th>어머님</th><th></th></tr></thead><tbody>' +
     (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && needsInvite(m)) ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
     '</tbody></table></section>' +
-    (left.length ? '<details class="card"><summary>퇴원한 학생 ' + left.length + '명</summary><table><tbody>' + left.map(s => '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.grade) + '</td><td class="r"><button class="btn xs ghost" data-a="rejoin" data-id="' + s.id + '">복귀</button></td></tr>').join('') + '</tbody></table></details>' : '');
+    (left.length ? '<details class="card"' + (V.openLeft ? ' open' : '') + '><summary>퇴원한 학생 ' + left.length + '명' + (dueList().length ? ' · <b style="color:var(--acc)">정보 파기 대상 ' + dueList().length + '명</b>' : '') + '</summary><p class="sub" style="margin:8px 0">개인정보 처리방침에 따라 <b>퇴원 후 1년</b>이 지나면 정보를 지워요. 정산 기록(교습비)은 세금 신고용으로 남아요.</p><table><tbody>' + left.map(s => { const due = isDue(s); return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.leftAt ? '퇴원 ' + ymdDot(s.leftAt) : '<span class="sub">퇴원일 기록 없음</span>') + (due ? ' ' + chip('파기 대상', 'bad') : s.leftAt ? ' <span class="sub">(' + ymdDot(addYear(s.leftAt)) + '부터 파기)</span>' : '') + '</td><td class="r" style="white-space:nowrap"><button class="btn xs ghost" data-a="rejoin" data-id="' + s.id + '">복귀</button> <button class="btn xs ghost danger" data-a="purge" data-id="' + s.id + '">' + (V.confirmPurge === s.id ? '한 번 더 누르면 영구 삭제' : '정보 삭제') + '</button></td></tr>'; }).join('') + '</tbody></table></details>' : '') +
+    (isOwnerMe() ? '<section class="card"><h2>데이터 백업</h2><p class="sub" style="margin:0 0 10px">학생·출결·수업 기록·숙제·메시지·정산 등 앱의 모든 기록을 파일 한 개(.json)로 내려받아요. 한 달에 한 번 정도 받아서 PC나 구글 드라이브에 보관해 두세요. 문제가 생기면 이 파일로 되살릴 수 있어요. (게시판 첨부 사진·파일은 포함되지 않아요)</p><button class="btn" data-a="backup"' + (V.bkBusy ? ' disabled' : '') + '>' + (V.bkBusy ? esc(V.bkBusy) : '⬇ 전체 백업 받기') + '</button>' + (D.cfg && D.cfg.lastBackup ? ' <span class="sub">마지막 백업: ' + esc(D.cfg.lastBackup) + '</span>' : '') + '</section>' : '');
 }
 
 function pAtt() {
@@ -646,9 +675,9 @@ async function xlCommit() {
   for (const r of p.roster) {
     let sid = nameToSid[r.name]; const left = r.status === '퇴원'; const grade = r.grade || (stu(sid) || {}).grade || '중2';
     if (!sid) { const ref = doc(collection(db, 'students')); sid = ref.id; nameToSid[r.name] = sid;
-      b.set(ref, { name: r.name, grade, school: r.school, course: DEF_COURSE[grade] || '중2-2', left, ts: now() }); ops++;
+      b.set(ref, Object.assign({ name: r.name, grade, school: r.school, course: DEF_COURSE[grade] || '중2-2', left, ts: now() }, left ? { leftAt: TODAY } : {})); ops++;
       if (!left) for (const rel of ['student', 'mother', 'father']) { const ph = r.phones[rel]; if (ph && ph.length >= 10) { addMember(b, sid, rel, ph, r.name, grade); ops += 2; } } }
-    else { const upd = { left }; if (r.school) upd.school = r.school; if (r.grade) upd.grade = r.grade; b.update(doc(db, 'students', sid), upd); ops++; }
+    else { const upd = { left }; if (left && !(stu(sid) || {}).left) upd.leftAt = TODAY; if (r.school) upd.school = r.school; if (r.grade) upd.grade = r.grade; b.update(doc(db, 'students', sid), upd); ops++; }
     b.set(doc(db, 'sinfo', sid), { birth: r.birth, joined: r.joined, kind: r.kind, memo: r.memo, phones: r.phones }, { merge: true }); ops++;
   }
   for (const m of p.months) { m.rows.forEach(r => { if (r.name && nameToSid[r.name]) r.sid = nameToSid[r.name]; }); b.set(doc(db, 'fin', 'm_' + m.ym), m); ops++; }
@@ -841,7 +870,7 @@ let unsubs = [];
 const L = (q, fn) => unsubs.push(onSnapshot(q, fn, e => console.warn('구독 오류', e.code)));
 function subscribe() {
   L(doc(db, 'config', 'main'), d => { D.cfg = d.exists() ? d.data() : null; sr(); });
-  L(collection(db, 'students'), s => { D.students = docs(s).sort((a, b) => a.name.localeCompare(b.name, 'ko')); sr(); });
+  L(collection(db, 'students'), s => { D.students = docs(s).sort((a, b) => a.name.localeCompare(b.name, 'ko')); if (isOwnerMe()) { const nl = D.students.filter(x => x.left && !x.leftAt); if (nl.length) { const b = writeBatch(db); nl.forEach(x => b.update(doc(db, 'students', x.id), { leftAt: TODAY })); b.commit().catch(e => console.warn(e)); } } sr(); });
   L(query(collection(db, 'att'), where('date', '>=', off(-400))), s => { D.att = {}; docs(s).forEach(x => { (D.att[x.date] || (D.att[x.date] = {}))[x.sid] = x; }); sr(); });
   L(query(collection(db, 'msgs'), where('ts', '>=', now() - 150 * 864e5)), s => { D.threads = {}; docs(s).forEach(m => (D.threads[m.th] || (D.threads[m.th] = [])).push(m)); Object.values(D.threads).forEach(t => t.sort((a, b) => (a.ts || 0) - (b.ts || 0))); if (V.chat && V.page === 'msg') markRead(V.chat); sr(); });
   L(collection(db, 'hw'), s => { D.hw = docs(s); sr(); });
@@ -1001,7 +1030,14 @@ app.addEventListener('click', async e => {
       D.members.filter(m => m.sid === id && m.st !== 'none' && m.st !== 'block').forEach(m => { b.update(doc(db, 'members', m.id), { st: 'block' }); if (m.uid) b.set(doc(db, 'users', m.uid), { sids: arrayRemove(id), ths: arrayRemove(...thsOf(id, m.rel)) }, { merge: true }); });
       await b.commit(); V.modal = null; V.editId = null; V.confirmLeave = null; return toast(s.name + ' 퇴원 처리했어요. 가족 계정의 이 학생 연결도 끊었어요.');
     }
-    if (a === 'rejoin') { await updateDoc(doc(db, 'students', id), { left: false }); return toast('복귀 처리했어요. 가족 연결은 학생 관리에서 차단 해제해 주세요.'); }
+    if (a === 'rejoin') { await updateDoc(doc(db, 'students', id), { left: false, leftAt: deleteField() }); return toast('복귀 처리했어요. 가족 연결은 학생 관리에서 차단 해제해 주세요.'); }
+    if (a === 'goPurge') { V.page = 'students'; V.stuV = 'list'; V.openLeft = true; return render(); }
+    if (a === 'backup') { if (V.bkBusy) return; V.bkBusy = '받는 중…'; render(); try { const n = await backupAll(); V.bkBusy = ''; render(); return toast('백업 파일을 내려받았어요 (' + n + '건)'); } catch (e) { V.bkBusy = ''; render(); return toast('백업하지 못했어요: ' + (e.code || e.message)); } }
+    if (a === 'purge') {
+      const s = stu(id); if (!s || !s.left) return; if (V.confirmPurge !== id) { V.confirmPurge = id; V.openLeft = true; render(); setTimeout(() => { if (V.confirmPurge === id) { V.confirmPurge = null; render(); } }, 5000); return; }
+      V.confirmPurge = null; toast(s.name + ' 정보를 지우는 중…');
+      try { const n = await purgeStudent(id); return toast(s.name + ' 학생 정보를 영구 삭제했어요 (' + n + '건)'); } catch (e) { return toast('삭제하지 못했어요: ' + (e.code || e.message)); }
+    }
     if (a === 'exAdd' || a === 'exDel') { const day = V.dashD || dashDefault(); const sid = a === 'exAdd' ? (document.getElementById('exSel') || {}).value : id; if (!sid) return toast('보충 올 학생을 골라 주세요'); await setDoc(doc(db, 'extra', day), { date: day, sids: a === 'exAdd' ? arrayUnion(sid) : arrayRemove(sid) }, { merge: true }); return toast((stu(sid) || {}).name + (a === 'exAdd' ? ' 보충 추가 (' + fmtD(day) + ')' : ' 보충 취소')); }
     if (a === 'dashM') { const d = new Date((V.dashD || dashDefault()) + 'T00:00'); d.setDate(d.getDate() + +v); V.dashD = ds(d) === dashDefault() ? null : ds(d); V.calM = curDay().slice(0, 7); return render(); }
     if (a === 'dashT') { V.dashD = null; V.calM = curDay().slice(0, 7); return render(); }
@@ -1152,7 +1188,7 @@ app.addEventListener('submit', async e => {
         if (pch) b.set(doc(db, 'sinfo', s.id), { phones }, { mergeFields: ['phones'] });
         const birth = el('birth').value, joined = el('joined').value, memo = el('memo').value.trim(), school = el('school').value.trim(), grade = el('grade').value, left = el('st').value === '퇴원';
         if ((si.birth || '') !== birth || (si.joined || '') !== joined || (si.memo || '') !== memo) { b.set(doc(db, 'sinfo', s.id), { birth, joined, memo, kind: kindOf(grade) }, { merge: true }); n++; }
-        if ((s.school || '') !== school || s.grade !== grade || !!s.left !== left) { b.update(doc(db, 'students', s.id), { school, grade, left }); n++; } }
+        if ((s.school || '') !== school || s.grade !== grade || !!s.left !== left) { b.update(doc(db, 'students', s.id), Object.assign({ school, grade, left }, left && !s.left ? { leftAt: TODAY } : !left && s.left ? { leftAt: deleteField() } : {})); n++; } }
       if (!n) return toast('바뀐 내용이 없어요'); await b.commit(); return toast('학생명부를 저장했어요' + (auto ? ' · 형제 부모님 계정에 자동 연결' : ''));
     }
     if (f === 'schF') {
