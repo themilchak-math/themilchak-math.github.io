@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.5.0';
+const ADMIN_VERSION = '2.5.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -54,7 +54,10 @@ const famLabel = (sid, suf) => { suf = ' ' + (suf || '학부모님'); const l = 
 // 대화: 아버님·어머님 각자 따로(|father, |mother). |parent 는 자동 알림 공용함 → 두 분 대화에 모두 보여요
 const PREL = ['father', 'mother'];
 const famKeys = k => { const [sid, r] = k.split('|'); return PREL.includes(r) ? famSids(sid).flatMap(x => [x + '|' + r, x + '|parent']) : r === 'parent' ? famSids(sid).map(x => x + '|parent') : [k]; };
-const parKeys = sid => { const f = famSids(sid); return PREL.filter(r => D.members.some(m => f.includes(m.sid) && m.rel === r)).map(r => sid + '|' + r); };
+// 대화방은 앱에 가입(승인 대기 포함)한 사람만. 미가입·차단은 목록에서 빼요
+const joined = m => m && m.uid && (m.st === 'ok' || m.st === 'pending');
+const parKeys = sid => { const f = famSids(sid); return PREL.filter(r => D.members.some(m => f.includes(m.sid) && m.rel === r && joined(m))).map(r => sid + '|' + r); };
+const stuKey = sid => joined(D.members.find(m => m.sid === sid && m.rel === 'student')) ? [sid + '|student'] : [];
 const fthread = k => famKeys(k).flatMap(x => thread(x)).sort((a, b) => (a.ts || 0) - (b.ts || 0));
 const mPending = () => D.members.filter(m => m.st === 'pending');
 const pending = () => D.req.filter(q => q.st === 'pending' && q.date === TODAY);
@@ -669,7 +672,7 @@ function pNotice() {
 function sysHtml(m) { const x = /^\[([^\]]+)\]\s*/.exec(m.t || ''); const ttl = x ? x[1] : '알림'; const body = x ? m.t.slice(x[0].length) : (m.t || '');
   return '<div class="m sys"><span class="sl">🔔 더밀착수학 자동 알림</span><b>' + esc(ttl) + '</b>' + esc(body) + '<small>' + esc((m.at || '').slice(5)) + '</small></div>'; }
 function pMsg() {
-  const keys = []; active().forEach(s => { keys.push(s.id + '|student'); if (famSids(s.id)[0] === s.id) keys.push(...parKeys(s.id)); });
+  const keys = []; active().forEach(s => { keys.push(...stuKey(s.id)); if (famSids(s.id)[0] === s.id) keys.push(...parKeys(s.id)); });
   const items = keys.map(k => { const t = fthread(k); const last = t[t.length - 1]; return { k, last, un: t.filter(m => m.f === 'o' && !m.r).length }; }).sort((a, b) => ((b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0)));
   const nameK = k => { const [sd, rr] = k.split('|'); return rr !== 'student' ? famLabel(sd, REL[rr]) : stu(sd).name + ' 학생'; };
   const empty = items.filter(i => !i.last && i.k !== V.chat);

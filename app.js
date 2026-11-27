@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.1.2';
+const APP_VERSION = '2.1.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -38,7 +38,9 @@ const myRel=()=>(typeof ME!=='undefined'&&ME&&ME.rels&&REL[ME.rels[U.me]]&&ME.re
 // 대화: 아버님·어머님은 각자 따로(학생id|father / |mother). 학생id|parent 는 자동 알림 공용함 → 두 분 대화에 모두 보여요
 const PREL=['father','mother'];
 const famKeys=k=>{const [sid,r]=k.split('|');return PREL.includes(r)?famSids(sid).flatMap(x=>[x+'|'+r,x+'|parent']):r==='parent'?famSids(sid).map(x=>x+'|parent'):[k]};
-const parKeys=sid=>{const f=famSids(sid);return PREL.filter(r=>(D.members||[]).some(m=>f.includes(m.sid)&&m.rel===r)).map(r=>sid+'|'+r)};
+const joinedM=m=>m&&m.uid&&(m.st==='ok'||m.st==='pending');
+const parKeys=sid=>{const f=famSids(sid);return PREL.filter(r=>(D.members||[]).some(m=>f.includes(m.sid)&&m.rel===r&&joinedM(m))).map(r=>sid+'|'+r)};
+const stuKey=sid=>joinedM((D.members||[]).find(m=>m.sid===sid&&m.rel==='student'))?[sid+'|student']:[];
 const fthread=k=>famKeys(k).flatMap(x=>thread(x)).sort((a,b)=>(a.ts||0)-(b.ts||0));
 const myKey=()=>U.me+'|'+(U.role==='parent'&&ME&&ME.rels&&PREL.includes(ME.rels[U.me])?ME.rels[U.me]:U.role);
 
@@ -328,7 +330,7 @@ function tComm(){
   let inner;
   if(U.comm==='notice'){inner=(U.role==='teacher'&&!isOwnerMe()?'<p class="sub" style="margin:0 0 10px">공지 작성은 원장님만 할 수 있어요</p>':'<button class="btn" style="width:100%;margin-bottom:12px" data-act="sheet" data-s="notice">+ 공지 쓰기</button>')+'<div class="card">'+noticeList()+'</div>'}
   else{
-    const keys=[];D.students.forEach(s=>{keys.push(s.id+'|student');if(famSids(s.id)[0]===s.id)keys.push(...parKeys(s.id))});
+    const keys=[];D.students.forEach(s=>{keys.push(...stuKey(s.id));if(famSids(s.id)[0]===s.id)keys.push(...parKeys(s.id))});
     const items=keys.map(k=>{const t=fthread(k);const last=t[t.length-1];return {k,last,un:t.filter(m=>m.f==='o'&&!m.r).length}}).sort((a,b)=>((b.last?b.last.at:'')>(a.last?a.last.at:'')?1:-1));
     const nameK=k=>{const [sd,rr]=k.split('|');return rr!=='student'?famLabel(sd,REL[rr]):stu(sd).name+' 학생'};const empty=items.filter(i=>!i.last);const shown=items.filter(i=>i.last);
     inner=(empty.length?'<select id="newChat" style="width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--ink);font-size:15px"><option value="">+ 새 대화 시작…</option>'+empty.map(i=>'<option value="'+esc(i.k)+'">'+esc(nameK(i.k))+'</option>').join('')+'</select>':'')+(shown.length?'':'<div class="empty">아직 대화가 없어요</div>')+'<div class="card"'+(shown.length?'':' hidden')+'>'+shown.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r==='parent'?' p':'')+'">'+(r==='parent'?'학부':esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r==='parent'?famLabel(sid):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'</button>'}).join('')+'</div>';
