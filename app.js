@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.0.6';
+const APP_VERSION = '2.0.7';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -416,6 +416,8 @@ const TNAME=()=>U.isStaff&&U.staffDoc&&U.staffDoc.name?U.staffDoc.name+' 부원�
 const docs=s=>s.docs.map(d=>({id:d.id,...d.data()}));
 const now=()=>Date.now();
 const phoneOf=u=>(u&&u.email||'').split('@')[0];
+// 카카오톡 → 사파리로 넘어온 경우(?inst=1): 안내를 바로 띄우고 주소에서 표시는 지워요(홈 화면 아이콘 주소가 깨끗하게)
+if(/[?&]inst=1/.test(location.search)){U.iosGuide=true;try{history.replaceState(null,'',location.pathname+location.search.replace(/[?&]inst=1/,'').replace(/^&/,'?')+location.hash)}catch(e){}}
 const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 
 /* ================= 화면 그리기 ================= */
@@ -436,8 +438,17 @@ function installSteps(){
   if(/Chrome/i.test(navigator.userAgent))return chr;
   return '<p style="margin:0 0 4px;font-weight:700">삼성 인터넷</p>'+sam+'<p style="margin:10px 0 4px;font-weight:700">크롬</p>'+chr;
 }
-const installTip=()=>isStandalone()?'':'<div class="card" style="border-color:var(--pri)"><h3>홈 화면에 앱 설치하기</h3>'+(U.bip?'<button class="btn" style="width:100%" data-act="install">앱 설치하기 (한 번만 누르면 돼요)</button>':installSteps())+'</div>';
-function installBar(){if(isStandalone()||U.noInstall)return '';return '<div class="upd ib"><span>홈 화면에 앱으로 설치할 수 있어요</span><span style="display:flex;gap:6px"><button class="btn sm" data-act="'+(U.bip?'install':'instHow')+'">설치</button><button class="btn sm ghost" data-act="instX" aria-label="닫기">✕</button></span></div>'}
+const installTip=()=>isStandalone()?'':'<div class="card" style="border-color:var(--pri)"><h3>홈 화면에 앱 설치하기</h3>'+(isIOS()?'<button class="btn" style="width:100%" data-act="iosG">홈 화면에 추가하기</button>':U.bip?'<button class="btn" style="width:100%" data-act="install">앱 설치하기 (한 번만 누르면 돼요)</button>':installSteps())+'</div>';
+function installBar(){if(isStandalone()||U.noInstall)return '';return '<div class="upd ib"><span>홈 화면에 앱으로 설치할 수 있어요</span><span style="display:flex;gap:6px"><button class="btn sm" data-act="'+(U.bip?'install':isIOS()?'iosG':'instHow')+'">설치</button><button class="btn sm ghost" data-act="instX" aria-label="닫기">✕</button></span></div>'}
+// 아이폰: '홈 화면에 추가'는 사파리 메뉴에서만 가능(애플 제한) → 공유 창 바로 열기 + 화살표 안내
+async function iosShare(){try{await navigator.share({title:'더밀착수학',url:location.origin+location.pathname})}catch(e){}}
+function iosGuide(){const chrome=/CriOS/i.test(navigator.userAgent),other=/FxiOS|NAVER|KAKAOTALK|Instagram|FBAN|DaumApps/i.test(navigator.userAgent);
+  const arrow='<svg viewBox="0 0 24 24" width="56" height="56" style="fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3v16M5 12l7 7 7-7"/></svg>';
+  return '<div class="iosg"><div class="iosc"><h3 style="margin:0 0 6px">홈 화면에 앱 추가하기</h3>'+
+  (other?'<p style="margin:0 0 10px">지금은 사파리가 아니에요. 오른쪽 아래 <b>⋯</b> 또는 <b>나침반</b>을 눌러 <b>Safari로 열기</b>를 먼저 해 주세요.</p>':'')+
+  (navigator.share&&!other?'<button class="btn" style="width:100%;height:52px;font-size:16px" data-act="iosShare">'+shareIco+'&nbsp; 공유 창 바로 열기</button><p class="sub" style="margin:8px 0 12px;text-align:center">열린 창을 위로 올려 <b>홈 화면에 추가</b>를 누르세요</p>':'')+
+  '<ol class="ist" style="margin:0"><li>'+(chrome?'오른쪽 위 공유 '+shareIco:'아래 주소창 왼쪽 <b>≡</b> 또는 가운데 공유 '+shareIco)+' 누르기</li><li>'+(chrome?'':'<b>공유</b> → ')+'목록을 올려 <b>홈 화면에 추가</b></li><li>오른쪽 위 <b>추가</b> → 홈 화면의 <b>밀착</b> 아이콘으로 열기</li></ol>'+
+  '<button class="btn ghost" style="width:100%;margin-top:12px" data-act="iosX">닫기</button></div>'+(chrome||other?'':'<div class="iosa">'+arrow+'</div>')+'</div>'}
 function instSheet(){return '<div class="sheetbg" data-act="close"><div class="sheet"><h3>홈 화면에 앱 설치하기</h3>'+installSteps()+'<p class="sub">설치하면 앱처럼 바로 열리고 로그인도 유지돼요.</p><button type="button" class="btn ghost" style="width:100%" data-act="close">닫기</button></div></div>'}
 const msgBox=()=>U.authMsg?'<div class="card" style="border-color:var(--acc)"><p style="margin:0;color:var(--acc);font-weight:700">'+esc(U.authMsg)+'</p></div>':'';
 
@@ -519,6 +530,7 @@ function render(){
     }
   }catch(err){console.error(err);html=authHeader('잠시 문제가 생겼어요','')+'<div class="body"><div class="card"><p>화면을 그리다 오류가 났어요. 새로고침해 주세요.</p><p class="sub">'+esc(err.message)+'</p><button class="btn" data-act="reload">새로고침</button></div></div>'}
   html+=updBar();
+  if(U.iosGuide&&isIOS()&&!isStandalone())html+=iosGuide();
   if(U.toast)html+='<div class="toast" role="status">'+esc(U.toast)+'</div>';
   const sameView=app.dataset.v===(U.screen+U.tab+U.chat+U.page+U.role+U.me);
   app.innerHTML=html;app.dataset.v=U.screen+U.tab+U.chat+U.page+U.role+U.me;
@@ -680,7 +692,7 @@ function pushHelp(){
 function pushCard(){
   const st0=pushState(ME.uid);const st=(st0==='on'&&U.pushAutoErr)?'default':st0;if(st==='off'||st==='on'||U.pushHide)return '';
   let inner;
-  if(st==='ios-install')inner='<p class="sub" style="margin:0">아이폰은 <b>홈 화면에 설치한 앱</b>에서만 알림을 받을 수 있어요. 공유 버튼 → 홈 화면에 추가 후, 설치된 앱에서 다시 열어 주세요.</p>';
+  if(st==='ios-install')inner='<p class="sub" style="margin:0 0 10px">아이폰은 <b>홈 화면에 설치한 앱</b>에서만 알림을 받을 수 있어요.</p><button class="btn" style="width:100%" data-act="iosG">홈 화면에 추가하기</button>';
   else if(st==='unsupported')inner='<p class="sub" style="margin:0">이 브라우저는 알림을 지원하지 않아요. '+(pushIOS()?'iOS 16.4 이상으로 업데이트해 주세요.':'삼성 인터넷 또는 크롬을 최신으로 업데이트해 주세요.')+'</p>';
   else if(st==='denied')inner=(/Android/i.test(navigator.userAgent)&&isStandalone())?'<p class="sub" style="margin:0">이 앱의 알림이 꺼져 있어요.<br>① 홈 화면의 <b>더밀착수학 아이콘을 길게 누르기</b> → <b>ⓘ 앱 정보</b><br>② <b>알림</b> 누르기 → <b>알림 허용</b> 켜기<br>③ 앱을 닫았다가 다시 열고 [알림 받기] 누르기</p><button class="btn" style="width:100%;margin-top:10px" data-act="pushOn">다시 시도</button>':'<p class="sub" style="margin:0">알림이 차단돼 있어요. 휴대폰 <b>설정 → 알림</b>(또는 브라우저 사이트 설정)에서 더밀착수학 알림을 허용해 주세요.</p>';
   else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+((U.pushHint||(/Android/i.test(navigator.userAgent)&&isSamsung()))?pushHelp():'')+'';
@@ -752,6 +764,9 @@ app.addEventListener('click',async e=>{
   if(a==='doUpdate'){if(U.update)U.update.postMessage('skip');return}
   if(a==='install'){if(!U.bip)return;const ev=U.bip;U.bip=null;ev.prompt();const r=await ev.userChoice.catch(()=>null);if(r&&r.outcome==='accepted')toast('설치됐어요! 홈 화면에서 열어 주세요');return render()}
   if(a==='instHow'){U.sheet='inst';return render()}
+  if(a==='iosG'){U.iosGuide=true;return render()}
+  if(a==='iosX'){U.iosGuide=false;return render()}
+  if(a==='iosShare'){iosShare();return}
   if(a==='instX'){U.noInstall=true;try{localStorage.setItem('tmm-noinst','1')}catch(e){}return render()}
   if(a==='pushOn'){if(U.pushBusy)return;U.pushBusy=true;U.pushErr='';U.pushHint=false;render();const hintT=setTimeout(()=>{if(U.pushBusy){U.pushHint=true;render()}},5000);try{await enablePush(db,ME.uid,U.role==='teacher'?['teacher']:ME.ths);clearTimeout(hintT);U.pushBusy=false;U.pushAutoErr='';U.pushHint=false;toast('알림이 켜졌어요')}catch(e){clearTimeout(hintT);U.pushBusy=false;U.pushErr=pushErrorText(e);U.pushHint=/permission|dismissed|denied/.test(String(e.message));render()}return render()}
   if(a==='pushHide'){U.pushHide=true;return render()}

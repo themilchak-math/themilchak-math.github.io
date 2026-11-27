@@ -15,6 +15,8 @@
   var ua=navigator.userAgent||'',url=location.href;
   var isAndroid=/Android/i.test(ua);
   if(/KAKAOTALK/i.test(ua)){
+    /* 아이폰: 사파리로 넘어가면 '홈 화면에 추가' 안내가 바로 뜨게 표시를 붙여요 */
+    if(/iPhone|iPad|iPod/i.test(ua)&&!/[?&]inst=1/.test(url))url+=(url.indexOf('?')<0?'?':'&')+'inst=1';
     location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(url);
     setTimeout(function(){window.__inapp='kakao';var o=document.getElementById('inapp');if(o)o.hidden=false},1500);
     return;
@@ -256,6 +258,10 @@ html.ios-pwa.short .send{padding-bottom:10px}
 /* 대화방: 아이폰이 실제로 그려 주는 높이(innerHeight)에 맞춰 입력칸이 잘리지 않게 */
 html.ios-pwa.chat-open:not(.kb) .phone{height:var(--in-h,100%)}
 html.ios-pwa.chat-open:not(.kb) .send{padding-bottom:10px}
+.iosg{position:fixed;inset:0;z-index:200;background:rgba(10,12,30,.62);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.iosc{background:var(--scr);color:var(--ink);border-radius:20px;padding:20px;max-width:380px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.iosa{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 70px);transform:translateX(-50%);animation:iosb 1s ease-in-out infinite}
+@keyframes iosb{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,10px)}}
 </style>
 <script>
 /* 아이폰 홈 화면 앱: 화면 실제 높이로 맞추기 */
