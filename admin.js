@@ -10,7 +10,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.6.8';
+const ADMIN_VERSION = '2.6.9';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -416,7 +416,10 @@ function pSchool() {
 const DAYS6 = ['월', '화', '수', '목', '금', '토'];
 const FIN_MAX = 20; // 기존 엑셀과 같은 한 달 최대 학생 줄 수
 const won = n => (n === '' || n == null) ? '' : Number(n).toLocaleString('ko-KR');
-const finSet = () => Object.assign({ meal: 8000, cap1: 6, cap2: 9 }, D.finSet || {});
+const finSet = () => Object.assign({ meal: 8000, cap1: 6, cap2: 9, sibPct: 10, longAmt: 40000 }, D.finSet || {});
+// 할인: 형제(정가의 %) + 장기수강(정액). 체크하면 할인 칸이 자동으로 채워져요 (직접 고쳐 써도 돼요)
+const isLong = r => r.lng != null ? !!r.lng : +r.disc === finSet().longAmt;
+const autoDisc = r => { const set = finSet(); const v = (r.sib ? Math.round((+r.price || 0) * set.sibPct / 100) : 0) + (isLong(r) ? set.longAmt : 0); r.disc = v ? v : ''; };
 const ymOf = d => d.slice(0, 7);
 const ymLabel = ym => ym.replace('-', '.');
 const daysIn = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate();
@@ -481,12 +484,13 @@ function pFin() {
   const studs = D.students.filter(s => !s.left).map(s => s.name);
   const rows = (m.rows || []).map((r, i) => {
     const c = calcRow(r, billMeals(m), set); const s = rowStu(r);
-    return '<tr><td>' + (i + 1) + '</td><td><b>' + esc(r.name || '') + '</b>' + (s && s.left ? ' <span class="sub">퇴원</span>' : !s ? ' <span class="sub">앱에 없음</span>' : '') + '</td>' +
+    return '<tr><td>' + (i + 1) + '</td><td><b>' + esc(r.name || '') + '</b>' + (s && !s.left && famSids(s.id).length > 1 ? ' <span class="chip" style="font-size:11px;padding:1px 6px" title="형제 재원">형제</span>' : '') + (s && s.left ? ' <span class="sub">퇴원</span>' : !s ? ' <span class="sub">앱에 없음</span>' : '') + '</td>' +
       '<td class="sub">' + esc(s ? (s.school || '') : (r.name ? '명부에 없음' : '')) + '</td><td class="sub">' + esc(s ? s.grade : '') + '</td>' +
       '<td><input id="' + P + i + '_course" data-fi="' + i + '" data-k="course" value="' + esc(r.course ?? '') + '" style="width:44px"></td>' +
       DAYS6.map((_, k) => '<td class="cen"><input type="checkbox" id="' + P + i + '_d' + k + '" data-fi="' + i + '" data-k="d" data-day="' + k + '"' + ((r.d || [])[k] ? ' checked' : '') + '></td>').join('') +
       '<td class="cen"><b>' + (r.name ? c.wk : '') + '</b></td>' +
       '<td><input id="' + P + i + '_price" data-fi="' + i + '" data-k="price" inputmode="numeric" value="' + esc(r.price ?? '') + '" style="width:80px;text-align:right"></td>' +
+      '<td class="cen"><input type="checkbox" data-fi="' + i + '" data-k="sib"' + (r.sib ? ' checked' : '') + ' title="형제 할인"></td><td class="cen"><input type="checkbox" data-fi="' + i + '" data-k="lng"' + (isLong(r) ? ' checked' : '') + ' title="장기수강 할인"></td>' +
       '<td><input id="' + P + i + '_disc" data-fi="' + i + '" data-k="disc" inputmode="numeric" value="' + esc(r.disc ?? '') + '" style="width:66px;text-align:right"></td>' +
       '<td class="r"><b>' + won(c.fee) + '</b></td>' +
       '<td><input id="' + P + i + '_extra" data-fi="' + i + '" data-k="extra" value="' + esc(r.extra || '') + '" style="width:120px"></td>' +
@@ -497,14 +501,14 @@ function pFin() {
   }).join('');
   const over = k => C.perDay[k] > set.cap1;
   const table = '<section class="card scroll"><h2>① 원비 · 수강 정보 <span class="sub">' + ymLabel(ym) + ' · 학생 ' + C.n + '명</span> ' + saveBadge() + '</h2>' +
-    '<table class="fin"><thead><tr><th>No</th><th>이름</th><th>학교</th><th>학년</th><th>Course</th>' + DAYS6.map(d => '<th class="cen">' + d + '</th>').join('') + '<th>주 횟수</th><th>정가</th><th>할인</th><th>원비 (교습소)</th><th>보충과목 (과외 별도)</th><th>교재</th><th>전월 식대 횟수<br><small class="sub">' + monL(prevYm(ym)) + '분</small></th><th>전월 식대 (별도)</th><th>학부모 총 납부액</th><th>메모</th><th></th></tr></thead><tbody>' +
-    (rows || '<tr><td colspan="23" class="empty">학생 줄이 없어요</td></tr>') +
-    '<tr class="tot"><td></td><td><b>합계</b></td><td colspan="3">' + C.n + '명</td>' + C.perDay.map((n, k) => '<td class="cen"' + (over(k) ? ' style="color:var(--bad);font-weight:700"' : '') + '>' + n + '</td>').join('') + '<td class="cen"><b>' + C.wk + '</b></td><td class="r">' + won(C.price) + '</td><td class="r">' + won(C.disc) + '</td><td class="r"><b>' + won(C.fee) + '</b></td><td></td><td></td><td class="cen">' + C.mealN + '</td><td class="r">' + won(C.meal) + '</td><td class="r"><b>' + won(C.total) + '</b></td><td colspan="2"></td></tr>' +
+    '<table class="fin"><thead><tr><th>No</th><th>이름</th><th>학교</th><th>학년</th><th>Course</th>' + DAYS6.map(d => '<th class="cen">' + d + '</th>').join('') + '<th>주 횟수</th><th>정가</th><th class="cen">형제<br><small class="sub">' + finSet().sibPct + '%</small></th><th class="cen">장기<br><small class="sub">' + (finSet().longAmt / 10000) + '만</small></th><th>할인</th><th>원비 (교습소)</th><th>보충과목 (과외 별도)</th><th>교재</th><th>전월 식대 횟수<br><small class="sub">' + monL(prevYm(ym)) + '분</small></th><th>전월 식대 (별도)</th><th>학부모 총 납부액</th><th>메모</th><th></th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="25" class="empty">학생 줄이 없어요</td></tr>') +
+    '<tr class="tot"><td></td><td><b>합계</b></td><td colspan="3">' + C.n + '명</td>' + C.perDay.map((n, k) => '<td class="cen"' + (over(k) ? ' style="color:var(--bad);font-weight:700"' : '') + '>' + n + '</td>').join('') + '<td class="cen"><b>' + C.wk + '</b></td><td class="r">' + won(C.price) + '</td><td class="cen">' + (m.rows || []).filter(r => r.sib).length + '</td><td class="cen">' + (m.rows || []).filter(isLong).length + '</td><td class="r">' + won(C.disc) + '</td><td class="r"><b>' + won(C.fee) + '</b></td><td></td><td></td><td class="cen">' + C.mealN + '</td><td class="r">' + won(C.meal) + '</td><td class="r"><b>' + won(C.total) + '</b></td><td colspan="2"></td></tr>' +
     '<tr class="sub"><td></td><td>1층 정원</td><td colspan="3">하루 최대 ' + set.cap1 + '명</td>' + DAYS6.map((_, k) => '<td class="cen">' + (over(k) ? '<b style="color:var(--bad)">초과</b>' : set.cap1 - C.perDay[k]) + '</td>').join('') + '<td colspan="12"></td></tr>' +
     '</tbody></table><div class="bar" style="margin-top:10px"><span class="sub">학생은 [학생명부]의 첫 등록일이 속한 달부터 정산에 자동으로 들어와요 · 여기서는 Course·요일·원비·보충과목·교재·메모만 입력 · 퇴원생 줄만 ✕로 뺄 수 있어요</span><span style="flex:1"></span><button class="btn sm ghost danger" data-a="finDelMonth">이 달 삭제</button></div></section>';
   const wkCap1 = set.cap1 * 6, wkCap2 = set.cap2 * 6;
   const sumCard = '<div class="grid2"><section class="card"><h2>② 이번 달 요약</h2><table><tbody>' +
-    [['교습소 원비 수입', C.fee], ['장기수강 할인 합계', C.disc], ['식대 청구 (' + monL(prevYm(ym)) + '분 · 별도 사업자)', C.meal], ['학부모 총 납부액 (원비+전월 식대)', C.total], ['원장 · 부원장 식대 (' + monL(prevYm(ym)) + '분)', C.staff]].map(([l, v]) => '<tr><td>' + l + '</td><td class="r"><b>' + won(v) + '원</b></td></tr>').join('') + '</tbody></table></section>' +
+    [['교습소 원비 수입', C.fee], ['할인 합계 (형제·장기수강)', C.disc], ['식대 청구 (' + monL(prevYm(ym)) + '분 · 별도 사업자)', C.meal], ['학부모 총 납부액 (원비+전월 식대)', C.total], ['원장 · 부원장 식대 (' + monL(prevYm(ym)) + '분)', C.staff]].map(([l, v]) => '<tr><td>' + l + '</td><td class="r"><b>' + won(v) + '원</b></td></tr>').join('') + '</tbody></table></section>' +
     '<section class="card"><h2>③ 주간 정원 <span class="sub">Unit = 학생 1명이 하루 등원</span></h2><table><tbody><tr><td>1층 교습소</td><td class="r">' + wkCap1 + ' Unit</td><td class="sub">평일 ' + set.cap1 * 5 + ' / 토 ' + set.cap1 + '</td></tr><tr><td>2층 공부방</td><td class="r">' + wkCap2 + ' Unit</td><td class="sub">평일 ' + set.cap2 * 5 + ' / 토 ' + set.cap2 + '</td></tr><tr><td>합계</td><td class="r">' + (wkCap1 + wkCap2) + ' Unit</td><td></td></tr><tr><td>1층 현재 주간 등원</td><td class="r"><b>' + C.wk + ' Unit</b></td><td class="sub">학생 ' + C.n + '명</td></tr><tr><td>1층 남은 자리 (주간)</td><td class="r"><b' + (wkCap1 - C.wk < 0 ? ' style="color:var(--bad)"' : '') + '>' + (wkCap1 - C.wk) + ' Unit</b></td><td></td></tr></tbody></table></section></div>';
   return head + table + sumCard + finMeals(m, set) + finSummary() + finSettings(set);
 }
@@ -525,12 +529,12 @@ function finSummary() {
   const ms = finMonths().slice().reverse(); if (!ms.length) return '';
   const set = finSet(); const cs = ms.map(ym => [ym, calcMonth(D.fin[ym], set)]);
   const t = k => cs.reduce((a, [, c]) => a + c[k], 0);
-  return '<section class="card"><h2>월별 요약</h2><table><thead><tr><th>월</th><th class="r">학생 수</th><th class="r">교습소 원비 수입</th><th class="r">장기수강 할인</th><th class="r">식대 청구 (전월분)</th><th class="r">학부모 총 납부액</th><th class="r">원장단 식대 (전월분)</th></tr></thead><tbody>' +
+  return '<section class="card"><h2>월별 요약</h2><table><thead><tr><th>월</th><th class="r">학생 수</th><th class="r">교습소 원비 수입</th><th class="r">할인</th><th class="r">식대 청구 (전월분)</th><th class="r">학부모 총 납부액</th><th class="r">원장단 식대 (전월분)</th></tr></thead><tbody>' +
     cs.map(([ym, c]) => '<tr><td><a href="#" data-a="finYm" data-v="' + ym + '">' + ymLabel(ym) + '</a></td><td class="r">' + c.n + '</td><td class="r">' + won(c.fee) + '</td><td class="r">' + won(c.disc) + '</td><td class="r">' + won(c.meal) + '</td><td class="r">' + won(c.total) + '</td><td class="r">' + won(c.staff) + '</td></tr>').join('') +
     '<tr class="tot"><td><b>합계</b></td><td></td><td class="r"><b>' + won(t('fee')) + '</b></td><td class="r"><b>' + won(t('disc')) + '</b></td><td class="r"><b>' + won(t('meal')) + '</b></td><td class="r"><b>' + won(t('total')) + '</b></td><td class="r"><b>' + won(t('staff')) + '</b></td></tr></tbody></table></section>';
 }
 function finSettings(set) {
-  return '<section class="card"><h2>설정</h2><form id="finSetF" class="form"><div class="row2" style="grid-template-columns:repeat(3,minmax(0,1fr))"><label>식대 단가 (1회, 원)<input id="fsMeal" inputmode="numeric" value="' + set.meal + '"></label><label>1층 교습소 하루 최대 인원<input id="fsCap1" inputmode="numeric" value="' + set.cap1 + '"></label><label>2층 공부방 하루 최대 인원<input id="fsCap2" inputmode="numeric" value="' + set.cap2 + '"></label></div><button class="btn" type="submit">설정 저장</button><p class="sub">식대 단가를 바꾸면 모든 달의 식대 금액이 새 단가로 다시 계산돼요 (기존 엑셀과 같은 방식).</p></form></section>';
+  return '<section class="card"><h2>설정</h2><form id="finSetF" class="form"><div class="row2" style="grid-template-columns:repeat(3,minmax(0,1fr))"><label>식대 단가 (1회, 원)<input id="fsMeal" inputmode="numeric" value="' + set.meal + '"></label><label>1층 교습소 하루 최대 인원<input id="fsCap1" inputmode="numeric" value="' + set.cap1 + '"></label><label>2층 공부방 하루 최대 인원<input id="fsCap2" inputmode="numeric" value="' + set.cap2 + '"></label></div><div class="row2"><label>형제 할인 (정가의 %)<input id="fsSib" inputmode="numeric" value="' + set.sibPct + '"></label><label>장기수강 할인 (원)<input id="fsLong" inputmode="numeric" value="' + set.longAmt + '"></label></div><button class="btn" type="submit">설정 저장</button><p class="sub">식대 단가를 바꾸면 모든 달의 식대 금액이 새 단가로 다시 계산돼요 (기존 엑셀과 같은 방식).</p></form></section>';
 }
 function finNewMonth() {
   const ms = finMonths(); let ym;
@@ -1095,7 +1099,7 @@ app.addEventListener('submit', async e => {
       if (noti) { const t = isAbs ? '[출결 알림] ' + nm + ' 학생이 ' + fmtD(d) + ' 결석으로 처리되었습니다.' : '[등·하원 알림] ' + nm + ' 학생 ' + fmtD(d) + ' 등원 ' + at + (out ? ' · 하원 ' + out : '') + (out ? (sm => sm ? '\n' + sm : '')(lessonSummary(D.logs.filter(l => l.sid === sid && l.date === d && l.sh))) : ''); push([sid + '|parent'], t); await msg(sid + '|parent', sid, 's', t).catch(e => console.warn(e)); }
       V.modal = null; return toast(nm + ' ' + fmtD(d) + ' 출결을 저장했어요' + (noti ? ' · 학부모 알림 발송' : ''));
     }
-    if (f === 'finSetF') { const meal = +digits(g('fsMeal')), cap1 = +digits(g('fsCap1')), cap2 = +digits(g('fsCap2')); if (!meal || !cap1) return toast('숫자를 확인해 주세요'); await setDoc(doc(db, 'fin', 'settings'), { meal, cap1, cap2: cap2 || 0 }); return toast('설정을 저장했어요'); }
+    if (f === 'finSetF') { const meal = +digits(g('fsMeal')), cap1 = +digits(g('fsCap1')), cap2 = +digits(g('fsCap2')); if (!meal || !cap1) return toast('숫자를 확인해 주세요'); await setDoc(doc(db, 'fin', 'settings'), { meal, cap1, cap2: cap2 || 0, sibPct: +digits(g('fsSib')) || 10, longAmt: +digits(g('fsLong')) || 40000 }); return toast('설정을 저장했어요'); }
     if (f === 'rosterF') {
       const b = writeBatch(db); let n = 0, auto = false;
       for (const s of D.students) { const P = 'rs_' + s.id + '_'; const el = id => document.getElementById(P + id); if (!el('birth')) continue; const si = D.sinfo[s.id] || {};
@@ -1181,7 +1185,8 @@ render();
 function finField(t) {
   const m = finCur(); if (!m) return; const r = m.rows[+t.dataset.fi]; if (!r) return; const k = t.dataset.k;
   if (k === 'd') { r.d = r.d || [0, 0, 0, 0, 0, 0]; r.d[+t.dataset.day] = t.checked ? 1 : 0; }
-  else if (k === 'price' || k === 'disc') r[k] = numOr(digits(t.value) === '' ? '' : digits(t.value));
+  else if (k === 'sib' || k === 'lng') { r.lng = k === 'lng' ? t.checked : isLong(r); if (k === 'sib') r.sib = t.checked; autoDisc(r); }
+  else if (k === 'price' || k === 'disc') { const wasLong = isLong(r); r[k] = numOr(digits(t.value) === '' ? '' : digits(t.value)); if (k === 'price' && (r.sib || wasLong)) { r.lng = wasLong; autoDisc(r); } if (k === 'disc') { r.sib = false; r.lng = false; } }
   else if (k === 'name') { const nv = t.value.trim(); if (nv !== r.name) { if (r.name && m.meals && m.meals[r.name]) { if (nv) m.meals[nv] = m.meals[r.name]; delete m.meals[r.name]; } r.name = nv; const s = D.students.find(x => x.name === nv); if (s) r.sid = s.id; else delete r.sid; } }
   else r[k] = t.value;
   finTouch();
