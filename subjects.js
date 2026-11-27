@@ -30,18 +30,24 @@ const KOR = {
  '공통국어1': n(i => i + '단원', 5), '공통국어2': n(i => i + '단원', 5), '화법과 언어': n(i => i + '단원', 4), '독서와 작문': n(i => i + '단원', 4), '문학': n(i => i + '단원', 4),
  '국어 문법': ['음운', '단어', '문장', '담화', '국어의 역사'], '국어 독해': ['문학', '비문학(독서)', '어휘']
 };
-export const SUBJS = ['수학', '과학', '영어', '국어'];
-export const BY_SUBJ = { 수학: MATH, 과학: SCI, 영어: ENG, 국어: KOR };
-export const CUR = Object.assign({}, MATH, SCI, ENG, KOR);
+// 특별활동: 영화 관람·소풍처럼 수업 대신 한 날. 진도·비중 없이 활동 이름만 기록해요
+export const ACT = '특별활동';
+export const ACT_UNITS = ['영화 관람', '소풍·체험학습', '보드게임·레크리에이션', '시험 끝 파티', '기타 활동'];
+const ACTS = { [ACT]: ACT_UNITS };
+export const SUBJS = ['수학', '과학', '영어', '국어', ACT];
+export const BY_SUBJ = { 수학: MATH, 과학: SCI, 영어: ENG, 국어: KOR, [ACT]: ACTS };
+export const CUR = Object.assign({}, MATH, SCI, ENG, KOR, ACTS);
 const OF = {}; SUBJS.forEach(sj => Object.keys(BY_SUBJ[sj]).forEach(c => { OF[c] = sj; }));
 // 기록의 과목: 새 기록은 subj 필드, 예전 기록(수학만 있던 때)은 과정 이름으로 판단
 export const subjOfCourse = c => OF[c] || '수학';
 export const subjOf = log => (log && log.subj) || subjOfCourse(log && log.course);
+export const isAct = log => subjOf(log) === ACT;
 export const GROUPS = {
  수학: [['중학교', ['중1-1', '중1-2', '중2-1', '중2-2', '중3-1', '중3-2']], ['고등학교', ['공통수학1', '공통수학2', '대수', '미적분Ⅰ', '확률과 통계']]],
  과학: [['중학교', ['중1 과학', '중2 과학', '중3 과학']], ['고등학교', ['통합과학1', '통합과학2', '물리학', '화학', '생명과학', '지구과학']]],
  영어: [['중학교', ['중1 영어', '중2 영어', '중3 영어']], ['고등학교', ['공통영어1', '공통영어2', '영어Ⅰ', '영어Ⅱ', '영어 독해와 작문']], ['영역별', ['영어 문법', '영어 독해·어휘']]],
- 국어: [['중학교', ['중1 국어', '중2 국어', '중3 국어']], ['고등학교', ['공통국어1', '공통국어2', '화법과 언어', '독서와 작문', '문학']], ['영역별', ['국어 문법', '국어 독해']]]
+ 국어: [['중학교', ['중1 국어', '중2 국어', '중3 국어']], ['고등학교', ['공통국어1', '공통국어2', '화법과 언어', '독서와 작문', '문학']], ['영역별', ['국어 문법', '국어 독해']]],
+ [ACT]: [['활동', [ACT]]]
 };
 const DEF = {
  수학: { 초4: '중1-1', 초5: '중1-1', 초6: '중1-1', 중1: '중1-2', 중2: '중2-2', 중3: '중3-2', 고1: '공통수학2', 고2: '대수', 고3: '미적분Ⅰ' },
@@ -49,20 +55,22 @@ const DEF = {
  영어: { 초4: '중1 영어', 초5: '중1 영어', 초6: '중1 영어', 중1: '중1 영어', 중2: '중2 영어', 중3: '중3 영어', 고1: '공통영어1', 고2: '영어Ⅰ', 고3: '영어Ⅱ' },
  국어: { 초4: '중1 국어', 초5: '중1 국어', 초6: '중1 국어', 중1: '중1 국어', 중2: '중2 국어', 중3: '중3 국어', 고1: '공통국어1', 고2: '문학', 고3: '독서와 작문' }
 };
-export const defCourse = (grade, subj) => (DEF[subj] || DEF.수학)[grade] || Object.keys(BY_SUBJ[subj] || MATH)[0];
+export const defCourse = (grade, subj) => subj === ACT ? ACT : (DEF[subj] || DEF.수학)[grade] || Object.keys(BY_SUBJ[subj] || MATH)[0];
 // 화면 표시용: 과정 이름에 과목이 안 들어 있으면 앞에 붙여요 (예: 수학 · 중2-2)
-export const courseLabel = (c, sj) => { sj = sj || subjOfCourse(c); return String(c).includes(sj) ? c : sj + ' · ' + c; };
+export const courseLabel = (c, sj) => { sj = sj || subjOfCourse(c); if (sj === ACT) return ACT; return String(c).includes(sj) ? c : sj + ' · ' + c; };
 
 // 하원 알림용: 그날 공유된 수업 기록을 학부모님이 읽기 쉬운 문장으로
 const focusOf = c => c >= 70 ? '개념 설명을 중심으로' : c <= 30 ? '문제풀이를 중심으로' : '개념 정리와 문제풀이를 함께';
 const unitOf = l => (l.unit ? "'" + l.unit + "' 단원" : '수업');
+const actOf = l => (l.unit ? "'" + l.unit + "'" : '특별활동');
 const nameOf = l => { const sj = subjOf(l); const c = String(l.course || ''); return c && c !== sj ? (c.includes(sj) ? c : sj + ' ' + c) : sj; };
 export function lessonSummary(logs) {
   const ls = (logs || []).filter(l => l && l.sh !== false).sort((a, b) => (a.ts || 0) - (b.ts || 0)); if (!ls.length) return '';
   const pc = l => (l.c == null ? 50 : +l.c);
   let t;
-  if (ls.length === 1) { const l = ls[0]; t = '오늘은 ' + nameOf(l) + ' ' + (l.unit ? unitOf(l) + '을 학습했습니다. ' : '수업을 했습니다. ') + focusOf(pc(l)) + ' 진행했어요 (개념 ' + pc(l) + '% · 문제풀이 ' + (100 - pc(l)) + '%).'; }
-  else t = '오늘은 ' + ls.length + '가지를 학습했습니다.\n' + ls.map(l => '· ' + nameOf(l) + (l.unit ? ' ' + unitOf(l) : '') + (l.w ? ' (수업의 ' + l.w + '%)' : '') + ' — ' + focusOf(pc(l)).replace(/[을를] 중심으로$/, ' 위주').replace('개념 정리와 문제풀이를 함께', '개념·문제풀이 고르게')).join('\n');
+  if (ls.length === 1 && isAct(ls[0])) t = '오늘은 수업 대신 특별활동(' + actOf(ls[0]) + ')을 함께했어요. 즐거운 시간 보냈습니다 😊';
+  else if (ls.length === 1) { const l = ls[0]; t = '오늘은 ' + nameOf(l) + ' ' + (l.unit ? unitOf(l) + '을 학습했습니다. ' : '수업을 했습니다. ') + focusOf(pc(l)) + ' 진행했어요 (개념 ' + pc(l) + '% · 문제풀이 ' + (100 - pc(l)) + '%).'; }
+  else t = '오늘은 ' + ls.length + '가지를 학습했습니다.\n' + ls.map(l => isAct(l) ? '· 특별활동 — ' + (l.unit || '활동') : '· ' + nameOf(l) + (l.unit ? ' ' + unitOf(l) : '') + (l.w ? ' (수업의 ' + l.w + '%)' : '') + ' — ' + focusOf(pc(l)).replace(/[을를] 중심으로$/, ' 위주').replace('개념 정리와 문제풀이를 함께', '개념·문제풀이 고르게')).join('\n');
   const cm = ls.map(l => (l.cm || '').trim()).filter(Boolean).join(' / ');
-  return t + (cm ? '\n' + (ls.some(l => !l.unit) ? '오늘 수업 내용: ' : '선생님 메모: ') + cm : '');
+  return t + (cm ? '\n' + (ls.some(l => !l.unit) ? '오늘 한 내용: ' : '선생님 메모: ') + cm : '');
 }

@@ -3,12 +3,12 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } from './subjects.js';
+import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, isAct } from './subjects.js';
 import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.1.6';
+const APP_VERSION = '2.1.7';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -144,10 +144,10 @@ function noticeList(limit){
 const sortLogs=l=>[...l].sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
 const lastOf=(sid,course,unit)=>sortLogs(D.logs.filter(l=>l.sid===sid&&l.course===course&&l.unit===unit)).pop();
 const unitsOf=(sid,course)=>{const base=CUR[course]||[];const extra=[...new Set(D.logs.filter(l=>l.sid===sid&&l.course===course&&!base.includes(l.unit)).map(l=>l.unit).filter(Boolean))];return base.concat(extra)};
-const latest=sid=>sortLogs(D.logs.filter(l=>l.sid===sid)).pop();
+const latest=sid=>sortLogs(D.logs.filter(l=>l.sid===sid&&!isAct(l))).pop();
 const latestIn=(sid,sj)=>sortLogs(D.logs.filter(l=>l.sid===sid&&subjOf(l)===sj)).pop();
 const curCourse=(s,sj)=>{const l=latestIn(s.id,sj);return l?l.course:(sj==='수학'?s.course:defCourse(s.grade,sj))};
-const subjsOf=s=>{const has=new Set(D.logs.filter(l=>l.sid===s.id).map(subjOf));return SUBJS.filter(x=>has.has(x)).length?SUBJS.filter(x=>has.has(x)):['수학']};
+const subjsOf=s=>{const has=new Set(D.logs.filter(l=>l.sid===s.id&&!isAct(l)).map(subjOf));return SUBJS.filter(x=>has.has(x)).length?SUBJS.filter(x=>has.has(x)):['수학']};
 const nowCourse=s=>{const l=latest(s.id);return l?l.course:s.course};
 const nowLabel=s=>{const l=latest(s.id);return l?courseLabel(l.course,subjOf(l)):s.course};
 const curUnit=s=>{const l=latest(s.id);return l?subjOf(l)+' '+(l.unit||'(메모 기록)'):'기록 없음'};
@@ -172,7 +172,7 @@ function progressCard(s){
 
 const splitBar=c=>'<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--soft)"><i style="width:'+c+'%;background:var(--pri)"></i><i style="width:'+(100-c)+'%;background:var(--acc)"></i></div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:3px"><span style="color:var(--pri);font-weight:700">개념 '+c+'%</span><span style="color:var(--acc);font-weight:700">문제풀이 '+(100-c)+'%</span></div>';
 function logBody(x){
-  return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><b>'+fmtD(x.date)+' · '+esc(x.unit||subjOf(x)+' (메모 참고)')+'</b><span style="display:flex;gap:4px">'+(x.w&&x.w<100?'<span class="chip c-pri">그날 수업의 '+x.w+'%</span>':'')+'<span class="chip">'+esc(courseLabel(x.course,subjOf(x)))+'</span></span></div><div style="margin-top:8px">'+splitBar(ratioOf(x))+'</div>'+(x.cm?'<p class="sub" style="margin-top:6px">원장님 메모: '+esc(x.cm)+'</p>':'');
+  return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><b>'+fmtD(x.date)+' · '+esc(x.unit||subjOf(x)+' (메모 참고)')+'</b><span style="display:flex;gap:4px">'+(x.w&&x.w<100?'<span class="chip c-pri">그날 수업의 '+x.w+'%</span>':'')+'<span class="chip">'+esc(courseLabel(x.course,subjOf(x)))+'</span></span></div>'+(isAct(x)?'':'<div style="margin-top:8px">'+splitBar(ratioOf(x))+'</div>')+(x.cm?'<p class="sub" style="margin-top:6px">원장님 메모: '+esc(x.cm)+'</p>':'');
 }
 
 function logList(sid,onlyShared){
@@ -403,10 +403,10 @@ function sheetHtml(){
     '<div class="f"><span>학생 <small class="sub" style="font-weight:400">오늘 등원한 학생</small></span><div class="pills" style="margin:0">'+D.students.filter(x=>x.id===f.sid||isIn((D.att[curDay()]||{})[x.id])||D.logs.some(l=>l.sid===x.id&&l.date===curDay())).map(x=>'<button type="button" data-act="lfS" data-v="'+x.id+'" class="'+(x.id===f.sid?'on':'')+'">'+esc(x.name)+'</button>').join('')+'</div></div>'+
     (()=>{const its=f.items||[];const lab=it=>{const u=it.unit==='__x'?(it.ux||'직접 입력'):it.unit==='__none'?'단원 없음':it.unit;return it.subj+(u?' · '+u:'')};return '<div class="f"><span>오늘 한 공부 <small class="sub" style="font-weight:400">단원·과목을 여러 개 기록할 수 있어요</small></span><div class="pills" style="margin:0;flex-wrap:wrap;overflow:visible">'+its.map((it,k)=>'<button type="button" data-act="lfItem" data-v="'+k+'" class="'+(k===(f.idx||0)?'on':'')+'">'+(k+1)+'. '+esc(lab(it))+(its.length>1?' · '+(it.w||0)+'%':'')+'</button>').join('')+'<button type="button" data-act="lfAdd">+ 단원·과목 추가</button></div>'+(its.length>1?'<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;margin-top:8px">'+its.map((it,k)=>'<i style="width:'+(it.w||0)+'%;background:'+['#2b44ff','#f2522e','#0f8f47','#b86e00','#7a3cff'][k%5]+'"></i>').join('')+'</div><div class="sub" style="font-size:12px;margin-top:3px">오늘 수업 비중 합계 '+its.reduce((a,it)=>a+(+it.w||0),0)+'%</div>':'')+(its.length>1?'<button type="button" class="btn sm ghost" style="margin-top:6px" data-act="lfDelItem">'+((f.idx||0)+1)+'번 항목 빼기</button>':'')+'</div>'})()+
     '<div class="f"><span>과목 <small class="sub" style="font-weight:400">'+((f.items||[]).length>1?((f.idx||0)+1)+'번 항목의 과목':'오늘 수업한 과목')+'</small></span><div class="pills" style="margin:0">'+SUBJS.map(x=>'<button type="button" data-act="lfSj" data-v="'+x+'" class="'+(x===f.subj?'on':'')+'">'+x+'</button>').join('')+'</div></div>'+
-    '<label class="f"><span>① 진도 과정 <small class="sub" style="font-weight:400">'+esc(s.grade)+' 학생</small></span><select id="lfCourse">'+GROUPS[f.subj].map(([g,cs])=>'<optgroup label="'+g+'">'+cs.map(c=>'<option'+(c===f.course?' selected':'')+'>'+c+'</option>').join('')+'</optgroup>').join('')+'</select></label>'+
-    '<div class="f"><span>② 단원</span><div class="ck">'+us.map(u=>{const l=lastOf(f.sid,f.course,u);return '<button type="button" class="uc'+(f.unit===u?' on':'')+'" data-act="lfU" data-v="'+esc(u)+'">'+(l?'• ':'')+esc(u)+'</button>'}).join('')+'<button type="button" class="uc'+(f.unit==='__x'?' on':'')+'" data-act="lfU" data-v="__x">+ 직접 입력</button><button type="button" class="uc'+(f.unit==='__none'?' on':'')+'" data-act="lfU" data-v="__none">단원 없이 (메모 필수)</button></div>'+(f.unit==='__none'?'<p class="sub" style="margin:6px 0 0;color:var(--acc)">시험 대비처럼 여러 단원을 풀었다면 아래 메모에 오늘 한 내용을 꼭 적어 주세요.</p>':'')+(f.unit==='__x'?'<input id="lfUx" style="margin-top:8px" placeholder="단원명 입력" value="'+esc(f.ux||'')+'">':'')+'</div>'+
+    (f.subj===ACT?'':'<label class="f"><span>① 진도 과정 <small class="sub" style="font-weight:400">'+esc(s.grade)+' 학생</small></span><select id="lfCourse">'+GROUPS[f.subj].map(([g,cs])=>'<optgroup label="'+g+'">'+cs.map(c=>'<option'+(c===f.course?' selected':'')+'>'+c+'</option>').join('')+'</optgroup>').join('')+'</select></label>')+
+    '<div class="f"><span>'+(f.subj===ACT?'오늘 한 활동':'② 단원')+'</span><div class="ck">'+us.map(u=>{const l=lastOf(f.sid,f.course,u);return '<button type="button" class="uc'+(f.unit===u?' on':'')+'" data-act="lfU" data-v="'+esc(u)+'">'+(l?'• ':'')+esc(u)+'</button>'}).join('')+'<button type="button" class="uc'+(f.unit==='__x'?' on':'')+'" data-act="lfU" data-v="__x">+ 직접 입력</button><button type="button" class="uc'+(f.unit==='__none'?' on':'')+'" data-act="lfU" data-v="__none">단원 없이 (메모 필수)</button></div>'+(f.unit==='__none'?'<p class="sub" style="margin:6px 0 0;color:var(--acc)">시험 대비처럼 여러 단원을 풀었다면 아래 메모에 오늘 한 내용을 꼭 적어 주세요.</p>':'')+(f.unit==='__x'?'<input id="lfUx" style="margin-top:8px" placeholder="단원명 입력" value="'+esc(f.ux||'')+'">':'')+'</div>'+
     ((f.items||[]).length>1?'<div class="f"><span>③ 오늘 전체 수업 중 이 항목 비중 <small class="sub" style="font-weight:400">모든 항목 합 100%</small></span>'+'<div class="pg">'+[10,20,30,40,50,60,70,80,90].map(v=>'<button type="button" data-act="lfW" data-v="'+v+'" class="'+(f.w===v?'on':'')+'">'+v+'</button>').join('')+'</div></div>':'')+
-    (f.unit?'<div class="f"><span>'+((f.items||[]).length>1?'④':'③')+' 개념·문제풀이 비중 <small class="sub" style="font-weight:400">개념을 고르면 문제풀이는 자동</small></span>'+chips('lfC',f.c)+(f.c!=null?'<div style="margin-top:8px">'+splitBar(f.c)+'</div>':'')+'</div>':'<p class="sub" style="margin:0 0 12px">단원을 고르면 오늘 개념·문제풀이 비중을 고를 수 있어요.</p>')+
+    (f.unit&&f.subj!==ACT?'<div class="f"><span>'+((f.items||[]).length>1?'④':'③')+' 개념·문제풀이 비중 <small class="sub" style="font-weight:400">개념을 고르면 문제풀이는 자동</small></span>'+chips('lfC',f.c)+(f.c!=null?'<div style="margin-top:8px">'+splitBar(f.c)+'</div>':'')+'</div>':f.subj===ACT?'':'<p class="sub" style="margin:0 0 12px">단원을 고르면 오늘 개념·문제풀이 비중을 고를 수 있어요.</p>')+
     (f.showCm?'<label class="f"><span>특별 메모 '+((f.items||[]).some(it=>it.unit==='__none')?'<b style="color:var(--acc)">(필수)</b>':'(선택)')+'</span><textarea id="lgM" placeholder="결석 보충, 컨디션, 시험 대비 등 (단원 없이 기록하면 필수)">'+esc(f.cm||'')+'</textarea></label>':'<button type="button" class="btn sm ghost" style="margin-bottom:12px" data-act="lfCm">+ 특별한 일이 있으면 메모 추가</button>')+
     '<label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="lgSh" '+(f.sh?'checked':'')+'>학부모·학생에게 공유</label>';
   }
@@ -943,7 +943,7 @@ app.addEventListener('submit',async e=>{
     if(items.some(it=>it.none)&&!(f.cm||'').trim()){f.showCm=true;render();return toast('단원 없이 기록하려면 메모에 오늘 한 내용을 꼭 적어 주세요')}
     const sid=f.sid;const s=stu(sid);const r=(D.att[LD]||{})[sid];const open=r&&r.st!=='결석'&&!r.out&&LD===off(0);
     const b=writeBatch(db);const ts=now();
-    items.forEach((it,k)=>{const c=it.c==null?50:it.c;b.set(doc(collection(db,'logs')),{sid,date:LD,subj:it.subj,course:it.course,unit:it.unit,c,p:100-c,w:items.length>1?(+it.w||0):100,cm:k===0?(f.cm||'').trim():'',sh:f.sh,ts:ts+k})});
+    items.forEach((it,k)=>{const c=it.subj===ACT?null:(it.c==null?50:it.c);b.set(doc(collection(db,'logs')),{sid,date:LD,subj:it.subj,course:it.course,unit:it.unit,c,p:c==null?null:100-c,w:items.length>1?(+it.w||0):100,cm:k===0?(f.cm||'').trim():'',sh:f.sh,ts:ts+k})});
     const math=items.filter(it=>it.subj==='수학').pop();if(math&&s.course!==math.course)b.update(doc(db,'students',sid),{course:math.course});
     if(r)b.update(doc(db,'att',LD+'_'+sid),{logged:true});
     if(open)b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.',at:stamp(),ts:now(),r:false});

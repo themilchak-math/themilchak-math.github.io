@@ -3,12 +3,12 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
-import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } from './subjects.js';
+import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, ACT_UNITS, isAct } from './subjects.js';
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.5.5';
+const ADMIN_VERSION = '2.5.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -65,7 +65,7 @@ const mLabel = m => { const s = stu(m.sid); return (s ? s.name : (m.name || ''))
 const memberOf = (sid, rel) => D.members.find(m => m.sid === sid && m.rel === rel);
 const sortLogs = l => [...l].sort((a, b) => (a.date + (a.ts || 0)) < (b.date + (b.ts || 0)) ? -1 : 1);
 const lastOf = (sid, course, unit) => sortLogs(D.logs.filter(l => l.sid === sid && l.course === course && l.unit === unit)).pop();
-const latest = sid => sortLogs(D.logs.filter(l => l.sid === sid)).pop();
+const latest = sid => sortLogs(D.logs.filter(l => l.sid === sid && !isAct(l))).pop();
 const latestIn = (sid, sj) => sortLogs(D.logs.filter(l => l.sid === sid && subjOf(l) === sj)).pop();
 const courseOpts = (sj, cur) => GROUPS[sj].map(([g, cs]) => '<optgroup label="' + g + '">' + cs.map(c => opt(c, cur)).join('') + '</optgroup>').join('');
 const unitsOf = (sid, course) => { const base = CUR[course] || []; const extra = [...new Set(D.logs.filter(l => l.sid === sid && l.course === course && !base.includes(l.unit)).map(l => l.unit).filter(Boolean))]; return base.concat(extra); };
@@ -340,8 +340,8 @@ function pLog() {
         '<td><select id="lc_' + key + '" data-sid="' + key + '" class="lc">' + courseOpts(d.subj, d.course) + '</select></td>' +
         '<td><select id="lu_' + key + '" data-sid="' + key + '" class="lu">' + unitsOf(s.id, d.course).map(u => { const x = lastOf(s.id, d.course, u); return opt(u, d.unit, (x ? '• ' : '') + u); }).join('') + opt('', null, '단원 없이 (메모 필수)') + '</select></td>' +
         '<td>' + (nK > 1 ? '<select id="lw_' + key + '" data-sid="' + key + '" class="lw" style="min-width:76px">' + [10, 20, 30, 40, 50, 60, 70, 80, 90].map(v => opt(String(v), String(wDef), v + '%')).join('') + '</select>' : '<span class="sub">100%</span>') + '</td>' +
-        '<td><select id="lpc_' + key + '">' + PCT.map(v => opt(String(v), String(d.c), v + '%')).join('') + '</select></td>' +
-        '<td><select id="lpp_' + key + '">' + PCT.map(v => opt(String(v), String(d.pp), v + '%')).join('') + '</select></td>' +
+        '<td><select id="lpc_' + key + '"' + (d.subj === ACT ? ' disabled' : '') + '>' + PCT.map(v => opt(String(v), String(d.c), v + '%')).join('') + '</select></td>' +
+        '<td><select id="lpp_' + key + '"' + (d.subj === ACT ? ' disabled' : '') + '>' + PCT.map(v => opt(String(v), String(d.pp), v + '%')).join('') + '</select></td>' +
         '<td>' + (first ? '<input id="lm_' + s.id + '" placeholder="특별한 일만 (단원 없이 기록하면 필수)">' : '') + '</td>' +
         '<td class="cen">' + (first ? '<input type="checkbox" id="ls_' + s.id + '" checked>' : '') + '</td>' +
         '<td>' + (first && done.length ? chip('오늘 ' + done.length + '건 저장됨', 'ok') : '') + '</td>' +
@@ -349,7 +349,7 @@ function pLog() {
     }).join('');
   }).join('');
   return '<h1>수업 기록 <span class="sub">' + fmtD(day) + ' · ' + (isT ? '오늘' : '그날') + ' 등원한 학생만 보여요 · 두 단원·과목 이상 했으면 [+ 단원·과목] · 개념 비중을 고르면 문제풀이는 자동(합 100%)</span></h1>' + dayBar(day, isT) +
-    '<div class="bar"><button class="btn" data-a="saveChecked">체크한 학생 한꺼번에 저장</button><span class="sub">저장하면 그 학생의 하원 버튼이 열리고, 공유를 켜 둔 기록은 학부모님께 알림이 가요</span>' + (hidden ? '<button class="btn sm ghost" style="margin-left:auto" data-a="logAll">' + (V.logAll ? '오늘 등원한 학생만 보기' : '등원 안 한 학생도 보기 (' + hidden + '명)') + '</button>' : '') + '</div>' +
+    '<div class="bar"><button class="btn" data-a="saveChecked">체크한 학생 한꺼번에 저장</button><button class="btn ghost" data-a="modal" data-v="act">🎬 다 같이 특별활동</button><span class="sub">저장하면 그 학생의 하원 버튼이 열리고, 공유를 켜 둔 기록은 학부모님께 알림이 가요</span>' + (hidden ? '<button class="btn sm ghost" style="margin-left:auto" data-a="logAll">' + (V.logAll ? '오늘 등원한 학생만 보기' : '등원 안 한 학생도 보기 (' + hidden + '명)') + '</button>' : '') + '</div>' +
     '<section class="card scroll"><table class="log"><thead><tr><th></th><th>학생</th><th>과목</th><th>진도 과정</th><th>단원</th><th>항목 비중</th><th>오늘 개념 비중</th><th>문제풀이 비중</th><th>특별 메모</th><th>공유</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="12" class="empty">아직 오늘 등원한 학생이 없어요</td></tr>') + '</tbody></table></section>' +
     '<section class="card"><h2>최근 기록</h2>' + recentLogs() + '</section>';
 }
@@ -701,6 +701,15 @@ function modalHtml() {
     return '<div class="mbg" data-a="close"><form class="modal" id="stuF"><h2>' + (s ? esc(s.name) + ' 정보 수정' : '학생 등록') + '</h2><label>학생 이름<input id="sN" value="' + esc(s ? s.name : '') + '"></label><div class="row2"><label>학년<select id="sG">' + GRADES.map(g => opt(g, s ? s.grade : '중2')).join('') + '</select></label></div><label>학교 (선택)<input id="sSc" list="sScL" value="' + esc(s ? (s.school || '') : '') + '" placeholder="예: 동탄중" autocomplete="off"><datalist id="sScL">' + schools().map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></label>' + (s ? '<label>현재 과정<select id="sC">' + COURSES.map(c => opt(c, s.course)).join('') + '</select></label>' : '') + ph('student') + ph('father') + ph('mother') +
       '<p class="sub">가족이 이 번호로 가입하면 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 이미 가입한 부모님 계정에 자동 연결돼요.</p><div class="mf">' + (s ? '<button type="button" class="btn ghost danger" data-a="leave" data-id="' + s.id + '">퇴원 처리</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" type="submit">저장</button></div></form></div>';
   }
+  if (V.modal === 'act') {
+    const day = curDay(); const at = D.att[day] || {}; const came = x => at[x.id] && at[x.id].st !== '결석'; const l = [...active()].sort((x, y) => (came(y) - came(x)) || x.name.localeCompare(y.name, 'ko'));
+    return '<div class="mbg" data-a="close"><div class="modal"><h2>🎬 다 같이 특별활동 <span class="sub">' + fmtD(day) + '</span></h2><p class="sub">영화 관람·소풍처럼 수업 대신 한 날, 고른 학생 모두에게 한 번에 기록해요. 진도·비중은 따로 안 적어요.</p>' +
+      '<label>오늘 한 활동<select id="actU">' + ACT_UNITS.map(u => opt(u, ACT_UNITS[0])).join('') + opt('__x', null, '직접 입력…') + '</select></label><input id="actX" placeholder="직접 입력할 때만 (예: 과학관 견학)" style="margin-top:6px">' +
+      '<label>메모 (선택)<input id="actM" placeholder="예: 시험 끝나고 다 같이 영화 \'위키드\' 봤어요"></label>' +
+      '<div style="margin:8px 0"><b>학생</b> <span class="sub">오늘 등원한 학생이 미리 체크돼 있어요</span><div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px">' + l.map(x => '<label class="sw" style="gap:6px;margin:0"><input type="checkbox" name="actS" value="' + x.id + '"' + (came(x) ? ' checked' : '') + '>' + esc(x.name) + '</label>').join('') + '</div></div>' +
+      '<label class="sw" style="justify-content:flex-start;gap:8px"><input type="checkbox" id="actSh" checked> 학부모·학생에게 공유 (하원 알림에 함께 가요)</label>' +
+      '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">닫기</button><button type="button" class="btn" data-a="actSave">기록 저장</button></div></div></div>';
+  }
   if (V.modal === 'invite') {
     const list = D.members.filter(m => (V.inviteSids || []).includes(m.sid) && m.phone).sort((a, b) => (V.inviteSids.indexOf(a.sid) - V.inviteSids.indexOf(b.sid)) || ['student', 'father', 'mother'].indexOf(a.rel) - ['student', 'father', 'mother'].indexOf(b.rel));
     return '<div class="mbg" data-a="close"><div class="modal wide"><h2>가입 안내 문자 보내기</h2><p class="sub"><b>[카톡으로 보내기]</b>를 누르면 카카오톡 공유 창이 열려요 → 받을 사람(친구·채팅방)을 고르고 보내기. 처음 한 번은 카카오 계정 로그인이 필요해요. 문자로 보내려면 [QR]을 폰 카메라로 찍거나, 폰에서 [문자 앱 열기]를 누르세요.</p>' +
@@ -818,11 +827,12 @@ function addMember(b, sid, rel, phone, name, grade) {
   if (ex) { m.uid = ex.uid; b.set(doc(db, 'users', ex.uid), { sids: arrayUnion(sid), rels: { [sid]: rel }, ths: arrayUnion(...thsOf(sid, rel)) }, { merge: true }); }
   b.set(doc(collection(db, 'members')), m); return !!ex;
 }
-async function saveLogFor(sid, b) {
+async function saveLogFor(sid, b, ovr) {
   const day = curDay();
   const s = stu(sid); const g = id => (document.getElementById(id) || {}).value || '';
-  const cm = g('lm_' + sid).trim(), sh = !!(document.getElementById('ls_' + sid) || {}).checked; const items = [];
-  const ks = logKeys(sid); ks.forEach(key => { const subj = g('lj_' + key) || '수학', course = g('lc_' + key), unit = g('lu_' + key), c = +g('lpc_' + key), p = +g('lpp_' + key), w = ks.length > 1 ? +g('lw_' + key) : 100; items.push({ subj, course, unit, c, p, w }); });
+  const cm = ovr ? ovr.cm : g('lm_' + sid).trim(), sh = ovr ? ovr.sh : !!(document.getElementById('ls_' + sid) || {}).checked; const items = [];
+  if (ovr) items.push({ subj: ACT, course: ACT, unit: ovr.unit, c: null, p: null, w: 100 });
+  else { const ks = logKeys(sid); ks.forEach(key => { const subj = g('lj_' + key) || '수학', course = g('lc_' + key), unit = g('lu_' + key), act = subj === ACT, c = act ? null : +g('lpc_' + key), p = act ? null : +g('lpp_' + key), w = ks.length > 1 ? +g('lw_' + key) : 100; items.push({ subj, course, unit, c, p, w }); }); }
   if (items.some(it => !it.unit) && !cm) throw new Error(s.name + ': 단원을 고르지 않았으면 특별 메모에 오늘 한 내용을 꼭 적어 주세요');
   if (items.length > 1 && items.reduce((a, it) => a + it.w, 0) !== 100) throw new Error(s.name + ': 항목 비중 합이 100%가 되게 맞춰 주세요');
   const r = (D.att[day] || {})[sid]; const open = r && r.st !== '결석' && !r.out && day === off(0); const ts = now();
@@ -941,6 +951,13 @@ app.addEventListener('click', async e => {
     if (a === 'logAdd') { V.logN = V.logN || {}; V.logN[id] = ((V.logN[id]) || 1) + 1; const ck = document.getElementById('lk_' + id); if (ck) ck.checked = true; return render(); }
     if (a === 'logDelRow') { V.logN = V.logN || {}; V.logN[id] = Math.max(1, ((V.logN[id]) || 1) - 1); return render(); }
     if (a === 'saveLog') { const b = writeBatch(db); pendingPush = []; const n = await saveLogFor(id, b); await b.commit(); flushPush(); return toast(n + ' 수업 기록 저장'); }
+    if (a === 'actSave') {
+      const ids = [...document.querySelectorAll('input[name=actS]:checked')].map(x => x.value); const unit = (document.getElementById('actU') || {}).value === '__x' ? (document.getElementById('actX').value || '').trim() : (document.getElementById('actU') || {}).value;
+      if (!unit) return toast('활동 이름을 적어 주세요'); if (!ids.length) return toast('학생을 골라 주세요');
+      const cm = (document.getElementById('actM').value || '').trim(), sh = document.getElementById('actSh').checked;
+      const b = writeBatch(db); const names = []; pendingPush = []; for (const sid of ids) names.push(await saveLogFor(sid, b, { unit, cm, sh })); await b.commit(); flushPush(); V.modal = null;
+      return toast(names.length + '명 특별활동(' + unit + ') 기록 저장: ' + names.join(', '));
+    }
     if (a === 'saveChecked') {
       const ids = active().filter(s => (document.getElementById('lk_' + s.id) || {}).checked).map(s => s.id);
       if (!ids.length) return toast('저장할 학생을 체크해 주세요');
@@ -975,7 +992,7 @@ app.addEventListener('change', async e => {
     }
     if (t.classList.contains('lj')) {
       const sid = t.dataset.sid; const d = defaultsFor(stu(realSid(sid)), t.value); const lc = document.getElementById('lc_' + sid);
-      lc.innerHTML = courseOpts(t.value, d.course); lc.value = d.course; lc.dispatchEvent(new Event('change', { bubbles: true })); return;
+      lc.innerHTML = courseOpts(t.value, d.course); lc.value = d.course; ['lpc_', 'lpp_'].forEach(x => { const e2 = document.getElementById(x + t.dataset.sid); if (e2) e2.disabled = t.value === ACT; }); lc.dispatchEvent(new Event('change', { bubbles: true })); return;
     }
     if (t.classList.contains('lc')) {
       const sid = t.dataset.sid, rs = realSid(sid); const us = unitsOf(rs, t.value); const sel = document.getElementById('lu_' + sid);
