@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.5.1';
+const ADMIN_VERSION = '2.5.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -109,6 +109,10 @@ const thOf = (sid, rel) => sid + '|' + (rel === 'student' ? 'student' : 'parent'
 const thsOf = (sid, rel) => rel === 'student' ? [sid + '|student'] : [sid + '|parent', sid + '|' + rel];
 
 /* ---------- 화면 조각 ---------- */
+// 미등원 안내: 오늘 이미 보냈으면 보낸 시각
+const noshowAt = sid => { const m = thread(sid + '|parent').filter(x => /^\[미등원 안내\]/.test(x.t || '') && (x.at || '').startsWith(TODAY)).pop(); return m ? (m.at || '').slice(11, 16) : ''; };
+const noshowTxt = s => '[미등원 안내] ' + s.name + ' 학생이 아직 등원하지 않았어요' + (s.time ? ' (오늘 수업 ' + s.time + ')' : '') + '. 혹시 늦거나 못 오게 되면 원장님께 알려 주세요.';
+const noshowBtn = (x, day) => day !== TODAY ? '' : (noshowAt(x.id) ? ' <span class="chip ok" title="부모님께 미등원 안내를 보냈어요">안내 ' + noshowAt(x.id) + '</span>' : ' <button class="btn xs ghost" data-a="noshow" data-id="' + x.id + '">미등원 안내</button>');
 const chip = (t, c) => '<span class="chip ' + (c || '') + '">' + esc(t) + '</span>';
 const isIn = r => !!r && r.st !== '결석';
 const attChip = a => !a ? chip('미등원') : a.st === '결석' ? chip('결석', 'bad') : chip('등원' + (a.at ? ' ' + a.at : ''), 'ok') + (a.out ? ' ' + chip('하원 ' + lateLabel(a.out), 'pri') : '');
@@ -173,7 +177,7 @@ function pDash() {
     pushCard() + '<div class="kpis">' + kpi + '<div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
     (() => { const cand = st.filter(x => !expSet.has(x.id) && !(exB || []).includes(x.id) && !(a[x.id] && a[x.id].st !== '결석'));
       return '<section class="card' + (notYet.length ? ' hl' : '') + '"><h2>' + (day < off(0) ? '오지 않은 학생' : '아직 안 온 학생') + ' <span class="sub">' + dayLbl + ' 수업 예정' + (ex.length ? ' · 보충 ' + ex.length + '명' : '') + '</span></h2>' +
-        '<p>' + (notYet.length ? (() => { const rg = notYet.filter(x => !exSet.has(x.id)), sp = notYet.filter(x => exSet.has(x.id)); return rg.map(x => '<b>' + esc(x.name) + '</b>').join(' · ') + (sp.length ? (rg.length ? '<span style="margin:0 10px"></span>' : '') + chip('보충', 'pri') + ' ' + sp.map(x => '<b>' + esc(x.name) + '</b> <button class="btn xs ghost" data-a="exDel" data-id="' + x.id + '" title="보충 취소">×</button>').join(' · ') : ''); })() : '<span class="sub">' + (exp ? (D.exams.some(e => evKind(e) === 'off' && onDay(e, day)) ? '교습소 휴무일이에요' : '예정된 학생이 모두 왔어요') : '정산 메뉴에 등원 요일을 넣으면 예정 학생이 보여요') + '</span>') + '</p>' +
+        '<p>' + (notYet.length ? (() => { const rg = notYet.filter(x => !exSet.has(x.id)), sp = notYet.filter(x => exSet.has(x.id)); return rg.map(x => '<b>' + esc(x.name) + '</b>' + noshowBtn(x, day)).join(' · ') + (sp.length ? (rg.length ? '<span style="margin:0 10px"></span>' : '') + chip('보충', 'pri') + ' ' + sp.map(x => '<b>' + esc(x.name) + '</b>' + noshowBtn(x, day) + ' <button class="btn xs ghost" data-a="exDel" data-id="' + x.id + '" title="보충 취소">×</button>').join(' · ') : ''); })() : '<span class="sub">' + (exp ? (D.exams.some(e => evKind(e) === 'off' && onDay(e, day)) ? '교습소 휴무일이에요' : '예정된 학생이 모두 왔어요') : '정산 메뉴에 등원 요일을 넣으면 예정 학생이 보여요') + '</span>') + '</p>' +
         (cand.length ? '<div class="bar" style="margin:10px 0 0"><select id="exSel" style="width:auto"><option value="">보충 올 학생 선택</option>' + cand.map(x => '<option value="' + x.id + '">' + esc(x.name) + ' (' + esc(x.grade) + ')</option>').join('') + '</select><button class="btn sm" data-a="exAdd">+ 보충 학생 추가</button></div>' : '') + '</section>'; })() +
     (isOwnerMe() && D.staff.some(x => x.st === 'pending') ? '<section class="card hl"><h2>부원장 가입 승인</h2><table><tbody>' + D.staff.filter(x => x.st === 'pending').map(x => '<tr><td><b>' + esc(x.name || '') + ' 부원장</b></td><td>' + esc(fmtP(x.phone)) + '</td><td class="r"><button class="btn sm ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn sm" data-a="stOk" data-id="' + x.id + '">승인</button></td></tr>').join('') + '</tbody></table></section>' : '') +
     applyCard(false) + absSection() +
@@ -888,6 +892,9 @@ app.addEventListener('click', async e => {
     if (a === 'schF') { V.schF = v; return render(); }
     if (a === 'exDel') { if (!confirm('이 일정을 삭제할까요?')) return; await deleteDoc(doc(db, 'exams', id)); return toast('일정을 삭제했어요'); }
     if (a === 'msgDel') { if (!confirm('이 메시지를 삭제할까요?\n학생·학부모님 화면에서도 처음부터 없었던 것처럼 사라져요.')) return; await deleteDoc(doc(db, 'msgs', id)); return toast('메시지를 삭제했어요'); }
+    if (a === 'noshow') { const s = stu(id); if (!s) return; const ps = D.members.filter(m => m.sid === id && m.rel !== 'student' && m.st === 'ok').map(m => REL[m.rel]); const tx = noshowTxt(s);
+      if (!confirm(s.name + ' 학생 부모님께 미등원 안내를 보낼까요?\n\n받는 분: ' + (ps.length ? ps.join('·') : '앱에 가입한 부모님이 아직 없어요 (가입하면 대화에서 볼 수 있어요)') + '\n\n' + tx)) return;
+      await msg(id + '|parent', id, 's', tx); push([id + '|parent'], tx, { title: '미등원 안내', tag: 'ns' + id }); return toast(s.name + ' 부모님께 미등원 안내를 보냈어요'); }
     if (a === 'chatDel') { const pr = PREL.includes(V.chat.split('|')[1]); const l = fthread(V.chat).filter(m => m.id && !(pr && /\|parent$/.test(m.th))); if (!l.length || !confirm('이 대화 전체(' + l.length + '개)를 삭제할까요?\n학생·학부모님 화면에서도 모두 사라지고 되돌릴 수 없어요.')) return; for (let i = 0; i < l.length; i += 400) { const b = writeBatch(db); l.slice(i, i + 400).forEach(m => b.delete(doc(db, 'msgs', m.id))); await b.commit(); } V.chat = null; return toast('대화를 삭제했어요'); }
     if (a === 'apCopy') { try { await navigator.clipboard.writeText(JOIN_URL); toast('신청 링크를 복사했어요 · 카톡이나 문자로 보내 주세요'); } catch (e) { toast(JOIN_URL); } return; }
     if (a === 'apDel') { const x = D.apply.find(y => y.id === id); if (!x || !confirm(x.name + ' 학생 신청서를 삭제할까요?')) return; await deleteDoc(doc(db, 'apply', id)); return toast('신청서를 삭제했어요'); }

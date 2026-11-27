@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.1.3';
+const APP_VERSION = '2.1.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -31,6 +31,9 @@ const PCT=[0,10,20,30,40,50,60,70,80,90,100];
 
 const stu=id=>D.students.find(s=>s.id===id);
 const thread=k=>D.threads[k]||(D.threads[k]=[]);
+const noshowAt=sid=>{const m=thread(sid+'|parent').filter(x=>/^\[미등원 안내\]/.test(x.t||'')&&(x.at||'').startsWith(TODAY)).pop();return m?(m.at||'').slice(11,16):''};
+const noshowTxt=s=>'[미등원 안내] '+s.name+' 학생이 아직 등원하지 않았어요'+(s.time?' (오늘 수업 '+s.time+')':'')+'. 혹시 늦거나 못 오게 되면 원장님께 알려 주세요.';
+const noshowBtn=(x,day)=>day!==TODAY?'':(noshowAt(x.id)?' <span class="chip c-ok">안내 '+noshowAt(x.id)+'</span>':' <button class="btn sm ghost" style="padding:2px 8px" data-act="noshow" data-id="'+x.id+'">미등원 안내</button>');
 // 형제: 같은 학부모 번호로 연결된 학생들 → 학부모 대화는 하나로 묶어 보여요 ("김승효/우현 학부모님")
 const famSids=sid=>{let l;if(U.role==='teacher'){const ph=new Set((D.members||[]).filter(m=>m.sid===sid&&m.rel!=='student'&&m.phone).map(m=>m.phone));l=[...new Set([sid,...(D.members||[]).filter(m=>m.rel!=='student'&&ph.has(m.phone)).map(m=>m.sid)])]}else l=U.role==='parent'&&ME&&ME.sids?ME.sids.filter(x=>ME.rels[x]!=='student'):[sid];l=l.filter(x=>stu(x));if(!l.includes(sid)&&stu(sid))l.push(sid);return l.sort((a,b)=>stu(a).name.localeCompare(stu(b).name,'ko'))};
 const famLabel=(sid,suf)=>{suf=' '+(suf||'학부모님');const l=famSids(sid).map(x=>stu(x).name);if(l.length<2)return (l[0]||(stu(sid)||{}).name||'')+suf;return l[0]+'/'+l.slice(1).map(n=>n[0]===l[0][0]?n.slice(1):n).join('/')+suf};
@@ -247,7 +250,7 @@ function tHome(){
   '<div class="stats"><div><b>'+(P.plan?expIn+'/'+P.exp.length:present+'/'+D.students.length)+'</b><span>'+(P.plan?'예정 등원'+(P.ex.length?' (보충 '+P.ex.length+')':''):'등원')+'</span></div><div><b>'+toCheck.length+'</b><span>확인할 숙제</span></div><div><b>'+unreadTeacher()+'</b><span>새 메시지</span></div></div>'+
   (P.ev.length?'<div class="card"'+(P.ev.some(e=>evKind(e)==='off')?' style="border-color:var(--acc)"':'')+'><h3>일정</h3>'+P.ev.map(e=>examRow(e,false)).join('')+'</div>':'')+
   '<div class="card"><h3>출결</h3>'+dayNav(day)+
-  (P.plan||P.ex.length?'<div style="margin:0 0 10px;padding:10px;border-radius:12px;background:var(--soft);border:1px solid var(--line)"><div class="sub" style="font-weight:700;margin-bottom:4px">아직 안 온 학생</div>'+(notYet.length?rg.map(x=>'<b>'+esc(x.name)+'</b>').join(' · ')+(sp.length?(rg.length?' &nbsp; ':'')+'<span class="chip c-pri">보충</span> '+sp.map(x=>'<b>'+esc(x.name)+'</b> <button class="btn sm ghost" style="padding:2px 8px" data-act="exDel" data-id="'+x.id+'">×</button>').join(' · '):''):'<span class="sub">'+(P.reg&&!P.reg.length&&P.ev.some(e=>evKind(e)==='off')?'교습소 휴무일이에요':'예정된 학생이 모두 왔어요')+'</span>')+'</div>':'')+
+  (P.plan||P.ex.length?'<div style="margin:0 0 10px;padding:10px;border-radius:12px;background:var(--soft);border:1px solid var(--line)"><div class="sub" style="font-weight:700;margin-bottom:4px">아직 안 온 학생</div>'+(notYet.length?rg.map(x=>'<b>'+esc(x.name)+'</b>'+noshowBtn(x,day)).join(' · ')+(sp.length?(rg.length?' &nbsp; ':'')+'<span class="chip c-pri">보충</span> '+sp.map(x=>'<b>'+esc(x.name)+'</b>'+noshowBtn(x,day)+' <button class="btn sm ghost" style="padding:2px 8px" data-act="exDel" data-id="'+x.id+'">×</button>').join(' · '):''):'<span class="sub">'+(P.reg&&!P.reg.length&&P.ev.some(e=>evKind(e)==='off')?'교습소 휴무일이에요':'예정된 학생이 모두 왔어요')+'</span>')+'</div>':'')+
   (cand.length?'<div style="display:flex;gap:6px;margin-bottom:10px"><select id="exSel" style="flex:1;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--soft);color:var(--ink);min-height:40px"><option value="">보충 올 학생 선택</option>'+cand.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')+'</select><button class="btn sm" data-act="exAdd">+ 보충</button></div>':'')+
   P.order.map(s=>{const g=P.rk(s);return '<div class="row"'+(P.plan&&g===0&&!a[s.id]?' style="opacity:.5"':'')+'><div class="av">'+esc(s.name.slice(-2))+'</div><div class="grow"><div class="nm">'+esc(s.name)+'</div><div class="sub">'+esc(s.grade)+' · '+esc(curUnit(s))+'</div></div>'+(P.plan?P.tag(s)+' ':'')+attChip(a[s.id])+'</div>'}).join('')+'</div>'+
   '<div class="card"><h3>확인할 숙제</h3>'+hwList(toCheck,'teacher')+'</div>'+
@@ -855,6 +858,9 @@ app.addEventListener('click',async e=>{
   if(a==='wifiClr'){if(!confirm('등록된 교습소 와이파이 주소를 지울까요?'))return;await updateDoc(doc(db,'config','main'),{wifiIps:[],wifiAuto:false});return toast('지웠어요')}
   if(a==='msgSel'){U.msgSel=U.msgSel===id?null:id;return render()}
   if(a==='msgDel'){if(!confirm('이 메시지를 삭제할까요?\n상대방 화면에서도 처음부터 없었던 것처럼 사라져요.'))return;U.msgSel=null;await deleteDoc(doc(db,'msgs',id));return toast('메시지를 삭제했어요')}
+  if(a==='noshow'){const s=stu(id);if(!s)return;const ps=(D.members||[]).filter(m=>m.sid===id&&m.rel!=='student'&&m.st==='ok').map(m=>REL[m.rel]);const tx=noshowTxt(s);
+    if(!confirm(s.name+' 학생 부모님께 미등원 안내를 보낼까요?\n\n받는 분: '+(ps.length?ps.join('·'):'앱에 가입한 부모님이 아직 없어요')+'\n\n'+tx))return;
+    await msg(id+'|parent',id,'s',tx);push([id+'|parent'],tx,{title:'미등원 안내',tag:'ns'+id});return toast(s.name+' 부모님께 미등원 안내를 보냈어요')}
   if(a==='chatDel'){const pr=PREL.includes(U.chat.split('|')[1]);const l=fthread(U.chat).filter(m=>m.id&&!(pr&&/\|parent$/.test(m.th)));if(!l.length||!confirm('이 대화 전체('+l.length+'개)를 삭제할까요?\n상대방 화면에서도 모두 사라지고 되돌릴 수 없어요.'))return;for(let i=0;i<l.length;i+=400){const b=writeBatch(db);l.slice(i,i+400).forEach(m=>b.delete(doc(db,'msgs',m.id)));await b.commit()}U.chat=null;return toast('대화를 삭제했어요')}
   if(a==='absDel'){const x=D.abs.find(y=>y.id===id);if(!x||!confirm(fmtD(x.date)+' 결석 통보를 취소할까요?'))return;const s=stu(x.sid);await deleteDoc(doc(db,'abs',id));const tx='[결석 취소] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 취소했어요 (수업 참석)';push(['teacher'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'o',tx).catch(()=>{});return toast('결석 통보를 취소했어요')}
   if(a==='dayM'){const d=new Date(curDay()+'T00:00');d.setDate(d.getDate()+(+v));const n=ds(d);U.dayPick=n===homeDefault()?null:n;U.calM=curDay().slice(0,7);return render()}
