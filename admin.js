@@ -6,8 +6,9 @@ import { firebaseConfig } from './firebase-config.js';
 import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } from './subjects.js';
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
+import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.1.6';
+const ADMIN_VERSION = '2.2.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -321,7 +322,10 @@ function pExam() {
   const all = [...D.exams].sort((a, b) => (examLive(b) - examLive(a)) || (a.start < b.start ? -1 : 1));
   const bySchool = sc.map(x => [x, active().filter(s => (s.school || '').trim() === x)]);
   const tgt = e => evKind(e) === 'off' ? '교습소 전체' : (e.school || '전체');
-  return '<h1>일정 등록 <span class="sub">시험기간·교습소 휴무·소풍 같은 특수 일정을 등록하면 해당 학생·학부모 앱 홈에 보이고 알림이 가요</span></h1><div class="grid2"><section class="card"><h2>일정 등록</h2>' +
+  const ym = V.schM || TODAY.slice(0, 7); const [yy, mm] = ym.split('-').map(Number);
+  const items = buildItems(ym, { exams: D.exams, students: active(), birthOf: s => (D.sinfo[s.id] || {}).birth, onReady: () => render() });
+  return '<h1>일정 등록 <span class="sub">시험기간·교습소 휴무·소풍 같은 특수 일정을 등록하면 해당 학생·학부모 앱 홈에 보이고 알림이 가요</span></h1>' +
+    '<section class="card"><h2>' + yy + '년 ' + mm + '월 <span class="sub">공휴일 · 등록한 일정 · 학생 생일</span></h2><div class="bar"><button class="btn sm ghost" data-a="schM" data-v="-1">‹ 이전 달</button><button class="btn sm ghost" data-a="schM" data-v="0">이번 달</button><button class="btn sm ghost" data-a="schM" data-v="1">다음 달 ›</button></div>' + calHtml(ym, items, TODAY) + '</section><div class="grid2"><section class="card"><h2>일정 등록</h2>' +
     '<div class="bar" style="margin-bottom:10px">' + Object.entries(KIND).map(([kk, l]) => '<button class="btn sm ' + (k === kk ? '' : 'ghost') + '" data-a="exK" data-v="' + kk + '">' + l + '</button>').join(' ') + '</div><form id="examF" class="form">' +
     (k === 'off' ? '<p class="sub" style="margin:0 0 8px">교습소 전체가 쉬는 날이에요. 모든 가족에게 알림이 가고, 그날은 대시보드 예정 인원이 0명이 돼요.</p>' :
       '<label>' + (k === 'exam' ? '학교' : '대상 학교 <span class="sub">비우면 전체 학생</span>') + '<input id="exS" list="exSL" placeholder="예: 동탄중" autocomplete="off"><datalist id="exSL">' + sc.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist></label>') +
@@ -803,6 +807,7 @@ app.addEventListener('click', async e => {
     if (a === 'schF') { V.schF = v; return render(); }
     if (a === 'exDel') { if (!confirm('이 일정을 삭제할까요?')) return; await deleteDoc(doc(db, 'exams', id)); return toast('일정을 삭제했어요'); }
     if (a === 'stuV') { V.stuV = v; return render(); }
+    if (a === 'schM') { if (+v === 0) V.schM = null; else { const [y, m] = (V.schM || TODAY.slice(0, 7)).split('-').map(Number); const d = new Date(y, m - 1 + +v, 1); V.schM = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); } return render(); }
     if (a === 'exK') { V.exK = v; return render(); }
     if (a === 'modal') { V.modal = v; V.editId = id || null; V.bulk = null; return render(); }
     if (a === 'invite') { V.modal = 'invite'; V.inviteSids = [id]; V.invQR = null; return render(); }

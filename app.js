@@ -5,9 +5,10 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWith
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary } from './subjects.js';
 import { firebaseConfig } from './firebase-config.js';
+import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '1.9.8';
+const APP_VERSION = '1.9.9';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -91,7 +92,9 @@ function examCard(s){if(!s)return '';const l=examsFor(s.school||'__none').filter
 function examView(){
   const sc=schools();const noSc=D.students.filter(s=>!s.school).length;const k=U.exK||'exam';
   const all=[...(D.exams||[])].sort((a,b)=>((b.end||b.start)>=TODAY)-((a.end||a.start)>=TODAY)||(a.start<b.start?-1:1));
+  const ym=U.schM||TODAY.slice(0,7);const [yy,mm]=ym.split('-').map(Number);const items=buildItems(ym,{exams:D.exams||[],students:D.students,birthOf:isOwnerMe()?(s=>(D.sinfo[s.id]||{}).birth):null,onReady:()=>render()});
   return header('일정 등록','시험기간·휴무·특수 일정을 등록하면 해당 가족 앱에 바로 보여요',true)+'<div class="body">'+
+  '<div class="card"><h3>'+yy+'년 '+mm+'월</h3><div style="display:flex;gap:6px;margin-bottom:8px"><button class="btn sm ghost" data-act="schM" data-v="-1">‹</button><button class="btn sm ghost" style="flex:1" data-act="schM" data-v="0">이번 달</button><button class="btn sm ghost" data-act="schM" data-v="1">›</button></div>'+calHtml(ym,items,TODAY)+'</div>'+
   '<form class="card" id="examF"><h3>일정 등록</h3><div class="pills" style="margin:0 0 10px">'+Object.entries(KIND).map(([kk,l])=>'<button type="button" data-act="exK" data-v="'+kk+'" class="'+(k===kk?'on':'')+'">'+l+'</button>').join('')+'</div>'+
   (k==='off'?'<p class="sub" style="margin:0 0 10px">교습소 전체가 쉬는 날이에요. 모든 가족에게 알림이 가요.</p>':'<label class="f"><span>'+(k==='exam'?'학교':'대상 학교 (비우면 전체)')+'</span><input id="exS" list="exSL" placeholder="예: 동탄중" autocomplete="off"><datalist id="exSL">'+sc.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>')+
   '<label class="f"><span>'+(k==='exam'?'시험':'일정 이름')+'</span><input id="exT" list="exTL" placeholder="'+(k==='exam'?'예: 2학기 기말고사':k==='off'?'예: 추석 연휴 휴무':'예: 소풍')+'" autocomplete="off"><datalist id="exTL">'+KIND_T[k].map(x=>'<option value="'+x+'">').join('')+'</datalist></label>'+
@@ -394,7 +397,7 @@ function sheetHtml(){
 
 const app=document.getElementById('app');
 /* ================= 상태 ================= */
-const D={students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{},autoNotify:true,cfg:null};
+const D={sinfo:{},students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{},autoNotify:true,cfg:null};
 const ME={uid:null,phone:'',sids:[],rels:{},ths:[]};
 const U={screen:'loading',authMsg:'',authTab:'login',busy:false,wait:[],update:null,
   calM:TODAY.slice(0,7),calS:'all',calD:TODAY,page:null,pc:{},lf:null,pushX:{},
@@ -574,6 +577,7 @@ function subTeacher(){
   L(collection(db,'staff'),s=>{D.staff=docs(s);sr()});
   L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
   L(query(collection(db,'extra'),where('date','>=',off(-60))),s=>{D.extra={};s.docs.forEach(d=>{D.extra[d.id]=d.data()});sr()});
+  if(isOwnerMe())L(collection(db,'sinfo'),s=>{D.sinfo={};s.docs.forEach(d=>{D.sinfo[d.id]=d.data()});sr()});
   if(isOwnerMe())L(collection(db,'fin'),s=>{D.fin={};s.docs.forEach(d=>{if(d.id.startsWith('m_'))D.fin[d.id.slice(2)]=d.data()});sr()});
 }
 function subFamily(){
@@ -778,6 +782,7 @@ app.addEventListener('click',async e=>{
   if(a==='stDel'){const x=(D.staff||[]).find(y=>y.id===id);if(!x)return;if(!U.stDelArm||U.stDelArm!==id){U.stDelArm=id;return toast('한 번 더 누르면 '+(x.name||'')+' 부원장을 삭제해요')}U.stDelArm=null;await deleteDoc(doc(db,'staff',id));return toast('삭제했어요. 그 번호로는 더 이상 관리 기능을 쓸 수 없어요')}
   if(a==='schEdit'){U.schSid=id;U.sheet='school';return render()}
   if(a==='exDel'){if(U.exDelArm!==id){U.exDelArm=id;return toast('한 번 더 누르면 삭제해요')}U.exDelArm=null;await deleteDoc(doc(db,'exams',id));return toast('일정을 삭제했어요')}
+  if(a==='schM'){if(+v===0)U.schM=null;else{const [y,m]=(U.schM||TODAY.slice(0,7)).split('-').map(Number);const d=new Date(y,m-1+(+v),1);U.schM=d.getFullYear()+'-'+pad(d.getMonth()+1)}return render()}
   if(a==='exK'){U.exK=v;return render()}
   // 가입 승인·관리
   if(a==='mOk'){const m=D.members.find(x=>x.id===id);if(!m||!m.uid)return;const all=D.members.filter(x=>x.uid===m.uid&&x.st==='pending');const b=writeBatch(db);all.forEach(x=>linkUser(b,x));await b.commit();
