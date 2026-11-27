@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -31,6 +31,11 @@ const PCT=[0,10,20,30,40,50,60,70,80,90,100];
 
 const stu=id=>D.students.find(s=>s.id===id);
 const thread=k=>D.threads[k]||(D.threads[k]=[]);
+// 형제: 같은 학부모 번호로 연결된 학생들 → 학부모 대화는 하나로 묶어 보여요 ("김승효/우현 학부모님")
+const famSids=sid=>{let l;if(U.role==='teacher'){const ph=new Set((D.members||[]).filter(m=>m.sid===sid&&m.rel!=='student'&&m.phone).map(m=>m.phone));l=[...new Set([sid,...(D.members||[]).filter(m=>m.rel!=='student'&&ph.has(m.phone)).map(m=>m.sid)])]}else l=U.role==='parent'&&ME&&ME.sids?ME.sids.filter(x=>ME.rels[x]!=='student'):[sid];l=l.filter(x=>stu(x));if(!l.includes(sid)&&stu(sid))l.push(sid);return l.sort((a,b)=>stu(a).name.localeCompare(stu(b).name,'ko'))};
+const famLabel=sid=>{const l=famSids(sid).map(x=>stu(x).name);if(l.length<2)return (l[0]||(stu(sid)||{}).name||'')+' 학부모님';return l[0]+'/'+l.slice(1).map(n=>n[0]===l[0][0]?n.slice(1):n).join('/')+' 학부모님'};
+const famKeys=k=>{const [sid,r]=k.split('|');return r==='parent'?famSids(sid).map(x=>x+'|parent'):[k]};
+const fthread=k=>famKeys(k).flatMap(x=>thread(x)).sort((a,b)=>(a.ts||0)-(b.ts||0));
 const myKey=()=>U.me+'|'+U.role;
 
 const IC={
@@ -319,18 +324,18 @@ function tComm(){
   let inner;
   if(U.comm==='notice'){inner=(U.role==='teacher'&&!isOwnerMe()?'<p class="sub" style="margin:0 0 10px">공지 작성은 원장님만 할 수 있어요</p>':'<button class="btn" style="width:100%;margin-bottom:12px" data-act="sheet" data-s="notice">+ 공지 쓰기</button>')+'<div class="card">'+noticeList()+'</div>'}
   else{
-    const keys=[];D.students.forEach(s=>{keys.push(s.id+'|student',s.id+'|parent')});
-    const items=keys.map(k=>{const t=thread(k);const last=t[t.length-1];return {k,last,un:t.filter(m=>m.f==='o'&&!m.r).length}}).sort((a,b)=>((b.last?b.last.at:'')>(a.last?a.last.at:'')?1:-1));
-    inner='<div class="card">'+items.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r==='parent'?' p':'')+'">'+(r==='parent'?'학부':esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(s.name)+(r==='parent'?' 학부모님':' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'</button>'}).join('')+'</div>';
+    const keys=[];D.students.forEach(s=>{keys.push(s.id+'|student');if(famSids(s.id)[0]===s.id)keys.push(s.id+'|parent')});
+    const items=keys.map(k=>{const t=fthread(k);const last=t[t.length-1];return {k,last,un:t.filter(m=>m.f==='o'&&!m.r).length}}).sort((a,b)=>((b.last?b.last.at:'')>(a.last?a.last.at:'')?1:-1));
+    inner='<div class="card">'+items.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r==='parent'?' p':'')+'">'+(r==='parent'?'학부':esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r==='parent'?famLabel(sid):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'</button>'}).join('')+'</div>';
   }
   return header('소통','학생·학부모 메시지와 공지')+'<div class="body">'+commTabs()+inner+'</div>';
 }
 
 function chatView(){
   const [sid,r]=U.chat.split('|');const s=stu(sid);
-  const t=thread(U.chat);
+  const t=fthread(U.chat);
   const mine=U.role==='teacher'?'t':'o';
-  const title=U.role==='teacher'?s.name+(r==='parent'?' 학부모님':' 학생'):TNAME();
+  const title=U.role==='teacher'?(r==='parent'?famLabel(sid):s.name+' 학생'):TNAME();
   const body=t.length?t.map(m=>m.f==='s'?'<div class="msg sys">'+esc(m.t)+'</div>':'<div class="msg '+(m.f===mine?'me':'you')+'">'+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine&&m.r?' · 읽음':'')+'</div>').join(''):'<div class="empty">첫 메시지를 보내보세요</div>';
   return header(title,r==='parent'?'학부모 상담':'학생 질문·안내',true)+'<div class="body" id="chatBody"><div class="chat">'+body+'</div></div><form class="send" id="sendF"><input id="msgIn" placeholder="메시지 입력" autocomplete="off" aria-label="메시지"><button class="btn" type="submit">전송</button></form>';
 }
@@ -654,7 +659,7 @@ async function claim(ms){
 const msg=(th,sid,f,t)=>addDoc(collection(db,'msgs'),{th,sid,f,t,at:stamp(),ts:now(),r:false});
 const isTeacher=()=>U.role==='teacher'&&(isOwnerMe()||U.isStaff);
 const push=(targets,text,opts)=>{sendPush(db,auth,targets,text,Object.assign({prune:isTeacher()},opts||{}))};
-const famName=()=>{const s=stu(U.me);return (s?s.name:'')+(U.role==='student'?' 학생':' 학부모님')};
+const famName=()=>{const s=stu(U.me);return U.role==='student'?(s?s.name:'')+' 학생':famLabel(U.me)};
 function notifyParent(sid,text){if(!D.autoNotify)return Promise.resolve();push([sid+'|parent'],text);return msg(sid+'|parent',sid,'s',text).catch(e=>console.warn(e))}
 function pushHelp(){
   const android=/Android/i.test(navigator.userAgent);
@@ -721,7 +726,7 @@ function autoPush(){
 const seen=()=>document.visibilityState==='visible'&&(typeof document.hasFocus!=='function'||document.hasFocus());
 function markRead(k){
   if(!seen())return;
-  const other=U.role==='teacher'?['o']:['t','s'];const l=thread(k).filter(m=>other.includes(m.f)&&!m.r&&m.id);
+  const other=U.role==='teacher'?['o']:['t','s'];const l=fthread(k).filter(m=>other.includes(m.f)&&!m.r&&m.id);
   if(!l.length)return;const b=writeBatch(db);l.forEach(m=>{m.r=true;b.update(doc(db,'msgs',m.id),{r:true})});b.commit().catch(e=>console.warn(e));
 }
 const thOf=(sid,rel)=>sid+'|'+(rel==='student'?'student':'parent');
@@ -753,7 +758,7 @@ app.addEventListener('click',async e=>{
   if(a==='calM'){let [y,m]=U.calM.split('-').map(Number);m+=+v;if(m<1){m=12;y--}if(m>12){m=1;y++}U.calM=y+'-'+pad(m);return render()}
   if(a==='calD'){U.calD=v;return render()}
   if(a==='calS'){U.calS=v;return render()}
-  if(a==='open'){U.chat=el.dataset.k;markRead(U.chat);return render()}
+  if(a==='open'){const [sd,rr]=el.dataset.k.split('|');U.chat=rr==='parent'&&U.role==='teacher'?famSids(sd)[0]+'|parent':el.dataset.k;markRead(U.chat);return render()}
   if(a==='sheet'){
     if(el.dataset.s==='log'||el.dataset.s==='hw'){if(!D.students.length)return toast('학생을 먼저 등록해 주세요');}
     U.sheet=el.dataset.s;if(U.sheet==='log'){const c=D.students.filter(x=>isIn((D.att[curDay()]||{})[x.id]));initLf((c.find(x=>x.id===U.logS)||c[0]||stu(U.logS)||D.students[0]).id)}if(U.sheet==='qr')qrStart();return render()}
