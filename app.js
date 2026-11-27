@@ -8,9 +8,10 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fmtSize, filesHtml, lightbox, visibleTo, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
+import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.4.3';
+const APP_VERSION = '2.5.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -202,6 +203,11 @@ function hwList(list,mode){
 const absOf=(sid,d)=>D.abs.find(x=>x.sid===sid&&x.date===d);
 const absUp=sid=>D.abs.filter(x=>x.date>=TODAY&&(!sid||x.sid===sid)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
 const absChip=x=>x.ok?'<span class="chip c-ok">원장님 확인</span>':'<span class="chip c-warn">확인 대기</span>';
+// 전화 상담 요청 (학부모)
+function callCard(s){
+  const l=(D.calls||[]).filter(c=>c.sid===s.id&&callOpen(c)&&c.date>=TODAY).sort((a,b)=>a.date<b.date?-1:1);
+  return '<div class="card"><h3>📞 전화 상담 요청</h3>'+(l.length?l.map(c=>'<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+fmtD(c.date)+' · '+(c.st==='ok'?c.at:rangeTxt(c)+' 가능')+'</div><div class="sub">'+(c.st==='ok'?'원장님이 이 시간에 전화드릴게요':'원장님 확인 대기 중')+(c.memo?' · '+esc(c.memo):'')+'</div></div>'+(c.st==='ok'?'<span class="chip c-ok">확정</span>':'<span class="chip c-warn">대기</span>')+'<button class="btn sm ghost" data-act="callCancel" data-id="'+c.id+'">취소</button></div>').join(''):'<p class="sub" style="margin:0 0 10px">통화 가능한 날짜와 시간대를 보내 주시면 원장님이 시간을 정해 전화드려요.</p>')+'<button class="btn'+(l.length?' ghost':'')+'" style="width:100%;margin-top:8px" data-act="sheet" data-s="call">상담 요청하기</button></div>';
+}
 function absCard(s){
   const l=absUp(s.id);
   return '<div class="card"><h3>결석 미리 알리기</h3>'+(l.length?l.map(x=>'<div class="row" style="flex-wrap:wrap"><div class="grow"><div class="nm">'+fmtD(x.date)+' 결석</div><div class="sub">'+esc(x.reason)+'</div></div>'+absChip(x)+'<button class="btn sm ghost" data-act="absDel" data-id="'+x.id+'">취소</button></div>').join(''):'<p class="sub" style="margin:0 0 10px">수업에 빠지는 날이 있으면 미리 알려 주세요. 원장님께 바로 알림이 가요.</p>')+'<button class="btn" style="width:100%;margin-top:8px" data-act="sheet" data-s="abs">결석 알리기</button></div>';
@@ -244,6 +250,7 @@ function tHome(){
   const cand=D.students.filter(x=>P.rk(x)<2&&!(a[x.id]&&a[x.id].st!=='결석'));
   const toCheck=D.hw.filter(h=>h.st==='done');
   return header(TNAME(),'오늘 '+fmtD(TODAY)+(day!==off(0)&&!U.dayPick?' · 모두 하원해서 다음 날 기준':''))+'<div class="body">'+pushCard()+
+  ((D.calls||[]).filter(callOpen).length?'<div class="card hl"><h3>📞 전화 상담 요청 '+D.calls.filter(callOpen).length+'</h3>'+callsHtml(D.calls.filter(callOpen),{attr:'data-act',sm:'sm',esc,fmtD,fmtP})+'</div>':'')+
   '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button>'+(isOwnerMe()?'<button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button>':'')+''+(isOwnerMe()?'<button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'일정 등록</button>':'')+'</div>'+
   (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
   (mPending().length?'<div class="card" style="border-color:var(--warn)"><h3>가입 승인 대기 <small>'+mPending().length+'건</small></h3>'+mReqRows()+'</div>':'')+
@@ -372,7 +379,7 @@ function pHome(){
   const hs=D.hw.filter(h=>h.sid===s.id);const doneRate=hs.length?Math.round(hs.filter(h=>h.st!=='todo').length/hs.length*100):0;
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
   return header(s.name+' '+myRel(),s.grade+' · '+nowLabel(s))+'<div class="body">'+pushCard()+examCard(s)+
-  '<div class="card"><h3>오늘 출결 <small>'+fmtD(fd)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(!a&&absOf(s.id,fd)?'<span class="chip c-bad">결석 통보</span>':attChip(a))+'</div></div>'+absCard(s)+
+  '<div class="card"><h3>오늘 출결 <small>'+fmtD(fd)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(!a&&absOf(s.id,fd)?'<span class="chip c-bad">결석 통보</span>':attChip(a))+'</div></div>'+absCard(s)+callCard(s)+
   '<div class="stats"><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
   '<div class="card"><h3>숙제 현황'+(hs.length>3?' <button class="btn sm ghost" style="float:right" data-act="go" data-tab="hw">전체 보기</button>':'')+'</h3>'+hwList(hwSort(hs).slice(0,3),'parent')+'</div>'+
@@ -401,6 +408,7 @@ function sheetHtml(){
   if(t==='stu')h='<h3>학생 등록</h3><label class="f"><span>학생 이름</span><input id="stN" autocomplete="off"></label><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>학년</span><select id="stG">'+['초4','초5','초6','중1','중2','중3','고1','고2','고3'].map(g=>'<option>'+g+'</option>').join('')+'</select></label></div><label class="f"><span>학교 (선택)</span><input id="stSc" list="stScL" placeholder="예: 동탄중" autocomplete="off"><datalist id="stScL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label><label class="f"><span>학생 휴대폰</span><input id="pS" inputmode="numeric" placeholder="010-0000-0000"></label><label class="f"><span>아버님 휴대폰</span><input id="pF" inputmode="numeric" placeholder="없으면 비워두세요"></label><label class="f"><span>어머님 휴대폰</span><input id="pM" inputmode="numeric" placeholder="없으면 비워두세요"></label><p class="sub" style="margin:0 0 10px">가족이 이 번호로 가입하면 원장님께 승인 요청이 와요. 형제는 같은 부모 번호로 등록하면 한 번 가입으로 함께 연결돼요.</p>';
   if(t==='staff')h='<h3>부원장 등록</h3><label class="f"><span>이름</span><input id="sfN" autocomplete="off" placeholder="예: 홍길동"></label><label class="f"><span>휴대폰 (로그인 아이디)</span><input id="sfP" inputmode="numeric" placeholder="010-0000-0000"></label><p class="sub" style="margin:0 0 10px">부원장님이 이 번호로 가입하면 원장님께 승인 요청이 와요. 승인하면 학생 관리·출결·숙제·기록·메시지를 원장님과 똑같이 쓸 수 있어요. (부원장 등록·앱 설정은 원장님만)</p>';
   if(t==='school'){const s=stu(U.schSid)||{};h='<h3>'+esc(s.name||'')+' 학교</h3><label class="f"><span>학교</span><input id="scIn" list="scInL" value="'+esc(s.school||'')+'" placeholder="예: 동탄중" autocomplete="off"><datalist id="scInL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>'}
+  if(t==='call'){const s=stu(U.me)||{};const ho=(id,v)=>'<select id="'+id+'">'+CALL_HOURS.map(x=>'<option value="'+x+'"'+(x===v?' selected':'')+'>'+x+'시</option>').join('')+'</select>';h='<h3>'+esc(s.name||'')+' 전화 상담 요청</h3><label class="f"><span>날짜</span><input type="date" id="clD" min="'+TODAY+'" value="'+TODAY+'"></label><div class="f"><span>통화 가능한 시간대 <small class="sub" style="font-weight:400">정각 기준</small></span><div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center">'+ho('clA',14)+'<span>부터</span>'+ho('clB',17)+'<span>까지</span></div><small class="sub">예: 14시부터 17시 → 14:00~17:00 사이에 통화 가능</small></div><label class="f"><span>상담하고 싶은 내용 (선택)</span><textarea id="clM" maxlength="200" placeholder="예: 기말고사 대비, 진도 상담"></textarea></label><p class="sub" style="margin:0 0 10px">보내면 원장님께 바로 알림이 가요. 원장님이 시간을 정하면 알림으로 알려 드려요.</p>'}
   if(t==='abs'){const s=stu(U.me)||{};h='<h3>'+esc(s.name||'')+' 결석 알리기</h3><label class="f"><span>결석하는 날</span><input type="date" id="abD" min="'+TODAY+'" value="'+TODAY+'"></label><label class="f"><span>사유</span><textarea id="abR" placeholder="예: 가족 행사, 병원 진료, 학교 행사"></textarea></label><p class="sub" style="margin:0 0 10px">저장하면 원장님과 선생님께 바로 알림이 가요. 날짜가 지나기 전에는 취소할 수 있어요.</p>'}
   if(t==='notice'){const own=isOwnerMe();const cats=own?CATS:CATS.filter(c=>c[0]!=='notice');const gs=['초4','초5','초6','중1','중2','중3','고1','고2','고3'].filter(g=>D.students.some(x=>x.grade===g));const q=U.bf||[];
     const ed=U.bEdit&&D.notices.find(n=>n.id===U.bEdit);const qk=ed?(U.bKeep||[]):[];const ql=U.bl||[];h='<h3>'+(ed?'✏️ 소식 수정':'소식 글쓰기')+'</h3><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>말머리</span><select id="bCat">'+cats.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('')+'</select></label><label class="f"><span>보는 사람</span><select id="bTo">'+TO_OPTS.map(o=>'<option value="'+o[0]+'">'+o[1]+'</option>').join('')+'</select></label></div>'+
@@ -580,7 +588,7 @@ const L=(q,fn)=>dataUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',
 const B=(q,fn)=>baseUnsubs.push(onSnapshot(q,fn,e=>console.warn('구독 오류',e.code)));
 const sortMsgs=l=>l.sort((a,b)=>(a.ts||0)-(b.ts||0));
 const sortStu=()=>D.students.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
-function resetD(){Object.assign(D,{students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{}})}
+function resetD(){Object.assign(D,{calls:[],students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{}})}
 
 function subTeacher(){
   resetD();
@@ -595,6 +603,7 @@ function subTeacher(){
   L(collection(db,'exams'),s=>{D.exams=docs(s);sr()});
   L(collection(db,'staff'),s=>{D.staff=docs(s);sr()});
   L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
+  L(query(collection(db,'calls'),where('st','in',['new','ok'])),s=>{D.calls=docs(s);sr()});
   L(query(collection(db,'extra'),where('date','>=',off(-60))),s=>{D.extra={};s.docs.forEach(d=>{D.extra[d.id]=d.data()});sr()});
   if(isOwnerMe())L(collection(db,'apply'),s=>{D.apply=docs(s).filter(x=>x.st==='new');sr()});
   if(isOwnerMe())L(collection(db,'sinfo'),s=>{D.sinfo={};s.docs.forEach(d=>{D.sinfo[d.id]=d.data()});sr()});
@@ -614,6 +623,7 @@ function subFamily(){
   ME.ths.forEach(th=>L(query(collection(db,'msgs'),where('th','==',th)),s=>{D.threads[th]=sortMsgs(docs(s));if(U.chat===th)markRead(th);sr()}));
   L(collection(db,'notices'),s=>{D.notices=docs(s);sr()});
   L(collection(db,'exams'),s=>{D.exams=docs(s);sr()});
+  L(query(collection(db,'calls'),where('uid','==',ME.uid)),s=>{D.calls=docs(s);sr()});
 }
 function famRole(){U.role=ME.rels[U.me]==='student'?'student':'parent'}
 
@@ -868,6 +878,12 @@ app.addEventListener('click',async e=>{
     if(!confirm(s.name+' 학생 부모님께 미등원 안내를 보낼까요?\n\n받는 분: '+(ps.length?ps.join('·'):'앱에 가입한 부모님이 아직 없어요')+'\n\n'+tx))return;
     await msg(id+'|parent',id,'s',tx);push([id+'|parent'],tx,{title:'미등원 안내',tag:'ns'+id});return toast(s.name+' 부모님께 미등원 안내를 보냈어요')}
   if(a==='chatDel'){const pr=PREL.includes(U.chat.split('|')[1]);const l=fthread(U.chat).filter(m=>m.id&&!(pr&&/\|parent$/.test(m.th)));if(!l.length||!confirm('이 대화 전체('+l.length+'개)를 삭제할까요?\n상대방 화면에서도 모두 사라지고 되돌릴 수 없어요.'))return;for(let i=0;i<l.length;i+=400){const b=writeBatch(db);l.slice(i,i+400).forEach(m=>b.delete(doc(db,'msgs',m.id)));await b.commit()}U.chat=null;return toast('대화를 삭제했어요')}
+  if(a==='callCancel'){const c=(D.calls||[]).find(x=>x.id===id);if(!c||!confirm(fmtD(c.date)+' 상담 요청을 취소할까요?'))return;await updateDoc(doc(db,'calls',id),{st:'cancel'});cancelRemind(auth,id);push(['teacher'],'[상담 취소] '+fmtD(c.date)+' '+(c.st==='ok'?c.at:rangeTxt(c))+' 상담 요청을 취소했어요',{title:c.who,tag:'call'});return toast('상담 요청을 취소했어요')}
+  if(a==='callOk'||a==='callNo'||a==='callDone'){const c=(D.calls||[]).find(x=>x.id===id);if(!c)return;const th=c.sid+'|'+(PREL.includes(c.rel)?c.rel:'parent');
+    if(a==='callDone'){await updateDoc(doc(db,'calls',id),{st:'done'});cancelRemind(auth,id);return toast('통화 완료로 정리했어요')}
+    if(a==='callNo'){if(!confirm(c.who+' 상담을 '+(c.st==='ok'?'취소':'다른 시간으로 미룰')+'까요? 학부모님께 알림이 가요.'))return;await updateDoc(doc(db,'calls',id),{st:'cancel'});cancelRemind(auth,id);const tx='[상담 안내] '+fmtD(c.date)+' 상담은 '+(c.st==='ok'?'사정이 생겨 취소됐어요':'요청하신 시간에는 통화가 어려워요')+'. 편한 시간을 메시지로 알려 주시거나 다시 요청해 주세요.';push([th],tx,{tag:'call'});await msg(th,c.sid,'s',tx).catch(()=>{});return toast('학부모님께 알렸어요')}
+    const at=(document.getElementById('ch_'+id)||{}).value||hh(c.from);await updateDoc(doc(db,'calls',id),{st:'ok',at});const tx='[상담 확정] '+fmtD(c.date)+' '+at+'에 원장님이 전화드릴게요.';push([th],tx,{tag:'call'});await msg(th,c.sid,'s',tx).catch(()=>{});
+    const ok=await scheduleRemind(db,auth,{...c,at},c.who);return toast(c.who+' '+at+' 상담 확정'+(ok?' · 10분 전에 알려 드릴게요':' · 알림 예약은 못 했어요'))}
   if(a==='absDel'){const x=D.abs.find(y=>y.id===id);if(!x||!confirm(fmtD(x.date)+' 결석 통보를 취소할까요?'))return;const s=stu(x.sid);await deleteDoc(doc(db,'abs',id));const tx='[결석 취소] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 취소했어요 (수업 참석)';push(['teacher'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'o',tx).catch(()=>{});return toast('결석 통보를 취소했어요')}
   if(a==='dayM'){const d=new Date(curDay()+'T00:00');d.setDate(d.getDate()+(+v));const n=ds(d);U.dayPick=n===homeDefault()?null:n;U.calM=curDay().slice(0,7);return render()}
   if(a==='dayT'){U.dayPick=null;U.calM=curDay().slice(0,7);return render()}
@@ -978,6 +994,16 @@ app.addEventListener('submit',async e=>{
     const due=g('hwD')||TODAY;const b=writeBatch(db);
     ids.forEach(sid=>{b.set(doc(collection(db,'hw')),{sid,title,range:g('hwR').trim()||'-',due,st:'todo',note:'',ts:now()});b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[새 숙제] '+title+' · 마감 '+fmtD(due),at:stamp(),ts:now(),r:false})});
     await b.commit();push(ids.map(x=>x+'|student'),'[새 숙제] '+title+' · 마감 '+fmtD(due));ids.forEach(x=>push([x+'|parent'],'[새 숙제] '+((stu(x)||{}).name||'')+' · '+title+' · 마감 '+fmtD(due)));U.sheet=null;return toast(ids.length+'명에게 숙제를 냈어요');
+  }
+  if(U.sheet==='call'){
+    const s=stu(U.me);const d=g('clD'),fr=+g('clA'),to=+g('clB'),memo=g('clM').trim();
+    if(!d||d<TODAY)return toast('오늘 이후 날짜를 골라 주세요');if(to<=fr)return toast('끝나는 시간을 시작 시간보다 늦게 골라 주세요');
+    if(d===TODAY&&to<=new Date().getHours()+1)return toast('오늘은 지금 이후 시간대로 골라 주세요');
+    const rel=ME.rels[s.id];const who=s.name+' '+(REL[rel]||'학부모님');
+    await addDoc(collection(db,'calls'),{sid:s.id,uid:ME.uid,rel,who,phone:ME.phone,date:d,from:fr,to,memo,st:'new',ts:now()});
+    const tx='[상담 요청] '+fmtD(d)+' '+fr+'시~'+to+'시 통화 가능'+(memo?' · '+memo:'');
+    push(['teacher'],tx,{title:who,tag:'call'});msg(s.id+'|'+(PREL.includes(rel)?rel:'parent'),s.id,'o',tx).catch(()=>{});
+    U.sheet=null;return toast('원장님께 상담을 요청했어요');
   }
   if(U.sheet==='abs'){
     const s=stu(U.me);const d=g('abD');const why=g('abR').trim();

@@ -139,6 +139,17 @@ service cloud.firestore {
       allow update: if isTeacher();
       allow delete: if isTeacher() || (linked(resource.data.sid) && resource.data.uid == request.auth.uid);
     }
+    match /calls/{id} {
+      // 전화 상담 요청: 학부모가 날짜·시간대를 보내고 원장님·부원장이 확정. 요청한 학부모는 자기 요청만 보고 취소 가능
+      allow read: if isTeacher() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if linked(request.resource.data.sid) && me().rels[request.resource.data.sid] != 'student'
+        && request.resource.data.uid == request.auth.uid && request.resource.data.st == 'new'
+        && request.resource.data.keys().hasOnly(['sid', 'uid', 'rel', 'who', 'phone', 'date', 'from', 'to', 'memo', 'st', 'ts'])
+        && request.resource.data.from is int && request.resource.data.to is int && request.resource.data.memo.size() <= 200;
+      allow update: if isTeacher() || (signedIn() && resource.data.uid == request.auth.uid && resource.data.st in ['new', 'ok']
+        && request.resource.data.st == 'cancel' && onlyKeys(['st']));
+      allow delete: if isTeacher();
+    }
     match /extra/{date} {
       // 날짜별 보충 학생: 원장님·부원장만
       allow read, write: if isTeacher();

@@ -5,6 +5,9 @@
 // - GET  /file/<k>?a=<토큰> : 첨부 보기 (로그인한 앱 사용자만)
 // - POST /file-del { keys }  : 첨부 삭제 (원장·부원장만)
 // - GET  /usage              : 저장소 사용량 (원장·부원장만)
+// - POST /remind { id, uid, at(ms), subs, title, body, url, tag } : 예약 알림 (원장·부원장만) — 상담 10분 전 알림
+// - POST /remind-del { id }  : 예약 취소 (원장·부원장, 또는 그 상담을 요청한 학부모)
+// - 1분마다(cron) 시간이 된 예약 알림을 보내요. 필요한 설정: 트리거 → Cron "* * * * *"
 // 필요한 설정: KV 네임스페이스를 변수 이름 KV 로, R2 버킷 themilchak-files 를 변수 이름 FILES 로 연결
 const PROJECT = 'themilchak-math';
 const ORIGINS = ['https://themilchak-math.github.io', 'http://localhost:8765'];
@@ -97,7 +100,32 @@ function cors(req) {
 }
 const json = (req, obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...cors(req) } });
 
+/* ---------- 알림 보내기 (공용) ---------- */
+async function sendAll(env, subs, msg) {
+  const payload = JSON.stringify({ title: String(msg.title || '더밀착수학').slice(0, 60), body: String(msg.body || '').slice(0, 300), url: String(msg.url || '/').slice(0, 200), tag: String(msg.tag || '').slice(0, 60) });
+  const keys = await vapidKeys(env);
+  const list = (subs || []).slice(0, 60).filter(s => s && s.endpoint && /^https:\/\//.test(s.endpoint) && s.keys && s.keys.p256dh && s.keys.auth);
+  const gone = []; let sent = 0;
+  await Promise.all(list.map(async s => {
+    try {
+      const r = await fetch(s.endpoint, { method: 'POST', headers: { Authorization: await vapidAuth(keys, s.endpoint), TTL: '86400', Urgency: 'high', 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream' }, body: await encryptPayload(s, payload) });
+      if (r.status === 404 || r.status === 410) gone.push(s.endpoint); else if (r.ok) sent++;
+    } catch (e) { }
+  }));
+  return { sent, gone };
+}
+/* ---------- 예약 알림 (KV 'rems' 한 곳에 목록으로 저장) ---------- */
+async function runReminders(env) {
+  const rems = (await env.KV.get('rems', 'json')) || []; if (!rems.length) return 0;
+  const now = Date.now(); const due = rems.filter(r => r.at <= now); if (!due.length) return 0;
+  await env.KV.put('rems', JSON.stringify(rems.filter(r => r.at > now)));
+  for (const r of due) if (now - r.at < 6 * 3600e3) await sendAll(env, r.subs, r);
+  return due.length;
+}
+async function isTeacherReq(req) { try { await requireTeacher(req); return true; } catch (e) { return false; } }
+
 export default {
+  async scheduled(event, env, ctx) { ctx.waitUntil(runReminders(env)); },
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
@@ -105,20 +133,25 @@ export default {
       if (url.pathname === '/vapid') { const k = await vapidKeys(env); return json(req, { key: k.pub }); }
       if (url.pathname === '/send' && req.method === 'POST') {
         await verifyIdToken((req.headers.get('Authorization') || '').replace(/^Bearer /, ''));
-        const { subs, title, body, url: link, tag } = await req.json();
-        if (!Array.isArray(subs) || !subs.length) return json(req, { sent: 0, gone: [] });
-        const payload = JSON.stringify({ title: String(title || '더밀착수학').slice(0, 60), body: String(body || '').slice(0, 300), url: String(link || '/').slice(0, 200), tag: String(tag || '').slice(0, 60) });
-        const keys = await vapidKeys(env);
-        const list = subs.slice(0, 60).filter(s => s && s.endpoint && /^https:\/\//.test(s.endpoint) && s.keys && s.keys.p256dh && s.keys.auth);
-        const gone = []; let sent = 0;
-        await Promise.all(list.map(async s => {
-          try {
-            const r = await fetch(s.endpoint, { method: 'POST', headers: { Authorization: await vapidAuth(keys, s.endpoint), TTL: '86400', Urgency: 'high', 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream' }, body: await encryptPayload(s, payload) });
-            if (r.status === 404 || r.status === 410) gone.push(s.endpoint); else if (r.ok) sent++;
-          } catch (e) { }
-        }));
-        return json(req, { sent, gone });
+        const m = await req.json();
+        if (!Array.isArray(m.subs) || !m.subs.length) return json(req, { sent: 0, gone: [] });
+        return json(req, await sendAll(env, m.subs, m));
       }
+      if (url.pathname === '/remind' && req.method === 'POST') {
+        await requireTeacher(req); const m = await req.json();
+        if (!m.id || !(m.at > 0) || !Array.isArray(m.subs)) return json(req, { error: 'bad' }, 400);
+        const rems = ((await env.KV.get('rems', 'json')) || []).filter(r => r.id !== m.id && r.at > Date.now() - 864e5);
+        rems.push({ id: String(m.id).slice(0, 40), uid: String(m.uid || '').slice(0, 60), at: +m.at, subs: m.subs.slice(0, 20), title: m.title, body: m.body, url: m.url, tag: m.tag });
+        await env.KV.put('rems', JSON.stringify(rems.slice(-200))); return json(req, { ok: true, n: rems.length });
+      }
+      if (url.pathname === '/remind-del' && req.method === 'POST') {
+        const u = await verifyIdToken((req.headers.get('Authorization') || '').replace(/^Bearer /, '')); const { id } = await req.json();
+        const rems = (await env.KV.get('rems', 'json')) || []; const r = rems.find(x => x.id === id);
+        if (!r) return json(req, { ok: true, n: 0 });
+        if (r.uid !== u.sub && !(await isTeacherReq(req))) return json(req, { error: 'not allowed' }, 403);
+        await env.KV.put('rems', JSON.stringify(rems.filter(x => x.id !== id))); return json(req, { ok: true, n: 1 });
+      }
+      if (url.pathname === '/run-reminders' && req.method === 'POST') { await requireTeacher(req); return json(req, { sent: await runReminders(env) }); }
       // 소식 첨부파일
       if (url.pathname === '/file' && req.method === 'POST') {
         await requireTeacher(req);
