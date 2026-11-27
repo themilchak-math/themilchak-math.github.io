@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.4.8';
+const ADMIN_VERSION = '2.4.9';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -994,7 +994,7 @@ app.addEventListener('submit', async e => {
       if (!ids.length || !title) return toast('학생과 제목을 입력해 주세요');
       const due = g('hwD') || TODAY; const b = writeBatch(db);
       ids.forEach(sid => { b.set(doc(collection(db, 'hw')), { sid, title, range: g('hwR').trim() || '-', due, st: 'todo', note: '', ts: now() }); b.set(doc(collection(db, 'msgs')), { th: sid + '|student', sid, f: 's', t: '[새 숙제] ' + title + ' · 마감 ' + fmtD(due), at: stamp(), ts: now(), r: false }); });
-      await b.commit(); push(ids.map(x => x + '|student'), '[새 숙제] ' + title + ' · 마감 ' + fmtD(due)); ['hwT', 'hwR'].forEach(i => document.getElementById(i).value = ''); document.querySelectorAll('input[name=hwS]').forEach(x => x.checked = false);
+      await b.commit(); push(ids.map(x => x + '|student'), '[새 숙제] ' + title + ' · 마감 ' + fmtD(due)); ids.forEach(x => push([x + '|parent'], '[새 숙제] ' + ((stu(x) || {}).name || '') + ' · ' + title + ' · 마감 ' + fmtD(due))); ['hwT', 'hwR'].forEach(i => document.getElementById(i).value = ''); document.querySelectorAll('input[name=hwS]').forEach(x => x.checked = false);
       return toast(ids.length + '명에게 숙제를 냈어요');
     }
     if (f === 'ntF' && !isOwnerMe()) return toast('공지는 원장님만 쓸 수 있어요');

@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.0.8';
+const APP_VERSION = '2.0.9';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -58,7 +58,7 @@ function tabsFor(){
   const c=U.role==='teacher'?unreadTeacher():unreadMine()+unreadNotice();
   const t={teacher:[['home','홈'],['att','출결'],['hw','숙제'],['log','학습기록'],['comm','소통']],
     student:[['home','홈'],['hw','숙제'],['log','내 진도'],['comm','소통']],
-    parent:[['home','홈'],['att','출결'],['log','학습기록'],['comm','소통']]}[U.role];
+    parent:[['home','홈'],['att','출결'],['hw','숙제'],['log','학습기록'],['comm','소통']]}[U.role];
   return t.map(([k,l])=>'<button data-tab="'+k+'" class="'+(U.tab===k?'on':'')+'">'+ic(k)+l+(k==='comm'&&c?'<span class="dot">'+c+'</span>':'')+(k==='att'&&U.role==='teacher'&&pending().length?'<span class="dot">'+pending().length+'</span>':'')+'</button>').join('');
 }
 
@@ -365,9 +365,16 @@ function pHome(){
   '<div class="card"><h3>오늘 출결 <small>'+fmtD(TODAY)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(!a&&absOf(s.id,TODAY)?'<span class="chip c-bad">결석 통보</span>':attChip(a))+'</div></div>'+absCard(s)+
   '<div class="stats"><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
-  '<div class="card"><h3>숙제 현황</h3>'+hwList(hs.slice(0,3),'parent')+'</div>'+
+  '<div class="card"><h3>숙제 현황'+(hs.length>3?' <button class="btn sm ghost" style="float:right" data-act="go" data-tab="hw">전체 보기</button>':'')+'</h3>'+hwList(hwSort(hs).slice(0,3),'parent')+'</div>'+
   '<div class="card"><h3>공지사항</h3>'+noticeList(2)+'</div></div>';
 }
+const hwRank=h=>h.st==='todo'?(h.due<TODAY?0:1):h.st==='done'?2:3;
+const hwSort=l=>[...l].sort((a,b)=>hwRank(a)-hwRank(b)||(hwRank(a)<2?(a.due>b.due?1:a.due<b.due?-1:0):(a.due<b.due?1:a.due>b.due?-1:0)));
+function pHw(){const s=stu(U.me);const l=hwSort(D.hw.filter(h=>h.sid===s.id));const todo=l.filter(h=>h.st==='todo'),late=todo.filter(h=>h.due<TODAY),fin=l.filter(h=>h.st!=='todo');
+  const rate=l.length?Math.round(fin.length/l.length*100):0;
+  return header(s.name+' 숙제','선생님이 낸 숙제와 완료 여부')+'<div class="body"><div class="stats"><div><b>'+(todo.length-late.length)+'</b><span>진행 중</span></div><div><b'+(late.length?' style="color:var(--bad,#e5484d)"':'')+'>'+late.length+'</b><span>기한 지남</span></div><div><b>'+rate+'%</b><span>수행률</span></div></div>'+
+  '<div class="card"><h3>해야 할 숙제 <small>'+todo.length+'개</small></h3>'+hwList(todo,'parent')+'</div>'+
+  '<div class="card"><h3>완료한 숙제 <small>'+fin.length+'개</small></h3>'+hwList(fin.slice(0,30),'parent')+'</div></div>'}
 function pAtt(){const s=stu(U.me);return header('출결 달력',s.name)+'<div class="body">'+absCard(s)+calCard(s.id,false)+'</div>'}
 function oComm(){
   let inner;
@@ -505,7 +512,7 @@ function appView(){
   if((U.page==='mng'||U.page==='exam')&&!isOwnerMe())U.page=null;
   if(U.page==='mng')return mngView();
   if(U.page==='exam')return examView();
-  const map={teacher:{home:tHome,att:tAtt,hw:tHw,log:tLog,comm:tComm},student:{home:sHome,hw:sHw,log:myLog,comm:oComm},parent:{home:pHome,att:pAtt,log:myLog,comm:oComm}}[U.role];
+  const map={teacher:{home:tHome,att:tAtt,hw:tHw,log:tLog,comm:tComm},student:{home:sHome,hw:sHw,log:myLog,comm:oComm},parent:{home:pHome,att:pAtt,hw:pHw,log:myLog,comm:oComm}}[U.role];
   return (map[U.tab]||map.home)()+'<nav class="tabs">'+tabsFor()+'</nav>';
 }
 
@@ -698,7 +705,7 @@ function pushCard(){
   if(st==='ios-install')inner='<p class="sub" style="margin:0 0 10px">아이폰은 <b>홈 화면에 설치한 앱</b>에서만 알림을 받을 수 있어요.</p><button class="btn" style="width:100%" data-act="iosG">홈 화면에 추가하기</button>';
   else if(st==='unsupported')inner='<p class="sub" style="margin:0">이 브라우저는 알림을 지원하지 않아요. '+(pushIOS()?'iOS 16.4 이상으로 업데이트해 주세요.':'삼성 인터넷 또는 크롬을 최신으로 업데이트해 주세요.')+'</p>';
   else if(st==='denied')inner=(/Android/i.test(navigator.userAgent)&&isStandalone())?'<p class="sub" style="margin:0">이 앱의 알림이 꺼져 있어요.<br>① 홈 화면의 <b>더밀착수학 아이콘을 길게 누르기</b> → <b>ⓘ 앱 정보</b><br>② <b>알림</b> 누르기 → <b>알림 허용</b> 켜기<br>③ 앱을 닫았다가 다시 열고 [알림 받기] 누르기</p><button class="btn" style="width:100%;margin-top:10px" data-act="pushOn">다시 시도</button>':'<p class="sub" style="margin:0">알림이 차단돼 있어요. 휴대폰 <b>설정 → 알림</b>(또는 브라우저 사이트 설정)에서 더밀착수학 알림을 허용해 주세요.</p>';
-  else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+((U.pushHint||(/Android/i.test(navigator.userAgent)&&isSamsung()))?pushHelp():'')+'';
+  else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 새 숙제, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+((U.pushHint||(/Android/i.test(navigator.userAgent)&&isSamsung()))?pushHelp():'')+'';
   let pm='?';try{pm=Notification.permission}catch(e){pm='없음'}
   const ua=navigator.userAgent;const br=/SamsungBrowser\/([\d.]+)/.exec(ua);const ch=/Chrome\/(\d+)/.exec(ua);
   inner+='<p style="margin:10px 0 0;font-size:12px;color:#888">진단: v'+APP_VERSION+' · 권한 '+pm+' · '+(br?'삼성인터넷 '+br[1]:ch?'크롬 '+ch[1]:'기타')+' · '+(isStandalone()?'설치앱':'브라우저')+(U.pushAutoErr?' · 자동등록 실패: '+esc(U.pushAutoErr):'')+'</p>';
@@ -941,7 +948,7 @@ app.addEventListener('submit',async e=>{
     if(!ids.length||!title)return toast('학생과 제목을 입력해 주세요');
     const due=g('hwD')||TODAY;const b=writeBatch(db);
     ids.forEach(sid=>{b.set(doc(collection(db,'hw')),{sid,title,range:g('hwR').trim()||'-',due,st:'todo',note:'',ts:now()});b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[새 숙제] '+title+' · 마감 '+fmtD(due),at:stamp(),ts:now(),r:false})});
-    await b.commit();push(ids.map(x=>x+'|student'),'[새 숙제] '+title+' · 마감 '+fmtD(due));U.sheet=null;return toast(ids.length+'명에게 숙제를 냈어요');
+    await b.commit();push(ids.map(x=>x+'|student'),'[새 숙제] '+title+' · 마감 '+fmtD(due));ids.forEach(x=>push([x+'|parent'],'[새 숙제] '+((stu(x)||{}).name||'')+' · '+title+' · 마감 '+fmtD(due)));U.sheet=null;return toast(ids.length+'명에게 숙제를 냈어요');
   }
   if(U.sheet==='abs'){
     const s=stu(U.me);const d=g('abD');const why=g('abR').trim();
