@@ -13,7 +13,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.20.1';
+const ADMIN_VERSION = '2.20.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -726,7 +726,7 @@ function parseWorkbook(wb) {
     const M = S[name]; const ym = mm[1] + '-' + mm[2].padStart(2, '0'); const rows = [], idx = {};
     for (let r = 5; r <= 24; r++) { const nm = M['C' + r] ? String(M['C' + r]).trim() : ''; const price = M['N' + r];
       if (!nm && price == null) continue; idx[r - 5] = nm;
-      rows.push({ name: nm, course: M['F' + r] != null ? String(M['F' + r]) : '', d: 'GHIJKL'.split('').map(c => truthy(M[c + r]) ? 1 : 0), price: numOr(price), disc: numOr(M['O' + r]), extra: M['Q' + r] ? String(M['Q' + r]) : '', book: M['R' + r] ? String(M['R' + r]) : '', memo: M['V' + r] ? String(M['V' + r]) : '' }); }
+      rows.push({ name: nm, course: M['F' + r] != null ? String(M['F' + r]) : '', d: 'GHIJKL'.split('').map(c => truthy(M[c + r]) ? 1 : 0), price: numOr(price), disc: numOr(M['O' + r]), bookAmt: typeof M['Q' + r] === 'number' ? M['Q' + r] : numOr(M['Q' + r]), memo: M['V' + r] ? String(M['V' + r]) : '' }); }
     const meals = {}; const nd = daysIn(ym);
     for (let r = 37; r < 37 + nd; r++) { const d = r - 36;
       if (truthy(M['D' + r])) (meals['원장'] || (meals['원장'] = [])).push(d);
@@ -774,8 +774,8 @@ function exportXlsx() {
   const set = finSet(); const sheets = []; const ms = finMonths();
   sheets.push({ name: '사용법', cols: [2, 110], cells: { B1: { v: '더(The)밀착수학교습소  원비 · 식대 통합 관리', s: 5 }, B3: '관리자 페이지(themilchak-math.github.io/admin.html)에서 내려받은 파일이에요. ' + fmtD(TODAY) + ' 기준.', B4: '파란 글씨 = 입력값 / 검정 = 자동 계산. 이 파일을 고쳐서 관리자 페이지 [엑셀 불러오기]로 다시 올리면 앱에 반영돼요.', B5: '시트: 설정 · 월별요약 · 학생명부 · 달마다 시트 1장 (위 = 원비·수강 정보, 아래 = 식대 출석표)' } });
   sheets.push({ name: '설정', cols: [2, 28, 12, 50], cells: { B2: { v: '설정', s: 5 }, B4: '식대 단가 (1회)', C4: { v: set.meal, s: 2 }, B5: '1층 교습소 하루 최대 인원', C5: set.cap1, B6: '2층 공부방 하루 최대 인원', C6: set.cap2 } });
-  const sum = { B1: { v: '월별 요약', s: 5 } }; ['월 (시트 이름)', '학생 수', '교습소 원비 수입', '장기수강 할인', '식대 청구 (별도 사업자)', '학부모 총 납부액', '원장단 식대'].forEach((h, i) => { sum[colL(1 + i) + '4'] = { v: h, s: 6 }; });
-  ms.slice().reverse().forEach((ym, i) => { const r = 5 + i, sh = "'" + ymLabel(ym) + "'!"; sum['B' + r] = ymLabel(ym); sum['C' + r] = { f: 'COUNTA(' + sh + 'C5:C24)' }; sum['D' + r] = { f: sh + 'P25', s: 2 }; sum['E' + r] = { f: sh + 'O25', s: 2 }; sum['F' + r] = { f: sh + 'T25', s: 2 }; sum['G' + r] = { f: sh + 'U25', s: 2 }; sum['H' + r] = { f: sh + 'E32', s: 2 }; });
+  const sum = { B1: { v: '월별 요약', s: 5 } }; ['월 (시트 이름)', '학생 수', '교습소 원비 수입', '장기수강 할인', '식대 청구 (별도 사업자)', '학부모 총 납부액 (교재비 포함)', '원장단 식대'].forEach((h, i) => { sum[colL(1 + i) + '4'] = { v: h, s: 6 }; });
+  ms.slice().reverse().forEach((ym, i) => { const r = 5 + i, sh = "'" + ymLabel(ym) + "'!"; sum['B' + r] = ymLabel(ym); sum['C' + r] = { f: 'COUNTA(' + sh + 'C5:C24)' }; sum['D' + r] = { f: sh + 'P25', s: 2 }; sum['E' + r] = { f: sh + 'O25', s: 2 }; sum['F' + r] = { f: sh + 'T25', s: 2 }; sum['G' + r] = { f: sh + 'U25', s: 2 }; sum['H' + r] = { f: sh + 'E33', s: 2 }; });
   const lr = 5 + ms.length; sum['B' + lr] = { v: '합계', s: 1 }; 'DEFGH'.split('').forEach(c => { sum[c + lr] = { f: 'SUM(' + c + '5:' + c + (lr - 1) + ')', s: 4 }; });
   sheets.push({ name: '월별요약', cols: [2, 16, 9, 16, 14, 20, 18, 14], cells: sum });
   const ro = { B1: { v: '학생명부', s: 5 } }; ['No', '이름', '생년월일', '학생 연락처', '모 연락처', '부 연락처', '학교', '학년', '구분', '첫 등록일', '상태', '메모'].forEach((h, i) => { ro[colL(i) + '4'] = { v: h, s: 6 }; });
@@ -789,19 +789,19 @@ function exportXlsx() {
 function monthSheet(m, set) {
   const c = {}; const ym = m.ym; const [y, mo] = ym.split('-').map(Number);
   c.B1 = { v: y + '년 ' + mo + '월  원비 · 식대 정산', s: 5 }; c.B2 = '기준월'; c.C2 = { v: ym + '-01', date: true }; c.B3 = { v: '① 원비 · 수강 정보', s: 1 };
-  ['No', '이름', '학교', '학년', 'Course', '월', '화', '수', '목', '금', '토', '주 횟수', '정가', '할인', '원비 (교습소)', '보충과목 (과외 별도)', '교재', '식대 횟수', '식대 (별도 사업자)', '학부모 총 납부액', '메모'].forEach((h, i) => { c[colL(1 + i) + '4'] = { v: h, s: 6 }; });
-  const rows = (m.rows || []).slice(0, FIN_MAX);
+  ['No', '이름', '학교', '학년', 'Course', '월', '화', '수', '목', '금', '토', '주 횟수', '정가', '할인', '원비 (교습소)', '교재비 발생 (다음 달 청구)', '교재비 청구 (지난달분)', '식대 횟수', '식대 (별도 사업자)', '학부모 총 납부액', '메모'].forEach((h, i) => { c[colL(1 + i) + '4'] = { v: h, s: 6 }; });
+  const rows = (m.rows || []).slice(0, FIN_MAX); const books = billBooks(m);
   for (let i = 0; i < FIN_MAX; i++) { const r = 5 + i, x = rows[i]; c['B' + r] = i + 1; const mc = colL(5 + i);
     c['M' + r] = { f: 'IF(C' + r + '="","",SUM(G' + r + ':L' + r + '))' }; c['P' + r] = { f: 'IF(AND(N' + r + '="",O' + r + '=""),"",N(N' + r + ')-N(O' + r + '))', s: 2 };
-    c['S' + r] = { f: 'IF(C' + r + '="","",' + mc + '68)' }; c['T' + r] = { f: 'IF(C' + r + '="","",S' + r + '*설정!$C$4)', s: 2 }; c['U' + r] = { f: 'IF(C' + r + '="","",N(P' + r + ')+N(T' + r + '))', s: 2 };
+    c['S' + r] = { f: 'IF(C' + r + '="","",' + mc + '68)' }; c['T' + r] = { f: 'IF(C' + r + '="","",S' + r + '*설정!$C$4)', s: 2 }; c['U' + r] = { f: 'IF(C' + r + '="","",N(P' + r + ')+N(T' + r + ')+N(R' + r + '))', s: 2 };
     if (!x) continue; const s = x.sid ? stu(x.sid) : D.students.find(z => z.name === x.name);
     c['C' + r] = { v: x.name, s: 7 }; c['D' + r] = s ? s.school || '' : ''; c['E' + r] = s ? (+String(s.grade).slice(1) || s.grade) : '';
     if (x.course !== '' && x.course != null) c['F' + r] = isNaN(+x.course) ? x.course : +x.course;
     (x.d || []).forEach((v, k) => { if (v) c[colL(6 + k) + r] = 1; });
     if (x.price !== '' && x.price != null) c['N' + r] = { v: +x.price, s: 2 }; if (x.disc !== '' && x.disc != null) c['O' + r] = { v: +x.disc, s: 2 };
-    if (x.extra) c['Q' + r] = x.extra; if (x.book) c['R' + r] = x.book; if (x.memo) c['V' + r] = x.memo; }
-  c.B25 = { v: '합계', s: 1 }; c.C25 = { f: 'COUNTA(C5:C24)&"명"', str: true }; 'GHIJKLMNOPSTU'.split('').forEach(k => { c[k + '25'] = { f: 'SUM(' + k + '5:' + k + '24)', s: 4 }; });
-  c.B27 = { v: '② 이번 달 요약', s: 1 }; [['교습소 원비 수입', 'P25'], ['장기수강 할인 합계', 'O25'], ['식대 청구 (별도 사업자)', 'T25'], ['학부모 총 납부액 (원비+식대)', 'U25'], ['원장 · 부원장 식대', '(D68+E68)*설정!$C$4']].forEach(([l, f], i) => { c['B' + (28 + i)] = l; c['E' + (28 + i)] = { f, s: 4 }; });
+    if (+x.bookAmt) c['Q' + r] = { v: +x.bookAmt, s: 2 }; { const bp = x.name ? bookOf(x, books) : 0; if (bp) c['R' + r] = { v: bp, s: 2 }; } if (x.memo) c['V' + r] = x.memo; }
+  c.B25 = { v: '합계', s: 1 }; c.C25 = { f: 'COUNTA(C5:C24)&"명"', str: true }; 'GHIJKLMNOPQRSTU'.split('').forEach(k => { c[k + '25'] = { f: 'SUM(' + k + '5:' + k + '24)', s: 4 }; });
+  c.B27 = { v: '② 이번 달 요약', s: 1 }; [['교습소 원비 수입', 'P25'], ['장기수강 할인 합계', 'O25'], ['식대 청구 (별도 사업자)', 'T25'], ['교재비 청구 (지난달분)', 'R25'], ['학부모 총 납부액 (원비+식대+교재비)', 'U25'], ['원장 · 부원장 식대', '(D68+E68)*설정!$C$4']].forEach(([l, f], i) => { c['B' + (28 + i)] = l; c['E' + (28 + i)] = { f, s: 4 }; });
   c.B34 = { v: '③ 식대 출석표', s: 1 }; c.D34 = '먹은 날 1 입력 · 학생 순서는 ① 표와 같음';
   c.B36 = { v: '날짜', s: 6 }; c.C36 = { v: '요일', s: 6 }; c.D36 = { v: '원장', s: 6 }; c.E36 = { v: '부원장', s: 6 };
   rows.forEach((x, i) => { c[colL(5 + i) + '36'] = { v: x.name || '', s: 6 }; });
