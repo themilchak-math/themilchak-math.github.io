@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.2.2';
+const ADMIN_VERSION = '2.2.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -602,6 +602,9 @@ function pNotice() {
     '<section class="card"><h2>공지 목록</h2>' + (list.length ? list.map(n => '<div class="notice"><div>' + (n.pin ? chip('고정', 'bad') + ' ' : '') + '<b>' + esc(n.title) + '</b> <span class="sub">' + fmtD(n.at) + ' · 읽음 ' + (n.reads || []).length + '명</span></div><p>' + esc(n.body) + '</p>' + (own ? '<button class="btn xs ghost" data-a="delN" data-id="' + n.id + '">삭제</button>' : '') + '</div>').join('') : '<p class="empty">공지가 없어요</p>') + '</section></div>';
 }
 
+// 시스템 자동 알림 말풍선 (원장님이 직접 보낸 메시지와 구분)
+function sysHtml(m) { const x = /^\[([^\]]+)\]\s*/.exec(m.t || ''); const ttl = x ? x[1] : '알림'; const body = x ? m.t.slice(x[0].length) : (m.t || '');
+  return '<div class="m sys"><span class="sl">🔔 더밀착수학 자동 알림</span><b>' + esc(ttl) + '</b>' + esc(body) + '<small>' + esc((m.at || '').slice(5)) + '</small></div>'; }
 function pMsg() {
   const keys = []; active().forEach(s => { keys.push(s.id + '|student'); if (famSids(s.id)[0] === s.id) keys.push(s.id + '|parent'); });
   const items = keys.map(k => { const t = fthread(k); const last = t[t.length - 1]; return { k, last, un: t.filter(m => m.f === 'o' && !m.r).length }; }).sort((a, b) => ((b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0)));
@@ -609,7 +612,7 @@ function pMsg() {
   let chat = '<p class="empty">왼쪽에서 대화를 고르세요</p>';
   if (V.chat) {
     const [sid, r] = V.chat.split('|'); const s = stu(sid); const t = fthread(V.chat);
-    chat = '<h2>' + esc(r === 'parent' ? famLabel(sid) : (s ? s.name : '') + ' 학생') + '</h2><div class="chat" id="chatBody">' + (t.length ? t.map(m => m.f === 's' ? '<div class="m sys">' + esc(m.t) + '</div>' : '<div class="m ' + (m.f === 't' ? 'me' : 'you') + '">' + esc(m.t) + '<small>' + esc((m.at || '').slice(5)) + (m.f === 't' && m.r ? ' · 읽음' : '') + '</small></div>').join('') : '<p class="empty">첫 메시지를 보내보세요</p>') + '</div><form id="sendF" class="send"><input id="msgIn" placeholder="메시지 입력 후 Enter" autocomplete="off"><button class="btn" type="submit">전송</button></form>';
+    chat = '<h2>' + esc(r === 'parent' ? famLabel(sid) : (s ? s.name : '') + ' 학생') + '</h2><div class="chat" id="chatBody">' + (t.length ? t.map(m => m.f === 's' ? sysHtml(m) : '<div class="m ' + (m.f === 't' ? 'me' : 'you') + '">' + esc(m.t) + '<small>' + esc((m.at || '').slice(5)) + (m.f === 't' && m.r ? ' · 읽음' : '') + '</small></div>').join('') : '<p class="empty">첫 메시지를 보내보세요</p>') + '</div><form id="sendF" class="send"><input id="msgIn" placeholder="메시지 입력 후 Enter" autocomplete="off"><button class="btn" type="submit">전송</button></form>';
   }
   return '<h1>메시지</h1><div class="msgs"><section class="card tl">' + (list || '<p class="empty">학생이 없어요</p>') + '</section><section class="card cv">' + chat + '</section></div>';
 }

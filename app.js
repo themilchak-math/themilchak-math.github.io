@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.0.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -331,12 +331,15 @@ function tComm(){
   return header('소통','학생·학부모 메시지와 공지')+'<div class="body">'+commTabs()+inner+'</div>';
 }
 
+// 시스템 자동 알림: 원장님이 직접 보낸 메시지와 구분되게 '자동 알림' 말풍선으로
+function sysHtml(m){const x=/^\[([^\]]+)\]\s*/.exec(m.t||'');const ttl=x?x[1]:'알림';const body=x?m.t.slice(x[0].length):(m.t||'');
+  return '<div class="msg sys"><div class="sl">🔔 더밀착수학 자동 알림</div><b>'+esc(ttl)+'</b>'+esc(body)+'</div><div class="mt l">'+esc((m.at||'').slice(5))+'</div>'}
 function chatView(){
   const [sid,r]=U.chat.split('|');const s=stu(sid);
   const t=fthread(U.chat);
   const mine=U.role==='teacher'?'t':'o';
   const title=U.role==='teacher'?(r==='parent'?famLabel(sid):s.name+' 학생'):TNAME();
-  const body=t.length?t.map(m=>m.f==='s'?'<div class="msg sys">'+esc(m.t)+'</div>':'<div class="msg '+(m.f===mine?'me':'you')+'">'+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine&&m.r?' · 읽음':'')+'</div>').join(''):'<div class="empty">첫 메시지를 보내보세요</div>';
+  const body=t.length?t.map(m=>m.f==='s'?sysHtml(m):'<div class="msg '+(m.f===mine?'me':'you')+'">'+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine&&m.r?' · 읽음':'')+'</div>').join(''):'<div class="empty">첫 메시지를 보내보세요</div>';
   return header(title,r==='parent'?'학부모 상담':'학생 질문·안내',true)+'<div class="body" id="chatBody"><div class="chat">'+body+'</div></div><form class="send" id="sendF"><input id="msgIn" placeholder="메시지 입력" autocomplete="off" aria-label="메시지"><button class="btn" type="submit">전송</button></form>';
 }
 
