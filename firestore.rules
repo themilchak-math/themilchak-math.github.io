@@ -182,7 +182,15 @@ service cloud.firestore {
       allow create: if isOwner() || (request.resource.data.st == 'remote'
         && request.resource.data.keys().hasOnly(['st', 'name', 'grade', 'school', 'src', 'apply', 'ts', 'up'])
         && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 20
-        && request.resource.data.apply is map && request.resource.data.up is int);
+        && request.resource.data.apply is map && request.resource.data.up is int)
+        // 학부모님이 직접 진단 예약 신청(consult.html?book=1): 열린 상담 서류로 만들어져 바로 설문까지 이어서 작성
+        || (request.resource.data.st == 'open' && request.resource.data.self == 'book'
+        && request.resource.data.keys().hasOnly(['st', 'self', 'name', 'grade', 'school', 'pMother', 'pStudent', 'src', 'wantDate', 'wantTime', 'note', 'ts', 'up'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 20
+        && request.resource.data.pMother is string && request.resource.data.pMother.matches('01[0-9]{8,9}')
+        && request.resource.data.pStudent is string && request.resource.data.pStudent.matches('01[0-9]{8,9}')
+        && request.resource.data.note is string && request.resource.data.note.size() <= 500
+        && request.resource.data.up is int);
       allow update: if isOwner() || (resource.data.st == 'open'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['parent', 'student', 'apply', 'up'])
         && (!('apply' in resource.data) || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['apply']))

@@ -6,7 +6,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { PARENT, STUDENT, CLASSES, RULES, CONSENT, DAYS5, priceOf, isHigh, progress } from './forms.js';
 
 const db = getFirestore(initializeApp(firebaseConfig));
-const P = new URLSearchParams(location.search); const TOK = P.get('t') || ''; const REMOTE = !TOK && P.get('remote') === '1';
+const P = new URLSearchParams(location.search); const TOK = P.get('t') || ''; const REMOTE = !TOK && P.get('remote') === '1'; const BOOK = !TOK && P.get('book') === '1';
 const S = { w: P.get('w') || 'hub', f: null, a: {}, page: 0, err: '', busy: false };
 const app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -114,6 +114,34 @@ function setupSig(id) {
 }
 function sigData(id) { const st = sigs[id]; if (!st || !st.strokes.length) return ''; const c = st.c; const o = document.createElement('canvas'); o.width = 480; o.height = Math.round(480 * c.height / c.width); const x = o.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, o.width, o.height); x.drawImage(c, 0, 0, o.width, o.height); return o.toDataURL('image/jpeg', 0.7); }
 
+/* ---------- 진단 예약 신청 (학부모님이 직접) ---------- */
+const GRADES = ['초4', '초5', '초6', '중1', '중2', '중3', '고1', '고2', '고3'];
+const BOOK_SRC = ['네이버 예약', '지인 소개', '블로그·검색', '전단·현수막', '기타'];
+function bookForm() {
+  const a = S.a; const inp = (k, ph, type) => '<input type="' + (type || 'text') + '" data-in="' + k + '" value="' + esc(a[k] || '') + '" placeholder="' + esc(ph || '') + '"' + (type === 'tel' ? ' inputmode="numeric"' : '') + '>';
+  const radio = (k, opts) => '<div class="opts sm">' + opts.map(o => '<button type="button" class="opt' + (a[k] === o ? ' on' : '') + '" data-k="' + k + '" data-v="' + esc(o) + '" data-t="r">' + esc(o) + '</button>').join('') + '</div>';
+  return top('무료 정밀진단 예약 신청') + '<main><h1>무료 정밀진단 예약 신청</h1><p class="lead">진단 테스트(약 1시간)와 1:1 결과 브리핑으로 아이의 현재 실력과 공부 습관을 정확히 짚어 드려요. 적어 주시면 원장님이 확인 후 날짜를 확정해 연락드릴게요.</p>' +
+    '<div class="card"><h2>학생 정보</h2><div class="row2"><div class="q"><span class="ql">학생 이름</span>' + inp('name', '예: 홍길동') + '</div><div class="q"><span class="ql">학년</span><select data-in="grade">' + GRADES.map(x => '<option' + (x === (a.grade || '중1') ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></div></div>' +
+    '<div class="q"><span class="ql">학교 <span class="sub">(선택)</span></span>' + inp('school', '예: 치동중') + '</div></div>' +
+    '<div class="card"><h2>연락처</h2><div class="row2"><div class="q"><span class="ql">어머님(보호자) 휴대폰</span>' + inp('pMother', '010-0000-0000', 'tel') + '</div><div class="q"><span class="ql">학생 휴대폰</span>' + inp('pStudent', '010-0000-0000', 'tel') + '</div></div><p class="mut" style="margin:0">학생 휴대폰으로는 진단 전 학생 설문 링크만 보내 드려요.</p></div>' +
+    '<div class="card"><h2>희망 일정 <span class="sub" style="font-weight:400;color:var(--mut);font-size:14px">(선택 · 원장님이 확인 후 확정)</span></h2><div class="row2"><div class="q"><span class="ql">희망 날짜</span>' + inp('wantDate', '', 'date') + '</div><div class="q"><span class="ql">희망 시간</span>' + inp('wantTime', '', 'time') + '</div></div>' +
+    '<div class="q"><span class="ql">어떻게 알고 오셨나요</span>' + radio('src', BOOK_SRC) + '</div><div class="q"><span class="ql">궁금한 점 <span class="sub">(선택)</span></span><textarea data-in="note" placeholder="아이 상황, 상담에서 듣고 싶은 이야기 등">' + esc(a.note || '') + '</textarea></div></div>' +
+    '<div class="card"><h2>개인정보 수집·이용 동의</h2><p class="mut" style="margin:0 0 10px">수집 항목: 학생 이름·학년·학교, 보호자·학생 휴대폰 번호 · 목적: 진단 예약 연락과 상담 · 보유: 등록하지 않으면 마지막 상담 후 1년 뒤 파기 · <a href="./privacy.html" target="_blank">처리방침 전문</a></p>' + radio('agree', ['동의합니다', '동의하지 않습니다']) + (S.err ? '<p class="err">' + esc(S.err) + '</p>' : '') + '</div></main>' +
+    '<div class="foot"><div class="in"><button class="btn grow" data-act="bookGo"' + (S.busy ? ' disabled' : '') + '>예약 신청하기</button></div></div>';
+}
+function bookedDone() {
+  const f = S.f; const stuUrl = location.origin + location.pathname + '?t=' + TOK + '&w=student';
+  const stuTxt = '[더밀착수학교습소] ' + (f.name || '') + ', 진단 테스트 전에 학생 설문을 작성해 줘! (5분, 시험 아니에요)\n▶ ' + stuUrl;
+  const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const sms = f.pStudent ? 'sms:' + f.pStudent + (ios ? '&' : '?') + 'body=' + encodeURIComponent(stuTxt) : '';
+  return top() + '<main><div class="card done"><div class="ic">📅</div><h1>예약 신청이 접수됐어요</h1><p class="lead">원장님이 확인 후 진단 날짜를 확정해 ' + esc(fmtP(f.pMother)) + '로 연락드릴게요.</p>' +
+    '<p style="margin:20px 0 6px"><b>상담 전에 미리 해 두시면 더 알찬 상담이 돼요</b></p>' +
+    '<div class="steps" style="text-align:left">' +
+    '<button class="step' + (f.parent ? ' done' : '') + '" data-go="parent"><span class="n">어머님</span><b>학부모 사전 진단 설문</b><span>10분 · 지금 바로 작성할 수 있어요</span><span class="st">' + (f.parent ? '✓ 작성 완료' : '작성하기 ›') + '</span></button>' +
+    (sms ? '<a class="step' + (f.student ? ' done' : '') + '" href="' + esc(sms) + '" style="text-decoration:none;color:inherit"><span class="n">학생</span><b>아이 폰으로 학생 설문 보내기</b><span>문자 화면이 열려요 · [보내기]만 누르세요</span><span class="st">' + (f.student ? '✓ 작성 완료' : '문자 보내기 ›') + '</span></a>' : '') +
+    '</div></div></main>';
+}
+
 /* ---------- 완료 ---------- */
 function done(w) {
   const qrBox = w === 'apply' ? '<p style="margin:22px 0 4px"><b>지금 휴대폰으로 교습소 앱을 설치해 주세요</b></p><p class="mut" style="margin:0">출결·수업 기록·알림을 받는 재원생·학부모 전용 앱이에요. 휴대폰 카메라로 찍으세요.</p><div class="qr" id="qrBox"></div>' : '';
@@ -123,7 +151,9 @@ function done(w) {
 function render() {
   if (!S.f) return;
   let h = '';
-  if (S.w === 'done-parent' || S.w === 'done-student' || S.w === 'done-apply') h = done(S.w.slice(5));
+  if (S.w === 'book') h = bookForm();
+  else if (S.w === 'booked') h = bookedDone();
+  else if (S.w === 'done-parent' || S.w === 'done-student' || S.w === 'done-apply') h = done(S.w.slice(5));
   else if (S.w === 'parent' || S.w === 'student') h = survey(S.w);
   else if (S.w === 'apply') h = applyForm();
   else h = hub();
@@ -152,6 +182,18 @@ app.addEventListener('click', async e => {
     try { await save(S.w); S.busy = false; S.w = 'done-' + S.w; render(); scrollTo(0, 0); } catch (er) { S.busy = false; S.err = '저장하지 못했어요. 인터넷 연결을 확인해 주세요.'; render(); }
     return;
   }
+  if (a === 'bookGo') {
+    const A = S.a; const pm = digits(A.pMother), ps = digits(A.pStudent);
+    if (!String(A.name || '').trim()) { S.err = '학생 이름을 적어 주세요'; return render(); }
+    if (!/^01\d{8,9}$/.test(pm)) { S.err = '어머님(보호자) 휴대폰 번호를 확인해 주세요'; return render(); }
+    if (!/^01\d{8,9}$/.test(ps)) { S.err = '학생 휴대폰 번호를 확인해 주세요'; return render(); }
+    if (A.agree !== '동의합니다') { S.err = '개인정보 수집·이용에 동의해 주셔야 신청할 수 있어요'; return render(); }
+    S.busy = true; render();
+    try { const ref = doc(collection(db, 'forms')); await setDoc(ref, { st: 'open', self: 'book', name: String(A.name).trim().slice(0, 20), grade: A.grade || '중1', school: String(A.school || '').trim().slice(0, 30), pMother: pm, pStudent: ps, src: A.src || '', wantDate: A.wantDate || '', wantTime: A.wantTime || '', note: String(A.note || '').slice(0, 500), ts: Date.now(), up: Date.now() });
+      location.replace(location.pathname + '?t=' + ref.id + '&w=booked'); }
+    catch (er) { S.busy = false; S.err = '신청하지 못했어요. 인터넷 연결을 확인해 주세요.'; render(); }
+    return;
+  }
   if (a === 'applyGo') {
     const A = S.a; const need = [['name', '학생 성명'], ['birth', '생년월일'], ['school', '학교'], ['gName', '보호자 성명'], ['gPhone', '보호자 연락처'], ['cls', '수강 과정']].find(([k]) => !A[k]);
     if (need) { S.err = need[1] + '을(를) 적어 주세요'; return render(); }
@@ -175,9 +217,10 @@ app.addEventListener('change', e => { const k = e.target.dataset && e.target.dat
 let lastNarrow = narrow(); addEventListener('resize', () => { if (narrow() !== lastNarrow) { lastNarrow = narrow(); S.page = 0; if (S.w === 'parent' || S.w === 'student') render(); } });
 
 (async () => {
+  if (BOOK) { S.f = {}; S.w = 'book'; S.a = { grade: '중1' }; document.title = '더밀착수학 · 무료 정밀진단 예약'; render(); return; }
   if (REMOTE) { S.f = { src: '' }; document.title = '더밀착수학 · 입학신청서'; go('apply'); return; }
   if (!TOK || TOK.length < 20) { app.innerHTML = top() + '<main><div class="card done"><div class="ic">🔗</div><h1>상담 링크가 필요해요</h1><p class="lead">교습소에서 받은 링크로 열어 주세요.</p></div></main>'; return; }
   try { const d = await getDoc(doc(db, 'forms', TOK)); if (!d.exists()) throw new Error('none'); S.f = d.data(); }
   catch (e) { app.innerHTML = top() + '<main><div class="card done"><div class="ic">⏰</div><h1>링크가 만료됐어요</h1><p class="lead">상담이 끝난 링크이거나 주소가 잘못됐어요. 교습소(010-4318-0075)로 문의해 주세요.</p></div></main>'; return; }
-  if (S.w !== 'hub' && DEF[S.w] || S.w === 'apply') go(S.w); else { S.w = 'hub'; render(); }
+  if (S.w === 'booked') render(); else if (S.w !== 'hub' && DEF[S.w] || S.w === 'apply') go(S.w); else { S.w = 'hub'; render(); }
 })();
