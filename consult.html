@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2b44ff">
+<meta name="robots" content="noindex">
+<title>더밀착수학 · 상담</title>
+<link rel="icon" href="./icon-192.png?v=2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--pri:#2b44ff;--pri2:#5a69ff;--ink:#11152b;--mut:#5b6180;--line:#e2e5f3;--soft:#f1f3ff;--bg:#f6f7fc;--ok:#1f9d55;--acc:#e5484d}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Noto Sans KR",system-ui,sans-serif;word-break:keep-all}
+button,input,textarea,select{font:inherit;color:inherit}
+.top{background:linear-gradient(160deg,var(--pri),var(--pri2));color:#fff;padding:calc(env(safe-area-inset-top) + 18px) 20px 18px}
+.top .in{max-width:860px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.top img{width:40px;height:40px;border-radius:10px}
+.top b{font:700 17px "IBM Plex Sans KR","Noto Sans KR",sans-serif}.top small{display:block;opacity:.85;font-size:12.5px}
+.top .pg{margin-left:auto;font-size:13px;opacity:.9;white-space:nowrap}
+.bar{height:5px;background:rgba(255,255,255,.25);border-radius:9px;max-width:860px;margin:12px auto 0;overflow:hidden}.bar i{display:block;height:100%;background:#fff;border-radius:9px;transition:width .3s}
+main{max-width:860px;margin:0 auto;padding:18px 16px calc(110px + env(safe-area-inset-bottom))}
+h1{font:700 24px/1.35 "IBM Plex Sans KR","Noto Sans KR",sans-serif;margin:8px 0 6px;letter-spacing:-.02em}
+h2{font:700 18px/1.4 "IBM Plex Sans KR","Noto Sans KR",sans-serif;margin:0 0 12px}
+.lead{color:var(--mut);margin:0 0 18px}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:14px}
+.q{margin-bottom:20px}.q:last-child{margin-bottom:0}
+.q>label,.q>.ql{display:block;font-weight:700;margin-bottom:8px}.q .sub{font-weight:400;color:var(--mut);font-size:13.5px;margin-left:4px}
+.opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.opt{border:2px solid var(--line);background:#fff;border-radius:14px;padding:12px 14px;text-align:left;cursor:pointer;min-height:52px;display:flex;align-items:center;gap:10px;transition:.15s}
+.opt::before{content:"";flex:none;width:20px;height:20px;border-radius:50%;border:2px solid #c5cae3}
+.opt.m::before{border-radius:6px}
+.opt.on{border-color:var(--pri);background:var(--soft);font-weight:700}.opt.on::before{background:var(--pri);border-color:var(--pri);box-shadow:inset 0 0 0 3px #fff}
+input[type=text],input[type=tel],input[type=date],input[type=time],input[type=number],textarea,select{width:100%;border:2px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff;outline:none;min-height:50px}
+input:focus,textarea:focus,select:focus{border-color:var(--pri)}textarea{min-height:90px;resize:vertical}
+.foot{position:fixed;left:0;right:0;bottom:0;background:rgba(246,247,252,.96);backdrop-filter:blur(6px);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+.foot .in{max-width:860px;margin:0 auto;display:flex;gap:10px}
+.btn{border:0;border-radius:14px;padding:14px 18px;font-weight:700;cursor:pointer;background:var(--pri);color:#fff;min-height:54px;font-size:16.5px}
+.btn.ghost{background:#fff;color:var(--pri);border:2px solid var(--line)}.btn:disabled{opacity:.5}
+.grow{flex:1}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.step{background:#fff;border:2px solid var(--line);border-radius:18px;padding:18px;text-align:left;cursor:pointer;position:relative;min-height:150px}
+.step .n{font:700 13px "IBM Plex Sans KR";color:var(--pri)}.step b{display:block;font-size:18px;margin:4px 0}.step span{color:var(--mut);font-size:14px}
+.step.done{border-color:#bfe8cf;background:#f3fbf6}.step.done .n{color:var(--ok)}.step.off{cursor:default;opacity:.75}
+.step .st{position:absolute;right:14px;top:14px;font-size:12.5px;font-weight:700;padding:3px 10px;border-radius:20px;background:var(--soft);color:var(--pri)}
+.step.done .st{background:#e3f4ea;color:var(--ok)}
+.err{color:var(--acc);font-weight:700;margin:8px 0 0}
+.mut{color:var(--mut);font-size:14px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media (max-width:640px){.row2,.row3{grid-template-columns:1fr}.opts{grid-template-columns:1fr}h1{font-size:21px}}
+.opts.sm{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}
+.cls{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.cls .opt{flex-direction:column;align-items:flex-start;gap:2px}.cls .opt::before{display:none}.cls .opt small{color:var(--mut);font-weight:400}.cls .opt .p{font:700 17px "IBM Plex Sans KR";color:var(--pri)}
+.rule{display:flex;gap:10px;margin:0 0 10px}.rule b{flex:none;background:var(--soft);color:var(--pri);border-radius:8px;padding:2px 8px;font-size:13.5px;height:fit-content}
+.sig{border:2px dashed #c5cae3;border-radius:14px;background:#fff;touch-action:none;width:100%;height:150px;display:block}
+.sigw{position:relative}.sigw .clr{position:absolute;right:8px;top:8px;border:0;background:var(--soft);color:var(--pri);border-radius:8px;padding:4px 10px;font-weight:700;cursor:pointer}
+.sigw .ph{position:absolute;left:0;right:0;top:58px;text-align:center;color:#b6bbd6;pointer-events:none}
+.done{text-align:center;padding:30px 10px}.done .ic{font-size:56px}
+.qr{display:inline-block;background:#fff;padding:14px;border-radius:16px;border:1px solid var(--line);margin:10px 0}
+.center{text-align:center}
+</style>
+</head>
+<body>
+<div id="app"><main><p class="mut" style="text-align:center;margin-top:40vh">불러오는 중…</p></main></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" defer></script>
+<script type="module" src="./consult.js"></script>
+</body>
+</html>

@@ -13,7 +13,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.15.0';
+const ADMIN_VERSION = '2.16.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -46,7 +46,7 @@ const COURSES = Object.keys(BY_SUBJ['수학']);
 const PCT = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 /* ---------- 상태 ---------- */
-const D = { leads: [], sched: null, calls: [], students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], abs: [], extra: {}, apply: [], fin: {}, finSet: null, sinfo: {}, cfg: null };
+const D = { leads: [], sched: null, calls: [], students: [], att: {}, threads: {}, hw: [], logs: [], notices: [], req: [], members: [], exams: [], staff: [], abs: [], extra: {}, apply: [], forms: {}, fin: {}, finSet: null, sinfo: {}, cfg: null };
 const V = { screen: 'loading', page: 'dash', msg: '', busy: false, calM: TODAY.slice(0, 7), chat: null, hwF: 'all', modal: null, bulk: null, toast: '' };
 const app = document.getElementById('app');
 const docs = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -249,12 +249,12 @@ async function approveApply(a) {
   b.set(ref, { name: a.name, grade, school: a.school || '', course: DEF_COURSE[grade], ts: now() });
   let auto = false; Object.entries(ph).forEach(([rel, p]) => { if (p) auto = addMember(b, sid, rel, p, a.name, grade) || auto; });
   const phones = {}; Object.entries(ph).forEach(([rel, p]) => { if (p) phones[rel] = p; });
-  b.set(doc(db, 'sinfo', sid), { birth: a.birth || '', joined: TODAY, memo: a.memo ? (a._lead ? a.memo : '신청서: ' + a.memo) : '', phones }, { merge: true });
-  if (a._lead) b.update(doc(db, 'leads', a._lead), { st: 'enrolled', sid, up: TODAY }); else b.update(doc(db, 'apply', a.id), { st: 'ok', sid });
+  b.set(doc(db, 'sinfo', sid), { birth: a.birth || '', joined: TODAY, memo: a.memo ? (a._lead ? a.memo : '신청서: ' + a.memo) : '', phones, ...(a.extraInfo || {}) }, { merge: true });
+  if (a._lead) { b.update(doc(db, 'leads', a._lead), { st: 'enrolled', sid, up: TODAY }); if (a._tok) b.update(doc(db, 'forms', a._tok), { st: 'closed', sid, up: Date.now() }); } else b.update(doc(db, 'apply', a.id), { st: 'ok', sid });
   await b.commit();
   // 이번 달 정산에 희망 요일로 줄 추가
   const ym = TODAY.slice(0, 7); const m = D.fin[ym];
-  if (m && !(m.rows || []).some(r => r.sid === sid)) { const rows = [...(m.rows || []), { ...blankRow({ id: sid, name: a.name }), d: (a.days || [0, 0, 0, 0, 0, 0]).map(x => x ? 1 : 0) }]; await updateDoc(doc(db, 'fin', 'm_' + ym), { rows }); if (V.finEdit && V.finEdit.ym === ym) V.finEdit.rows = rows; }
+  if (m && !(m.rows || []).some(r => r.sid === sid)) { const rows = [...(m.rows || []), { ...blankRow({ id: sid, name: a.name }), d: (a.days || [0, 0, 0, 0, 0, 0]).map(x => x ? 1 : 0), price: a.price ? String(a.price) : '' }]; await updateDoc(doc(db, 'fin', 'm_' + ym), { rows }); if (V.finEdit && V.finEdit.ym === ym) V.finEdit.rows = rows; }
   return { sid, auto };
 }
 function pPeople() {
@@ -272,7 +272,7 @@ const addYear = d => { const [y, m, dd] = d.split('-'); return (+y + 1) + '-' + 
 const isDue = s => !!(s.left && s.leftAt && addYear(s.leftAt) <= TODAY);
 const dueList = () => D.students.filter(isDue);
 const purgeAlert = () => isOwnerMe() && dueList().length ? '<section class="card hl"><h2>개인정보 파기 대상 ' + dueList().length + '명</h2><p class="sub" style="margin:0 0 8px">퇴원 후 1년이 지났어요: ' + dueList().map(s => esc(s.name)).join(', ') + ' · 학생 관리 → 퇴원한 학생에서 [정보 삭제]를 눌러 주세요.</p><button class="btn sm" data-a="goPurge">학생 관리로 가기</button></section>' : '';
-const BK_COLS = ['leads', 'calls', 'config', 'students', 'sinfo', 'members', 'users', 'staff', 'att', 'abs', 'reqs', 'extra', 'logs', 'hw', 'exams', 'notices', 'msgs', 'fin', 'apply', 'push'];
+const BK_COLS = ['leads', 'calls', 'config', 'students', 'sinfo', 'members', 'users', 'staff', 'att', 'abs', 'reqs', 'extra', 'logs', 'hw', 'exams', 'notices', 'msgs', 'fin', 'apply', 'forms', 'push'];
 async function backupAll() {
   const out = { app: '더밀착수학', ver: ADMIN_VERSION, at: new Date().toISOString(), data: {} };
   for (const c of BK_COLS) { V.bkBusy = '받는 중… ' + c; render(); const s = await getDocs(collection(db, c)); out.data[c] = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); }
@@ -283,7 +283,7 @@ async function backupAll() {
 // 퇴원생 개인정보 영구 삭제 (정산 기록은 남김)
 async function purgeStudent(sid) {
   const refs = [];
-  for (const c of ['att', 'abs', 'logs', 'hw', 'reqs', 'msgs', 'members', 'calls']) { const s = await getDocs(query(collection(db, c), where('sid', '==', sid))); s.docs.forEach(d => refs.push(doc(db, c, d.id))); }
+  for (const c of ['att', 'abs', 'logs', 'hw', 'reqs', 'msgs', 'members', 'calls', 'leads', 'forms']) { const s = await getDocs(query(collection(db, c), where('sid', '==', sid))); s.docs.forEach(d => refs.push(doc(db, c, d.id))); }
   ['student', 'parent', 'father', 'mother'].forEach(r => refs.push(doc(db, 'push', sid + '|' + r)));
   refs.push(doc(db, 'sinfo', sid));
   const ms = D.members.filter(m => m.sid === sid && m.uid);
@@ -541,6 +541,22 @@ function finSync(m) {
   return ch;
 }
 /* ---------- 진단·상담 (무료 정밀진단 → 등록) ---------- */
+const CONSULT = 'https://themilchak-math.github.io/consult.html';
+const formOf = l => (l && l.tok && D.forms[l.tok]) || null;
+const formUrl = (tok, w) => CONSULT + '?t=' + tok + (w ? '&w=' + w : '');
+const formChips = f => !f ? '' : [['student', '학생 설문'], ['parent', '학부모 설문'], ['apply', '입학신청서']].map(([k, t]) => chip(t + (f[k] ? ' ✓' : ''), f[k] ? 'ok' : '')).join(' ') + (f.st !== 'open' ? ' ' + chip('링크 닫힘', '') : '');
+const LOGIC = ['체계적', '식 생략 많음', '개념 적용 흔들림', '속도 느림'], STUCK = ['', '끝까지 시도', '조건 해석 부족', '포기·찍기'];
+const newTok = () => Array.from(crypto.getRandomValues(new Uint8Array(18)), b => b.toString(36).padStart(2, '0')).join('').slice(0, 28);
+const DAYS_IDX = { 월: 0, 화: 1, 수: 2, 목: 3, 금: 4, 토: 5 };
+function formBox(l) {
+  const f = formOf(l);
+  if (!f) return '<div class="card" style="background:var(--soft);border:0;margin:10px 0"><b>📋 상담 서류 (태블릿 · 학부모님 폰)</b><p class="sub" style="margin:4px 0 8px">학생 설문 · 학부모 사전 진단 설문 · 입학신청서를 종이 대신 화면으로 받아요. 적은 내용이 결과 브리핑과 등록 처리에 바로 이어져요.</p><button type="button" class="btn sm" data-a="formNew" data-id="' + l.id + '">상담 시작 · 서류 링크 만들기</button></div>';
+  return '<div class="card" style="background:var(--soft);border:0;margin:10px 0"><b>📋 상담 서류</b> ' + formChips(f) +
+    '<div class="bar" style="margin-top:8px;flex-wrap:wrap"><a class="btn sm" target="_blank" href="' + esc(formUrl(l.tok)) + '">태블릿에서 열기</a><button type="button" class="btn sm ghost" data-a="formQR" data-id="' + l.id + '">' + (V.formQR === l.id ? 'QR 닫기' : '학부모님 폰 QR') + '</button><button type="button" class="btn sm ghost" data-a="formCopy" data-id="' + l.id + '">링크 복사</button>' +
+    '<a class="btn sm ghost" target="_blank" href="./brief.html?id=' + l.id + '">📊 결과 브리핑</a>' + (f.apply ? '<a class="btn sm ghost" target="_blank" href="./brief.html?id=' + l.id + '&doc=apply">🖨 입학신청서</a>' : '') +
+    (f.st === 'open' ? '<button type="button" class="btn sm ghost" data-a="formClose" data-id="' + l.id + '">링크 닫기</button>' : '<button type="button" class="btn sm ghost" data-a="formOpen" data-id="' + l.id + '">링크 다시 열기</button>') + '</div>' +
+    (V.formQR === l.id ? '<div style="text-align:center;margin-top:10px"><div id="formQRBox" style="display:inline-block;padding:12px;background:#fff;border-radius:14px"></div><p class="sub">학부모님 폰 카메라로 찍으면 설문이 바로 열려요</p></div>' : '') + '</div>';
+}
 const leadDays = l => l.date ? fmtD(l.date) + (l.time ? ' ' + l.time : '') : '<span class="sub">날짜 미정</span>';
 const leadTel = l => leadPhone(l) ? '<a class="btn xs ghost" href="tel:' + esc(leadPhone(l)) + '">📞 ' + esc(fmtP(leadPhone(l))) + '</a>' : '';
 function leadDash() {
@@ -564,7 +580,7 @@ function pLeads() {
     '<div class="bar"><button class="btn" data-a="modal" data-v="lead">+ 진단 예약 추가</button>' + ['open', 'enrolled', 'lost', 'all'].map(k => '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-a="leadT" data-v="' + k + '">' + { open: '진행 중', enrolled: '등록함', lost: '등록 안 함', all: '전체' }[k] + ' ' + groups[k].length + '</button>').join(' ') +
     '<span style="flex:1"></span><span class="sub">이번 달 진단 ' + mon.length + '건 · 등록 ' + monE + '건' + (tot.length ? ' · 누적 등록률 ' + Math.round(totE / tot.length * 100) + '%' : '') + '</span></div>' +
     '<section class="card scroll"><table><thead><tr><th>학생</th><th>진단</th><th>경로</th><th>상태</th><th>진단 결과·상담</th><th></th></tr></thead><tbody>' +
-    (list.length ? list.map(l => '<tr><td style="white-space:nowrap"><b>' + esc(l.name) + '</b><div class="sub">' + esc(l.grade || '') + ' ' + esc(l.school || '') + '</div></td><td style="white-space:nowrap">' + leadDays(l) + '</td><td class="sub" style="white-space:nowrap">' + esc(l.src || '') + '</td><td style="white-space:nowrap">' + chip(stLabel(l.st), stc[l.st]) + (l.st === 'done' && l.next ? '<div class="sub"' + (l.next <= TODAY ? ' style="color:var(--acc);font-weight:700"' : '') + '>연락 ' + fmtD(l.next) + '</div>' : '') + (l.react ? '<div class="sub">반응: ' + esc(l.react) + '</div>' : '') + '</td><td class="sub" style="max-width:360px">' + esc([l.level && '수준 ' + l.level, l.weak && '약점 ' + l.weak, l.rec && '추천 ' + l.rec, l.memo].filter(Boolean).join(' · ').slice(0, 140)) + '</td><td class="r" style="white-space:nowrap">' + leadTel(l) + ' <button class="btn xs ghost" data-a="modal" data-v="lead" data-id="' + l.id + '">기록</button>' +
+    (list.length ? list.map(l => '<tr><td style="white-space:nowrap"><b>' + esc(l.name) + '</b><div class="sub">' + esc(l.grade || '') + ' ' + esc(l.school || '') + '</div></td><td style="white-space:nowrap">' + leadDays(l) + '</td><td class="sub" style="white-space:nowrap">' + esc(l.src || '') + '</td><td style="white-space:nowrap">' + chip(stLabel(l.st), stc[l.st]) + (l.st === 'done' && l.next ? '<div class="sub"' + (l.next <= TODAY ? ' style="color:var(--acc);font-weight:700"' : '') + '>연락 ' + fmtD(l.next) + '</div>' : '') + (l.react ? '<div class="sub">반응: ' + esc(l.react) + '</div>' : '') + (formOf(l) ? '<div style="margin-top:4px">' + formChips(formOf(l)) + '</div>' : '') + '</td><td class="sub" style="max-width:360px">' + esc([l.level && '수준 ' + l.level, l.weak && '약점 ' + l.weak, l.rec && '추천 ' + l.rec, l.memo].filter(Boolean).join(' · ').slice(0, 140)) + '</td><td class="r" style="white-space:nowrap">' + leadTel(l) + ' <button class="btn xs ghost" data-a="modal" data-v="lead" data-id="' + l.id + '">기록</button>' +
       (l.st === 'done' || l.st === 'booked' ? ' <button class="btn xs" data-a="leadEnroll" data-id="' + l.id + '">등록 처리</button> <button class="btn xs ghost" data-a="leadLost" data-id="' + l.id + '">등록 안 함</button>' : '') + (l.st === 'lost' ? ' <button class="btn xs ghost" data-a="leadReopen" data-id="' + l.id + '">다시 진행</button>' : '') + '</td></tr>').join('') : '<tr><td colspan="6" class="empty">' + (t === 'open' ? '진행 중인 진단이 없어요. [+ 진단 예약 추가]로 네이버 예약이 들어오면 적어 두세요' : '없어요') + '</td></tr>') + '</tbody></table></section>' +
     (old.length ? '<p class="sub">등록하지 않고 1년이 지난 진단 기록 ' + old.length + '건이 있어요 (개인정보 처리방침: 1년 후 파기) <button class="btn xs ghost danger" data-a="leadClean">정리하기</button></p>' : '');
 }
@@ -866,10 +882,15 @@ function modalHtml() {
       '<div class="row2"><label>어머님 번호' + inp('p_ldM', fmtP(l.pMother || ''), '010-0000-0000', ' inputmode="numeric"') + '</label><label>아버님 번호' + inp('p_ldF', fmtP(l.pFather || ''), '010-0000-0000', ' inputmode="numeric"') + '</label></div>' +
       '<div class="row2"><label>학생 번호 (선택)' + inp('p_ldP', fmtP(l.pStudent || ''), '010-0000-0000', ' inputmode="numeric"') + '</label><label>상태<select id="ldSt">' + LEAD_ST.filter(x => x[0] !== 'enrolled' || l.st === 'enrolled').map(([v, t]) => opt(v, l.st, t)).join('') + '</select></label></div>' +
       '<div class="row2"><label>진단 날짜<input type="date" id="ldD" value="' + esc(l.date || '') + '"></label><label>시간<input type="time" id="ldT" step="1800" value="' + esc(l.time || '') + '"></label></div>' +
-      '<h3 style="margin:14px 0 6px">진단 결과 · 상담</h3>' +
-      '<div class="row2"><label>현재 수준·진도' + inp('ldLv', l.level, '예: 중2-1 마무리, 연산 실수 잦음') + '</label><label>추천 과정·요일' + inp('ldRec', l.rec, '예: 중2-2 개념부터 · 주 3회 화목토') + '</label></div>' +
-      '<label>강점' + inp('ldStr', l.strong, '예: 개념 이해 빠름') + '</label>' +
-      '<label>약점·보완할 점<textarea id="ldWk" rows="2" placeholder="예: 일차함수 그래프, 서술형 풀이 과정">' + esc(l.weak || '') + '</textarea></label>' +
+      (V.editId ? formBox(l) : '') +
+      '<h3 style="margin:14px 0 6px">진단 테스트 결과 <span class="sub" style="font-weight:400">(원장 기재 · 결과 브리핑에 그대로 나와요)</span></h3>' +
+      '<div class="row2"><label>응시 과정' + inp('ldCo', l.course, '예: 중2-1 전 범위') + '</label><label>현재 수준·진도' + inp('ldLv', l.level, '예: 중2-1 마무리, 연산 실수 잦음') + '</label></div>' +
+      '<div class="row3" style="grid-template-columns:1fr 1fr 1fr"><label>득점 / 문항' + inp('ldSc', l.score, '예: 18/25') + '</label><label>점수' + inp('ldPts', l.pts, '예: 72', ' inputmode="numeric"') + '</label><label>소요 시간 (분 / 60)' + inp('ldMin', l.mins, '예: 55', ' inputmode="numeric"') + '</label></div>' +
+      '<label>풀이 논리</label><div class="bar" style="flex-wrap:wrap;margin:-2px 0 8px">' + LOGIC.map((x, i) => '<label style="display:inline-flex;gap:5px;align-items:center;font-weight:400;margin:0 12px 0 0;white-space:nowrap"><input type="checkbox" style="width:auto;min-height:0;margin:0" id="ldLg' + i + '"' + ((l.logic || []).includes(x) ? ' checked' : '') + '> ' + esc(x) + '</label>').join('') + '</div>' +
+      '<label>막힐 때<select id="ldStk">' + STUCK.map(x => opt(x, l.stuck || '', x || '-')).join('') + '</select></label>' +
+      '<div class="row2"><label>강점' + inp('ldStr', l.strong, '예: 개념 이해 빠름') + '</label><label>보완 우선' + inp('ldWk', l.weak, '예: 일차함수 그래프, 서술형 풀이 과정') + '</label></div>' +
+      '<label>종합 소견<textarea id="ldSum" rows="2" placeholder="브리핑에서 어머님께 드릴 한두 문장">' + esc(l.sum || '') + '</textarea></label>' +
+      '<div class="row3" style="grid-template-columns:1fr 1fr 1fr"><label>추천 반·요일' + inp('ldRec', l.rec, '예: B반 · 월수금') + '</label><label>배정 교재' + inp('ldBk', l.book, '예: 개념원리 중2-2') + '</label><label>보충 포인트' + inp('ldFix', l.fix, '예: 중1 일차방정식') + '</label></div>' +
       '<label>상담 메모<textarea id="ldM" rows="3" placeholder="학부모님 고민, 다니는 학원, 원하는 점, 비용 이야기 등">' + esc(l.memo || '') + '</textarea></label>' +
       '<div class="row2"><label>학부모 반응<select id="ldRe">' + LEAD_REACT.map(x => opt(x, l.react || '', x || '-')).join('') + '</select></label><label>다음 연락할 날<input type="date" id="ldNx" value="' + esc(l.next || '') + '"></label></div>' +
       '<p class="sub" style="margin:6px 0 0">진단을 마치고 결과를 적으면 상태가 자동으로 "진단 완료"가 돼요. 다음 연락할 날이 되면 대시보드에 떠요.</p>' +
@@ -914,6 +935,7 @@ function render() {
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
   const cb = document.getElementById('chatBody'); if (cb) cb.scrollTop = cb.scrollHeight;
   if (window.innerWidth <= 800 && V.navSeen !== V.page) { const on = document.querySelector('nav button.on'); if (on) { V.navSeen = V.page; const nv = on.parentElement; nv.scrollLeft = (on.offsetLeft - nv.offsetLeft) - (nv.clientWidth - on.offsetWidth) / 2; } }
+  if (V.modal === 'lead' && V.formQR) { const box = document.getElementById('formQRBox'); const l = D.leads.find(x => x.id === V.formQR); if (box && l && l.tok && window.qrcode) { const q = window.qrcode(0, 'M'); q.addData(formUrl(l.tok, 'parent')); q.make(); box.innerHTML = q.createImgTag(5, 4); } }
   if (V.modal === 'invite' && V.invQR) { const box = document.getElementById('invQRBox'); const m = D.members.find(x => x.id === V.invQR); if (box && m && window.QRCode) { const mk = t => { const txt = 'SMSTO:' + m.phone + ':' + t; box.innerHTML = '';
       if (window.qrcode && window.qrcode.stringToBytesFuncs) { // 한글(UTF-8)을 정확히 계산하는 QR 라이브러리
         window.qrcode.stringToBytes = window.qrcode.stringToBytesFuncs['UTF-8']; const q = window.qrcode(0, 'L'); q.addData(txt, 'Byte'); q.make();
@@ -948,6 +970,7 @@ function subscribe() {
   L(collection(db, 'sched'), s => { D.sched = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); schedSoon(); });
   L(query(collection(db, 'extra'), where('date', '>=', off(-400))), s => { D.extra = {}; s.docs.forEach(d => { D.extra[d.id] = d.data(); }); schedSoon(); sr(); });
   if (isOwnerMe()) L(collection(db, 'leads'), s => { D.leads = docs(s); sr(); });
+  if (isOwnerMe()) L(collection(db, 'forms'), s => { D.forms = {}; s.docs.forEach(d => { D.forms[d.id] = d.data(); }); sr(); });
   if (isOwnerMe()) L(collection(db, 'apply'), s => { D.apply = docs(s).filter(x => x.st === 'new').sort((a, b) => ((a.ts && a.ts.seconds) || 0) - ((b.ts && b.ts.seconds) || 0)); sr(); });
   if (isOwnerMe()) L(collection(db, 'sinfo'), s => { D.sinfo = {}; s.docs.forEach(d => { D.sinfo[d.id] = d.data(); }); sr(); });
   if (isOwnerMe()) L(collection(db, 'fin'), s => { D.fin = {}; D.finSet = null; s.docs.forEach(d => { if (d.id === 'settings') D.finSet = d.data(); else if (d.id.startsWith('m_')) D.fin[d.id.slice(2)] = d.data(); }); if (V.ym && !V.finDirty) V.finEdit = D.fin[V.ym] ? clone(D.fin[V.ym]) : (V.finEdit && V.finEdit.ym === V.ym ? V.finEdit : null); D.finLoaded = true; schedSoon(); sr(); });
@@ -1105,13 +1128,25 @@ app.addEventListener('click', async e => {
     }
     if (a === 'leadT') { V.leadT = v; return render(); }
     if (a === 'leadLost' || a === 'leadReopen') { const l = D.leads.find(x => x.id === id); if (!l) return; await updateDoc(doc(db, 'leads', id), { st: a === 'leadLost' ? 'lost' : 'done', up: TODAY }); return toast(l.name + (a === 'leadLost' ? ' · 등록 안 함으로 정리했어요' : ' · 다시 진행 중으로 옮겼어요')); }
-    if (a === 'leadDel') { if (V.confirmLeadDel !== id) { V.confirmLeadDel = id; render(); setTimeout(() => { V.confirmLeadDel = null; }, 4000); return; } V.confirmLeadDel = null; await deleteDoc(doc(db, 'leads', id)); V.modal = null; V.editId = null; render(); return toast('진단 기록을 삭제했어요'); }
-    if (a === 'leadClean') { const old = D.leads.filter(l => (l.st === 'lost' || l.st === 'done') && (l.up || l.date) && (l.up || l.date) < off(-365)); if (!old.length || !confirm('등록하지 않고 1년이 지난 진단 기록 ' + old.length + '건을 영구 삭제할까요?')) return; const b = writeBatch(db); old.forEach(l => b.delete(doc(db, 'leads', l.id))); await b.commit(); return toast(old.length + '건을 정리했어요'); }
+    if (a === 'leadDel') { if (V.confirmLeadDel !== id) { V.confirmLeadDel = id; render(); setTimeout(() => { V.confirmLeadDel = null; }, 4000); return; } V.confirmLeadDel = null; { const l = D.leads.find(x => x.id === id); if (l && l.tok) await deleteDoc(doc(db, 'forms', l.tok)).catch(() => { }); } await deleteDoc(doc(db, 'leads', id)); V.modal = null; V.editId = null; render(); return toast('진단 기록을 삭제했어요'); }
+    if (a === 'leadClean') { const old = D.leads.filter(l => (l.st === 'lost' || l.st === 'done') && (l.up || l.date) && (l.up || l.date) < off(-365)); if (!old.length || !confirm('등록하지 않고 1년이 지난 진단 기록 ' + old.length + '건을 영구 삭제할까요?')) return; const b = writeBatch(db); old.forEach(l => { b.delete(doc(db, 'leads', l.id)); if (l.tok) b.delete(doc(db, 'forms', l.tok)); }); await b.commit(); return toast(old.length + '건을 정리했어요'); }
+    if (a === 'formNew') { const l = D.leads.find(x => x.id === id); if (!l) return; const tok = newTok();
+      const b = writeBatch(db); b.set(doc(db, 'forms', tok), { st: 'open', lead: id, name: l.name || '', school: l.school || '', grade: l.grade || '', pMother: l.pMother || '', pFather: l.pFather || '', pStudent: l.pStudent || '', src: l.src || '', ts: Date.now(), up: Date.now() }); b.update(doc(db, 'leads', id), { tok, up: TODAY }); await b.commit();
+      return toast('상담 서류 링크를 만들었어요 · [태블릿에서 열기]를 누르세요'); }
+    if (a === 'formQR') { V.formQR = V.formQR === id ? null : id; return render(); }
+    if (a === 'formCopy') { const l = D.leads.find(x => x.id === id); if (!l || !l.tok) return; const t = '[더밀착수학교습소] ' + l.name + ' 학생 상담 서류\n아래 링크에서 학부모 사전 진단 설문을 작성해 주세요 (약 10분)\n▶ ' + formUrl(l.tok, 'parent'); try { await navigator.clipboard.writeText(t); toast('복사했어요 · 카톡·문자에 붙여넣으세요'); } catch (e) { prompt('복사해서 보내세요', t); } return; }
+    if (a === 'formClose' || a === 'formOpen') { const l = D.leads.find(x => x.id === id); if (!l || !l.tok) return; await updateDoc(doc(db, 'forms', l.tok), { st: a === 'formClose' ? 'closed' : 'open', up: Date.now() }); return toast(a === 'formClose' ? '링크를 닫았어요 · 이제 이 링크로는 열리지 않아요' : '링크를 다시 열었어요'); }
     if (a === 'leadEnroll') {
       const l = D.leads.find(x => x.id === id); if (!l) return; if (!l.pMother && !l.pFather && !l.pStudent && !confirm('연락처가 없어요. 번호 없이 학생만 등록할까요?')) return;
       if (D.students.some(s => s.name === l.name && !s.left) && !confirm('이미 ' + l.name + ' 학생이 있어요. 그래도 새로 등록할까요?')) return;
       if (!confirm(l.name + ' 학생을 등록할까요? 학생·앱 연결 번호·학생명부(진단 결과 메모 포함)·이번 달 정산 줄이 만들어져요.')) return;
-      const r = await approveApply({ name: l.name, school: l.school, grade: l.grade, birth: '', pMother: l.pMother, pFather: l.pFather, pStudent: l.pStudent, days: [0, 0, 0, 0, 0, 0], memo: leadSummary(l) + (l.memo ? ' / 상담: ' + l.memo : ''), _lead: l.id });
+      const f = formOf(l), ap = f && f.apply; let a0 = { name: l.name, school: l.school, grade: l.grade, birth: '', pMother: l.pMother, pFather: l.pFather, pStudent: l.pStudent, days: [0, 0, 0, 0, 0, 0], memo: leadSummary(l) + (l.memo ? ' / 상담: ' + l.memo : ''), _lead: l.id, _tok: f ? l.tok : '' };
+      if (ap) { const gp = digits(ap.gPhone), d6 = [0, 0, 0, 0, 0, 0]; (ap.days || []).forEach(x => { if (x in DAYS_IDX) d6[DAYS_IDX[x]] = 1; });
+        a0 = { ...a0, name: ap.name || l.name, school: ap.school || l.school, grade: ap.grade || l.grade, birth: ap.birth || '', pStudent: digits(ap.pStudent) || l.pStudent || '', pMother: ap.gRel === '모' ? gp : l.pMother || '', pFather: ap.gRel === '부' ? gp : l.pFather || '', days: d6, price: ap.price || 0,
+          memo: a0.memo + ' / 입학신청서: ' + [ap.cls && ap.cls + '반', ap.at && '등원 ' + ap.at, ap.start && '희망 ' + ap.start, ap.note].filter(Boolean).join(', '),
+          extraInfo: { addr: ap.addr || '', back: ap.back || '', guardian: (ap.gName || '') + (ap.gRel ? '(' + ap.gRel + ')' : ''), cls: ap.cls || '', start: ap.start || '' } };
+        if (ap.gRel === '기타' && gp && !a0.pMother && !a0.pFather) a0.pMother = gp; }
+      const r = await approveApply(a0);
       V.page = 'students'; V.modal = 'invite'; V.inviteSids = [r.sid]; V.invQR = null; render(); return toast(l.name + ' 등록 완료' + (r.auto ? ' · 형제 부모님 계정에 자동 연결' : '') + ' · 설치 안내 문자를 보내 주세요');
     }
     if (a === 'goPurge') { V.page = 'students'; V.stuV = 'list'; V.openLeft = true; return render(); }
@@ -1250,8 +1285,8 @@ app.addEventListener('submit', async e => {
       const name = g('ldN').trim(); if (!name) return toast('학생 이름을 적어 주세요');
       const ph = id => digits(g(id)); const pM = ph('p_ldM'), pF = ph('p_ldF'), pS = ph('p_ldP');
       if ([pM, pF, pS].some(p => p && !/^01\d{8,9}$/.test(p))) return toast('휴대폰 번호를 확인해 주세요');
-      const rec = { name, grade: g('ldG'), school: g('ldS').trim(), src: g('ldSrc'), pMother: pM, pFather: pF, pStudent: pS, date: g('ldD'), time: g('ldT'), level: g('ldLv').trim(), rec: g('ldRec').trim(), strong: g('ldStr').trim(), weak: g('ldWk').trim(), memo: g('ldM').trim(), react: g('ldRe'), next: g('ldNx'), up: TODAY };
-      let st = g('ldSt'); if (st === 'booked' && (rec.level || rec.weak || rec.strong || rec.rec || rec.react)) st = 'done'; rec.st = st;
+      const rec = { name, grade: g('ldG'), school: g('ldS').trim(), src: g('ldSrc'), pMother: pM, pFather: pF, pStudent: pS, date: g('ldD'), time: g('ldT'), level: g('ldLv').trim(), rec: g('ldRec').trim(), strong: g('ldStr').trim(), weak: g('ldWk').trim(), course: g('ldCo').trim(), score: g('ldSc').trim(), pts: g('ldPts').trim(), mins: g('ldMin').trim(), logic: LOGIC.filter((x, i) => document.getElementById('ldLg' + i).checked), stuck: g('ldStk'), sum: g('ldSum').trim(), book: g('ldBk').trim(), fix: g('ldFix').trim(), memo: g('ldM').trim(), react: g('ldRe'), next: g('ldNx'), up: TODAY };
+      let st = g('ldSt'); if (st === 'booked' && (rec.level || rec.weak || rec.strong || rec.rec || rec.react || rec.pts || rec.sum)) st = 'done'; rec.st = st;
       if (V.editId) await updateDoc(doc(db, 'leads', V.editId), rec); else await addDoc(collection(db, 'leads'), { ...rec, ts: now() });
       V.modal = null; V.editId = null; render(); return toast(name + ' ' + (st === 'booked' ? '진단 예약을 저장했어요' : '진단 기록을 저장했어요'));
     }
