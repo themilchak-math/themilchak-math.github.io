@@ -66,26 +66,43 @@ export const pushKeys = (to, students) => students.filter(s => !s.left).flatMap(
 
 /* ---------- 첨부 보여 주기 ---------- */
 const extIcon = n => /\.pdf$/i.test(n) ? '📕' : /\.(hwp|hwpx)$/i.test(n) ? '📘' : /\.(docx?|txt)$/i.test(n) ? '📄' : /\.(xlsx?|csv)$/i.test(n) ? '📗' : /\.(pptx?)$/i.test(n) ? '📙' : /\.(zip)$/i.test(n) ? '🗜️' : '📎';
+const MAXT = 8; // 목록에서는 사진을 작게 8장까지, 나머지는 '+N'
 export function filesHtml(n, esc, compact) {
   const fs = n.files || [], imgs = fs.filter(f => f.img), docs = fs.filter(f => !f.img), links = n.links || [];
   if (!fs.length && !links.length) return '';
+  const ks = esc(imgs.map(f => f.k).join(','));
+  const th = (f, i, more) => '<span class="bth" data-lb="' + esc(f.k) + '" data-g="' + ks + '"><img loading="lazy" src="' + esc(fileUrl(f.k)) + '" alt="">' + (more ? '<b>+' + more + '</b>' : '') + '</span>';
   if (compact) {
     const bits = []; if (imgs.length) bits.push('📸 사진 ' + imgs.length + '장'); if (docs.length) bits.push('📎 파일 ' + docs.length + '개'); if (links.length) bits.push('🔗 링크 ' + links.length + '개');
-    return (imgs.length ? '<div class="bimgs one"><img loading="lazy" src="' + esc(fileUrl(imgs[0].k)) + '" alt="" data-lb="' + esc(imgs[0].k) + '"></div>' : '') + '<div class="sub" style="margin-top:4px">' + bits.join(' · ') + '</div>';
+    return (imgs.length ? '<div class="bimgs">' + imgs.slice(0, 4).map((f, i) => th(f, i, i === 3 && imgs.length > 4 ? imgs.length - 4 : 0)).join('') + '</div>' : '') + '<div class="sub" style="margin-top:4px">' + bits.join(' · ') + '</div>';
   }
-  return (imgs.length ? '<div class="bimgs' + (imgs.length === 1 ? ' one' : '') + '">' + imgs.map(f => '<img loading="lazy" src="' + esc(fileUrl(f.k)) + '" alt="' + esc(f.name) + '" data-lb="' + esc(f.k) + '">').join('') + '</div>' : '') +
+  return (imgs.length ? '<div class="bimgs">' + imgs.slice(0, MAXT).map((f, i) => th(f, i, i === MAXT - 1 && imgs.length > MAXT ? imgs.length - MAXT : 0)).join('') + '</div>' + (imgs.length > 1 ? '<div class="sub" style="margin:-4px 0 6px">사진 ' + imgs.length + '장 · 누르면 크게 넘겨 볼 수 있어요</div>' : '') : '') +
     (docs.length || links.length ? '<div class="bfiles">' + docs.map(f => '<a href="' + esc(fileUrl(f.k)) + '" target="_blank" rel="noopener">' + extIcon(f.name) + ' <span>' + esc(f.name) + '</span><small>' + fmtSize(f.size || 0) + '</small></a>').join('') +
       links.map(l => '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">🔗 <span>' + esc(l.name || '구글 드라이브') + '</span><small>링크</small></a>').join('') + '</div>' : '');
 }
-// 사진 크게 보기 (화면 아무 데나 누르면 닫혀요)
-export function lightbox(k) {
+// 사진 크게 보기: 좌우로 넘기기(화살표·화면 왼쪽/오른쪽 누르기·밀기), 가운데 누르거나 ✕ 로 닫기
+export function lightbox(k, group) {
+  const list = (group && group.length ? group : [k]); let i = Math.max(0, list.indexOf(k));
   const d = document.createElement('div'); d.className = 'blb';
-  d.innerHTML = '<img src="' + fileUrl(k).replace(/"/g, '&quot;') + '" alt=""><a class="bdl" href="' + fileUrl(k, 1).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">저장</a>';
-  d.addEventListener('click', e => { if (!e.target.closest('.bdl')) d.remove(); }); document.body.appendChild(d);
+  const q = s => s.replace(/"/g, '&quot;');
+  const draw = () => { d.innerHTML = '<img src="' + q(fileUrl(list[i])) + '" alt="">' + (list.length > 1 ? '<button class="bnv l" aria-label="이전">‹</button><button class="bnv r" aria-label="다음">›</button><span class="bct">' + (i + 1) + ' / ' + list.length + '</span>' : '') + '<button class="bx" aria-label="닫기">✕</button><a class="bdl" href="' + q(fileUrl(list[i], 1)) + '" target="_blank" rel="noopener">저장</a>'; };
+  const go = s => { if (list.length < 2) return; i = (i + s + list.length) % list.length; draw(); };
+  const close = () => { d.remove(); document.removeEventListener('keydown', kd); };
+  const kd = e => { if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1); else if (e.key === 'Escape') close(); };
+  let sx = null; d.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+  d.addEventListener('touchend', e => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 40) { go(dx < 0 ? 1 : -1); d.dataset.sw = '1'; } }, { passive: true });
+  d.addEventListener('click', e => {
+    if (d.dataset.sw) { delete d.dataset.sw; return; }
+    if (e.target.closest('.bdl')) return; if (e.target.closest('.bx')) return close();
+    if (e.target.closest('.bnv')) return go(e.target.closest('.bnv').classList.contains('l') ? -1 : 1);
+    if (list.length > 1 && e.target.tagName !== 'IMG') { const x = e.clientX / window.innerWidth; if (x < 0.3) return go(-1); if (x > 0.7) return go(1); }
+    close();
+  });
+  document.addEventListener('keydown', kd); draw(); document.body.appendChild(d);
 }
 // 드라이브 링크 확인
 export const okLink = u => /^https:\/\/(drive|docs)\.google\.com\//.test(u || '') || /^https:\/\//.test(u || '');
-export const BOARD_CSS = '.bimgs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:8px 0}.bimgs.one{grid-template-columns:1fr;max-width:420px}.bimgs img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:zoom-in;background:var(--soft,#eee)}.bimgs.one img{aspect-ratio:auto;max-height:360px}' +
+export const BOARD_CSS = '.bimgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:4px;margin:8px 0;max-width:420px}.bth{position:relative;display:block;cursor:zoom-in}.bth img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;display:block;background:var(--soft,#eee)}.bth b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);color:#fff;font-size:18px;border-radius:8px}' +
   '.bfiles{display:flex;flex-direction:column;gap:6px;margin:8px 0}.bfiles a{display:flex;gap:8px;align-items:center;padding:10px 12px;border:1px solid var(--line,#ddd);border-radius:10px;text-decoration:none;color:inherit;background:var(--soft,#f6f7fb)}.bfiles a span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.bfiles a small{opacity:.6}' +
-  '.blb{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;display:flex;align-items:center;justify-content:center}.blb img{max-width:96vw;max-height:88vh;border-radius:6px}.blb .bdl{position:absolute;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));background:#fff;color:#111;padding:10px 16px;border-radius:999px;text-decoration:none;font-weight:700}' +
+  '.blb{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;display:flex;align-items:center;justify-content:center;user-select:none}.blb img{max-width:96vw;max-height:86vh;border-radius:6px}.blb .bnv{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:64px;border:0;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;font-size:34px;cursor:pointer}.blb .bnv.l{left:10px}.blb .bnv.r{right:10px}.blb .bct{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(26px + env(safe-area-inset-bottom));color:#fff;font-weight:700}.blb .bx{position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:40px;height:40px;border:0;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;font-size:20px;cursor:pointer}.blb .bdl{position:absolute;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));background:#fff;color:#111;padding:10px 16px;border-radius:999px;text-decoration:none;font-weight:700}' +
   '.bcat{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--soft,#eef);margin-right:4px}';

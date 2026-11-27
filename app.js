@@ -10,7 +10,7 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 {const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.2.6';
+const APP_VERSION = '2.2.7';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -609,7 +609,7 @@ function subFamily(){
 function famRole(){U.role=ME.rels[U.me]==='student'?'student':'parent'}
 
 /* ================= 로그인 흐름 ================= */
-document.addEventListener('click',e=>{const im=e.target.closest&&e.target.closest('img[data-lb]');if(im){e.stopPropagation();lightbox(im.dataset.lb)}},true);
+document.addEventListener('click',e=>{const im=e.target.closest&&e.target.closest('[data-lb]');if(im){e.stopPropagation();lightbox(im.dataset.lb,(im.dataset.g||'').split(',').filter(Boolean))}},true);
 setInterval(()=>{if(auth.currentUser)freshToken(auth,true).then(render).catch(()=>{})},40*60e3);
 onAuthStateChanged(auth,user=>{
   if(user)freshToken(auth).then(render).catch(()=>{});

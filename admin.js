@@ -10,7 +10,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.6.7';
+const ADMIN_VERSION = '2.6.8';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -819,7 +819,7 @@ function subscribe() {
 app.addEventListener('dragover', e => { const f = e.target.closest && e.target.closest('#bF'); if (f) { e.preventDefault(); f.classList.add('drag'); } });
 app.addEventListener('dragleave', e => { const f = e.target.closest && e.target.closest('#bF'); if (f) f.classList.remove('drag'); });
 app.addEventListener('drop', e => { const f = e.target.closest && e.target.closest('#bF'); if (!f) return; e.preventDefault(); f.classList.remove('drag'); if (e.dataTransfer && e.dataTransfer.files.length) { (V.bf = V.bf || []).push(...e.dataTransfer.files); render(); } });
-document.addEventListener('click', e => { const im = e.target.closest && e.target.closest('img[data-lb]'); if (im) lightbox(im.dataset.lb); });
+document.addEventListener('click', e => { const im = e.target.closest && e.target.closest('[data-lb]'); if (im) lightbox(im.dataset.lb, (im.dataset.g || '').split(',').filter(Boolean)); });
 setInterval(() => { if (auth.currentUser) freshToken(auth, true).then(render).catch(() => { }); }, 40 * 60e3);
 onAuthStateChanged(auth, user => {
   if (user) freshToken(auth).then(render).catch(() => { });
