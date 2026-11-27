@@ -12,7 +12,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.13.0';
+const ADMIN_VERSION = '2.14.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -487,23 +487,31 @@ const dateOf = (ym, d) => ym + '-' + pad(d);
 const finMonths = () => Object.keys(D.fin || {}).sort().reverse();
 const clone = o => JSON.parse(JSON.stringify(o || {}));
 const numOr = v => (v === '' || v == null || isNaN(+v)) ? '' : +v;
-function calcRow(r, meals, set) {
+function calcRow(r, meals, set, books) {
   const wk = (r.d || []).filter(Boolean).length;
   const fee = (r.price === '' || r.price == null) && (r.disc === '' || r.disc == null) ? '' : (+r.price || 0) - (+r.disc || 0);
   const mealN = r.name ? ((meals || {})[r.name] || []).length : 0;
-  const mealAmt = mealN * set.meal; return { wk, fee, mealN, mealAmt, total: (+fee || 0) + mealAmt };
+  const bookPrev = r.name ? bookOf(r, books) : 0;
+  const mealAmt = mealN * set.meal; return { wk, fee, mealN, mealAmt, bookPrev, total: (+fee || 0) + mealAmt + bookPrev };
 }
+// 교재비도 후불: ○월에 발생한 교재비(bookAmt)는 다음 달 정산에 청구
+const billBooks = m => { const o = {}; const p = m && m.ym && D.fin[prevYm(m.ym)]; ((p && p.rows) || []).forEach(r => { const v = +r.bookAmt || 0; if (v && r.name) { const k = r.sid || 'n:' + r.name; o[k] = (o[k] || 0) + v; } }); return o; };
+const bookOf = (r, b) => (b && ((r.sid && b[r.sid]) || b['n:' + r.name])) || 0;
+// 납부: 원비·식대·교재비 따로 체크 (예전 paid 하나는 셋 다 낸 것으로)
+const PAYK = [['paidFee', '원비', 'fee'], ['paidMeal', '식대', 'mealAmt'], ['paidBook', '교재비', 'bookPrev']];
+const paidK = (r, k) => r[k] || r.paid || '';
+const unpaidParts = (r, c) => PAYK.filter(([k, , a]) => (+c[a] || 0) > 0 && !paidK(r, k)).map(([k, l, a]) => ({ k, l, amt: +c[a] }));
 // 식대는 후불: ○월 정산에는 전월(○-1월) 식대 출석표의 횟수가 청구돼요 (원비는 선불로 그달 것)
 const prevYm = ym => { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 2, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
 const billMeals = m => (m && m.ym && D.fin[prevYm(m.ym)] && D.fin[prevYm(m.ym)].meals) || {};
 const monL = ym => +ym.slice(5) + '월';
 function calcMonth(m, set) {
   set = set || finSet(); const rows = (m.rows || []).filter(r => r.name || r.price);
-  const bm = billMeals(m); const cs = rows.map(r => calcRow(r, bm, set));
+  const bm = billMeals(m); const bb = billBooks(m); const cs = rows.map(r => calcRow(r, bm, set, bb));
   const sum = k => cs.reduce((a, c) => a + (+c[k] || 0), 0);
   const staff = ((bm['원장'] || []).length + (bm['부원장'] || []).length) * set.meal;
   const perDay = DAYS6.map((_, k) => rows.filter(r => (r.d || [])[k]).length);
-  return { n: rows.filter(r => r.name).length, fee: sum('fee'), disc: rows.reduce((a, r) => a + (+r.disc || 0), 0), price: rows.reduce((a, r) => a + (+r.price || 0), 0), meal: sum('mealAmt'), mealN: sum('mealN'), total: sum('total'), staff, wk: sum('wk'), perDay };
+  return { n: rows.filter(r => r.name).length, fee: sum('fee'), disc: rows.reduce((a, r) => a + (+r.disc || 0), 0), price: rows.reduce((a, r) => a + (+r.price || 0), 0), meal: sum('mealAmt'), mealN: sum('mealN'), book: sum('bookPrev'), bookNow: rows.reduce((a, r) => a + (+r.bookAmt || 0), 0), total: sum('total'), staff, wk: sum('wk'), perDay };
 }
 const finCur = () => V.finEdit && V.finEdit.ym === V.ym ? V.finEdit : null;
 function finOpen(ym) { V.ym = ym; V.finEdit = D.fin[ym] ? clone(D.fin[ym]) : null; V.finDirty = false; }
@@ -523,7 +531,7 @@ const blankRow = s => ({ name: s.name, sid: s.id, course: '', d: [0, 0, 0, 0, 0,
 // 정산 줄 자동 맞춤: 학생명부의 첫 등록일이 그달 말일 이전인 재원생만 들어와요 (다음 달 1일 시작이면 그 달부터)
 const joinedOf = s => (D.sinfo[s.id] || {}).joined || '';
 const inMonth = (s, ym) => { const j = joinedOf(s); return !j || j.slice(0, 7) <= ym; };
-const blankFinRow = r => !r.price && !r.disc && !r.extra && !r.book && !r.memo && !(r.d || []).some(Boolean);
+const blankFinRow = r => !r.price && !r.disc && !r.extra && !r.book && !r.bookAmt && !r.memo && !(r.d || []).some(Boolean);
 function finSync(m) {
   if (!m || m.ym < ymOf(TODAY)) return false; m.rows = m.rows || []; let ch = false;
   for (const s of active()) { const r = m.rows.find(x => x.sid === s.id || (!x.sid && x.name === s.name));
@@ -532,7 +540,7 @@ function finSync(m) {
   return ch;
 }
 // 미납: 학부모 총 납부액이 있는데 납부 체크가 안 된 줄
-const unpaidOf = (m, set) => { const l = (m && m.rows || []).filter(r => r.name && !r.paid).map(r => ({ r, c: calcRow(r, billMeals(m), set) })).filter(x => x.c.total > 0); return { n: l.length, amt: l.reduce((a, x) => a + x.c.total, 0), names: l.map(x => x.r.name) }; };
+const unpaidOf = (m, set) => { const bm = billMeals(m), bb = billBooks(m); const l = ((m && m.rows) || []).filter(r => r.name).map(r => ({ r, u: unpaidParts(r, calcRow(r, bm, set, bb)) })).filter(x => x.u.length); return { n: l.length, amt: l.reduce((a, x) => a + x.u.reduce((b, y) => b + y.amt, 0), 0), names: l.map(x => x.r.name + '(' + x.u.map(y => y.l).join('·') + ')') }; };
 const PAYSSAM_URL = 'https://payssam.kr/';
 function pFin() {
   if (!isOwnerMe()) return '<h1>정산</h1><section class="card"><p class="empty">원장님만 볼 수 있어요</p></section>';
@@ -546,8 +554,9 @@ function pFin() {
   const C = calcMonth(m, set); const ym = m.ym; const P = 'fn_' + ym.replace('-', '') + '_';
   const studs = D.students.filter(s => !s.left).map(s => s.name);
   const rows = (m.rows || []).map((r, i) => {
-    const c = calcRow(r, billMeals(m), set); const s = rowStu(r);
+    const c = calcRow(r, billMeals(m), set, billBooks(m)); const s = rowStu(r);
     return '<tr><td>' + (i + 1) + '</td><td><b>' + esc(r.name || '') + '</b>' + (s && !s.left && famSids(s.id).length > 1 ? ' <span class="chip" style="font-size:11px;padding:1px 6px" title="형제 재원">형제</span>' : '') + (s && s.left ? ' <span class="sub">퇴원</span>' : !s ? ' <span class="sub">앱에 없음</span>' : '') + '</td>' +
+      '<td class="paycell">' + (r.name ? PAYK.filter(([, , a]) => (+c[a] || 0) > 0).map(([k, l]) => { const pd = paidK(r, k); return '<label class="pay' + (pd ? ' on' : '') + '" title="' + l + (pd ? ' 납부 ' + pd : ' 미납') + '"><input type="checkbox" data-fi="' + i + '" data-k="' + k + '"' + (pd ? ' checked' : '') + '>' + l + (pd ? '<small>' + esc(pd.slice(5).replace('-', '/')) + '</small>' : '') + '</label>'; }).join('') : '') + '</td>' +
       '<td class="sub">' + esc(s ? (s.school || '') : (r.name ? '명부에 없음' : '')) + '</td><td class="sub">' + esc(s ? s.grade : '') + '</td>' +
       '<td><input id="' + P + i + '_course" data-fi="' + i + '" data-k="course" value="' + esc(r.course ?? '') + '" style="width:44px"></td>' +
       DAYS6.map((_, k) => '<td class="cen"><input type="checkbox" id="' + P + i + '_d' + k + '" data-fi="' + i + '" data-k="d" data-day="' + k + '"' + ((r.d || [])[k] ? ' checked' : '') + '></td>').join('') +
@@ -557,27 +566,27 @@ function pFin() {
       '<td><input id="' + P + i + '_disc" data-fi="' + i + '" data-k="disc" inputmode="numeric" value="' + esc(r.disc ?? '') + '" style="width:66px;text-align:right"></td>' +
       '<td class="r"><b>' + won(c.fee) + '</b></td>' +
       '<td><input id="' + P + i + '_extra" data-fi="' + i + '" data-k="extra" value="' + esc(r.extra || '') + '" style="width:120px"></td>' +
-      '<td><input id="' + P + i + '_book" data-fi="' + i + '" data-k="book" value="' + esc(r.book || '') + '" style="width:100px"></td>' +
-      '<td class="cen">' + (r.name ? c.mealN : '') + '</td><td class="r">' + (r.name ? won(c.mealAmt) : '') + '</td><td class="r"><b>' + (r.name ? won(c.total) : '') + '</b></td>' +
-      '<td class="cen" style="white-space:nowrap">' + (r.name ? '<label style="display:inline-flex;gap:4px;align-items:center;cursor:pointer"><input type="checkbox" data-fi="' + i + '" data-k="paid"' + (r.paid ? ' checked' : '') + '>' + (r.paid ? '<small class="sub">' + esc(r.paid.slice(5).replace('-', '/')) + '</small>' : (c.total > 0 ? '<small style="color:var(--bad);font-weight:700">미납</small>' : '')) + '</label>' : '') + '</td>' +
+      '<td><input id="' + P + i + '_book" data-fi="' + i + '" data-k="book" value="' + esc(r.book || '') + '" style="width:100px" placeholder="교재명"></td>' +
+      '<td><input id="' + P + i + '_bookAmt" data-fi="' + i + '" data-k="bookAmt" inputmode="numeric" value="' + esc(r.bookAmt ?? '') + '" style="width:70px;text-align:right"></td>' +
+      '<td class="cen">' + (r.name ? c.mealN : '') + '</td><td class="r">' + (r.name ? won(c.mealAmt) : '') + '</td><td class="r">' + (r.name && c.bookPrev ? won(c.bookPrev) : '') + '</td><td class="r"><b>' + (r.name ? won(c.total) : '') + '</b></td>' +
       '<td><input id="' + P + i + '_memo" data-fi="' + i + '" data-k="memo" value="' + esc(r.memo || '') + '" style="width:120px"></td>' +
       '<td>' + (!s || s.left ? '<button class="btn xs ghost" data-a="finDel" data-v="' + i + '" title="이 달에서 빼기">✕</button>' : '') + '</td></tr>';
   }).join('');
   const over = k => C.perDay[k] > set.cap1;
   const table = '<section class="card scroll"><h2>① 원비 · 수강 정보 <span class="sub">' + ymLabel(ym) + ' · 학생 ' + C.n + '명</span> ' + saveBadge() + '</h2>' +
-    '<table class="fin"><thead><tr><th>No</th><th>이름</th><th>학교</th><th>학년</th><th>Course</th>' + DAYS6.map(d => '<th class="cen">' + d + '</th>').join('') + '<th>주 횟수</th><th>정가</th><th class="cen">형제<br><small class="sub">' + finSet().sibPct + '%</small></th><th class="cen">장기<br><small class="sub">' + (finSet().longAmt / 10000) + '만</small></th><th>할인</th><th>원비 (교습소)</th><th>보충과목 (과외 별도)</th><th>교재</th><th>전월 식대 횟수<br><small class="sub">' + monL(prevYm(ym)) + '분</small></th><th>전월 식대 (별도)</th><th>학부모 총 납부액</th><th class="cen">납부</th><th>메모</th><th></th></tr></thead><tbody>' +
+    '<table class="fin"><thead><tr><th>No</th><th>이름</th><th>납부 <small class="sub">낸 것 체크</small></th><th>학교</th><th>학년</th><th>Course</th>' + DAYS6.map(d => '<th class="cen">' + d + '</th>').join('') + '<th>주 횟수</th><th>정가</th><th class="cen">형제<br><small class="sub">' + finSet().sibPct + '%</small></th><th class="cen">장기<br><small class="sub">' + (finSet().longAmt / 10000) + '만</small></th><th>할인</th><th>원비 (교습소)</th><th>보충과목 (과외 별도)</th><th>교재 <small class="sub">이번 달</small></th><th>교재비 <small class="sub">이번 달 발생</small></th><th>전월 식대 횟수<br><small class="sub">' + monL(prevYm(ym)) + '분</small></th><th>전월 식대 (별도)</th><th>전월 교재비<br><small class="sub">' + monL(prevYm(ym)) + '분</small></th><th>학부모 총 납부액</th><th>메모</th><th></th></tr></thead><tbody>' +
     (rows || '<tr><td colspan="25" class="empty">학생 줄이 없어요</td></tr>') +
-    '<tr class="tot"><td></td><td><b>합계</b></td><td colspan="3">' + C.n + '명</td>' + C.perDay.map((n, k) => '<td class="cen"' + (over(k) ? ' style="color:var(--bad);font-weight:700"' : '') + '>' + n + '</td>').join('') + '<td class="cen"><b>' + C.wk + '</b></td><td class="r">' + won(C.price) + '</td><td class="cen">' + (m.rows || []).filter(r => r.sib).length + '</td><td class="cen">' + (m.rows || []).filter(isLong).length + '</td><td class="r">' + won(C.disc) + '</td><td class="r"><b>' + won(C.fee) + '</b></td><td></td><td></td><td class="cen">' + C.mealN + '</td><td class="r">' + won(C.meal) + '</td><td class="r"><b>' + won(C.total) + '</b></td><td class="cen" style="white-space:nowrap">' + (() => { const u = unpaidOf(m, set); return u.n ? '<b style="color:var(--bad)">미납 ' + u.n + '명</b>' : '<b style="color:var(--ok)">모두 납부</b>'; })() + '</td><td colspan="2"></td></tr>' +
+    '<tr class="tot"><td></td><td><b>합계</b></td><td style="white-space:nowrap">' + (() => { const u = unpaidOf(m, set); return u.n ? '<b style="color:var(--bad)">미납 ' + u.n + '명</b>' : '<b style="color:var(--ok)">모두 납부</b>'; })() + '</td><td colspan="3">' + C.n + '명</td>' + C.perDay.map((n, k) => '<td class="cen"' + (over(k) ? ' style="color:var(--bad);font-weight:700"' : '') + '>' + n + '</td>').join('') + '<td class="cen"><b>' + C.wk + '</b></td><td class="r">' + won(C.price) + '</td><td class="cen">' + (m.rows || []).filter(r => r.sib).length + '</td><td class="cen">' + (m.rows || []).filter(isLong).length + '</td><td class="r">' + won(C.disc) + '</td><td class="r"><b>' + won(C.fee) + '</b></td><td></td><td></td><td class="r">' + (C.bookNow ? won(C.bookNow) : '') + '</td><td class="cen">' + C.mealN + '</td><td class="r">' + won(C.meal) + '</td><td class="r">' + won(C.book) + '</td><td class="r"><b>' + won(C.total) + '</b></td><td colspan="2"></td></tr>' +
     '<tr class="sub"><td></td><td>1층 정원</td><td colspan="3">하루 최대 ' + set.cap1 + '명</td>' + DAYS6.map((_, k) => '<td class="cen">' + (over(k) ? '<b style="color:var(--bad)">초과</b>' : set.cap1 - C.perDay[k]) + '</td>').join('') + '<td colspan="12"></td></tr>' +
     '</tbody></table><div class="bar" style="margin-top:10px"><span class="sub">학생은 [학생명부]의 첫 등록일이 속한 달부터 정산에 자동으로 들어와요 · 여기서는 Course·요일·원비·보충과목·교재·메모만 입력 · 퇴원생 줄만 ✕로 뺄 수 있어요</span><span style="flex:1"></span><button class="btn sm ghost danger" data-a="finDelMonth">이 달 삭제</button></div></section>';
   const wkCap1 = set.cap1 * 6, wkCap2 = set.cap2 * 6;
   const sumCard = '<div class="grid2"><section class="card"><h2>② 이번 달 요약</h2><table class="kv"><tbody>' +
     // 수입(위) → 빼는 것(아래, 빨간 −) → 입금 총액
-    (() => { const plus = [['원비 정가 합계', C.price], ['식대 청구 (' + monL(prevYm(ym)) + '분 · 별도 사업자)', C.meal]], minus = [['할인 합계 (형제·장기수강)', C.disc]];
+    (() => { const plus = [['원비 정가 합계', C.price], ['식대 청구 (' + monL(prevYm(ym)) + '분 · 별도 사업자)', C.meal], ['교재비 청구 (' + monL(prevYm(ym)) + '분)', C.book]], minus = [['할인 합계 (형제·장기수강)', C.disc]];
       const net = plus.reduce((a, x) => a + (+x[1] || 0), 0) - minus.reduce((a, x) => a + (+x[1] || 0), 0);
       return plus.map(([l, v]) => '<tr><td>' + l + '</td><td class="r"><b>' + won(v) + '원</b></td></tr>').join('') +
         minus.map(([l, v]) => '<tr><td style="color:var(--bad,#e5484d)">' + l + '</td><td class="r" style="color:var(--bad,#e5484d)"><b>' + (+v ? '-' : '') + won(v) + '원</b></td></tr>').join('') +
-        '<tr style="border-top:2px solid var(--ink,#222)"><td><b>입금 총액</b><div class="sub">학부모님 납부 합계 (원비 ' + won(C.fee) + ' + 식대 ' + won(C.meal) + ')</div></td><td class="r" style="font-size:1.15em"><b>' + won(net) + '원</b></td></tr>' +
+        '<tr style="border-top:2px solid var(--ink,#222)"><td><b>입금 총액</b><div class="sub">학부모님 납부 합계 (원비 ' + won(C.fee) + ' + 식대 ' + won(C.meal) + (C.book ? ' + 교재비 ' + won(C.book) : '') + ')</div></td><td class="r" style="font-size:1.15em"><b>' + won(net) + '원</b></td></tr>' +
         (() => { const u = unpaidOf(m, set); return '<tr><td>' + (u.n ? '<b style="color:var(--bad)">미납 ' + u.n + '명</b><div class="sub">' + u.names.map(esc).join(', ') + '</div>' : '<b style="color:var(--ok)">✓ 모두 납부</b>') + '</td><td class="r">' + (u.n ? '<b style="color:var(--bad)">' + won(u.amt) + '원</b>' : '') + '</td></tr>'; })() +
         '<tr><td class="sub">참고 · 원장 · 부원장 식대 (' + monL(prevYm(ym)) + '분) <small>계산에 안 들어가요</small></td><td class="r sub">' + won(C.staff) + '원</td></tr>'; })() + '</tbody></table></section>' +
     '<section class="card"><h2>③ 주간 정원 <span class="sub">Unit = 학생 1명이 하루 등원</span></h2><table class="kv"><tbody><tr><td>1층 교습소</td><td class="r">' + wkCap1 + ' Unit</td><td class="sub">평일 ' + set.cap1 * 5 + ' / 토 ' + set.cap1 + '</td></tr><tr><td>2층 공부방</td><td class="r">' + wkCap2 + ' Unit</td><td class="sub">평일 ' + set.cap2 * 5 + ' / 토 ' + set.cap2 + '</td></tr><tr><td>합계</td><td class="r">' + (wkCap1 + wkCap2) + ' Unit</td><td></td></tr><tr><td>1층 현재 주간 등원</td><td class="r"><b>' + C.wk + ' Unit</b></td><td class="sub">학생 ' + C.n + '명</td></tr><tr><td>1층 남은 자리 (주간)</td><td class="r"><b' + (wkCap1 - C.wk < 0 ? ' style="color:var(--bad)"' : '') + '>' + (wkCap1 - C.wk) + ' Unit</b></td><td></td></tr></tbody></table></section></div>';
@@ -1277,11 +1286,11 @@ render();
 function finField(t) {
   const m = finCur(); if (!m) return; const r = m.rows[+t.dataset.fi]; if (!r) return; const k = t.dataset.k;
   if (k === 'd') { r.d = r.d || [0, 0, 0, 0, 0, 0]; r.d[+t.dataset.day] = t.checked ? 1 : 0; }
-  else if (k === 'paid') { r.paid = t.checked ? TODAY : ''; }
+  else if (k === 'paidFee' || k === 'paidMeal' || k === 'paidBook') { if (r.paid) { PAYK.forEach(([pk]) => { if (!r[pk]) r[pk] = r.paid; }); delete r.paid; } r[k] = t.checked ? TODAY : ''; }
   else if (k === 'sib' || k === 'lng') { r.lng = k === 'lng' ? t.checked : isLong(r); if (k === 'sib') r.sib = t.checked; autoDisc(r); }
   else if (k === 'price' || k === 'disc') { const wasLong = isLong(r); r[k] = numOr(digits(t.value) === '' ? '' : digits(t.value)); if (k === 'price' && (r.sib || wasLong)) { r.lng = wasLong; autoDisc(r); } if (k === 'disc') { r.sib = false; r.lng = false; } }
   else if (k === 'name') { const nv = t.value.trim(); if (nv !== r.name) { if (r.name && m.meals && m.meals[r.name]) { if (nv) m.meals[nv] = m.meals[r.name]; delete m.meals[r.name]; } r.name = nv; const s = D.students.find(x => x.name === nv); if (s) r.sid = s.id; else delete r.sid; } }
   else r[k] = t.value;
   finTouch();
 }
-app.addEventListener('input', e => { const t = e.target; if (isTelInput(t)) { const v = hyP(t.value); if (v !== t.value) t.value = v; return; } if (t.dataset && t.dataset.fi !== undefined && t.type !== 'checkbox' && t.dataset.k !== 'name') { const m = finCur(); const r = m && m.rows[+t.dataset.fi]; if (r) { r[t.dataset.k] = (t.dataset.k === 'price' || t.dataset.k === 'disc') ? numOr(digits(t.value)) : t.value; V.finDirty = true; } } });
+app.addEventListener('input', e => { const t = e.target; if (isTelInput(t)) { const v = hyP(t.value); if (v !== t.value) t.value = v; return; } if (t.dataset && t.dataset.fi !== undefined && t.type !== 'checkbox' && t.dataset.k !== 'name') { const m = finCur(); const r = m && m.rows[+t.dataset.fi]; if (r) { r[t.dataset.k] = (t.dataset.k === 'price' || t.dataset.k === 'disc' || t.dataset.k === 'bookAmt') ? numOr(digits(t.value)) : t.value; V.finDirty = true; } } });
