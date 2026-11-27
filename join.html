@@ -25,7 +25,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Noto Sans KR
 form,.done{margin:18px 16px 0;background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px}
 h2{font:700 16px/1.4 "IBM Plex Sans KR","Noto Sans KR",sans-serif;margin:18px 0 8px}h2:first-child{margin-top:0}
 label{display:block;margin-bottom:12px;font-size:13.5px;font-weight:500;color:var(--mut)}
-label b{color:var(--bad);font-weight:700}
+.req{color:var(--bad);font-weight:700;font-size:11px;vertical-align:2px;margin-left:1px}
 input,select,textarea{display:block;width:100%;margin-top:5px;border:1px solid var(--line);border-radius:12px;padding:0 12px;height:46px;font:16px "Noto Sans KR",sans-serif;color:var(--ink);background:var(--soft)}
 textarea{height:auto;min-height:84px;padding:10px 12px;resize:vertical}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -50,17 +50,17 @@ textarea{height:auto;min-height:84px;padding:10px 12px;resize:vertical}
 
   <form id="f" novalidate>
     <h2>학생 정보</h2>
-    <label>학생 이름 <b>*</b><input id="name" maxlength="20" autocomplete="off"></label>
+    <label>학생 이름 <span class="req">*</span><input id="name" maxlength="20" autocomplete="off"></label>
     <div class="row">
-      <label>학교 <b>*</b><input id="school" maxlength="20" placeholder="예: 한백중"></label>
-      <label>학년 <b>*</b><select id="grade"><option value="">선택</option><option>초4</option><option>초5</option><option>초6</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option></select></label>
+      <label>학교 <span class="req">*</span><input id="school" maxlength="20" placeholder="예: 한백중"></label>
+      <label>학년 <span class="req">*</span><select id="grade"><option value="">선택</option><option>초4</option><option>초5</option><option>초6</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option></select></label>
     </div>
-    <label>생년월일<input id="birth" type="date"></label>
+    <label>생년월일 <span class="req">*</span><input id="birth" type="date"></label>
     <h2>연락처 <span style="font-size:12.5px;font-weight:400;color:var(--mut)">어머님·아버님 중 한 분은 꼭 적어 주세요</span></h2>
-    <label>어머님 휴대폰<input id="pMother" inputmode="tel" maxlength="13" placeholder="010-0000-0000"></label>
+    <label>어머님 휴대폰 <span class="req">*</span><input id="pMother" inputmode="tel" maxlength="13" placeholder="010-0000-0000"></label>
     <label>아버님 휴대폰<input id="pFather" inputmode="tel" maxlength="13" placeholder="010-0000-0000"></label>
-    <label>학생 휴대폰 <b>*</b><input id="pStudent" inputmode="tel" maxlength="13" placeholder="010-0000-0000"></label>
-    <h2>희망 등원 요일 <b style="color:var(--bad)">*</b> <span style="font-size:12.5px;font-weight:400;color:var(--mut)">2일 이상 골라 주세요</span></h2>
+    <label>학생 휴대폰 <span class="req">*</span><input id="pStudent" inputmode="tel" maxlength="13" placeholder="010-0000-0000"></label>
+    <h2>희망 등원 요일 <span class="req">*</span> <span style="font-size:12.5px;font-weight:400;color:var(--mut)">2일 이상 골라 주세요</span></h2>
     <div class="days" id="days"><button type="button">월</button><button type="button">화</button><button type="button">수</button><button type="button">목</button><button type="button">금</button><button type="button">토</button></div>
     <label style="margin-top:14px">원장님께 하실 말씀 (선택)<textarea id="memo" maxlength="500" placeholder="현재 진도, 성적, 상담 받고 싶은 점 등"></textarea></label>
     <button class="go" id="go" type="submit">신청하기</button>
@@ -90,6 +90,7 @@ $('f').onsubmit = async e => {
   const name = $('name').value.trim(), school = $('school').value.trim(), grade = $('grade').value;
   const ph = { pMother: dig($('pMother').value), pFather: dig($('pFather').value), pStudent: dig($('pStudent').value) };
   if (!name) return err('학생 이름을 적어 주세요'); if (!school) return err('학교를 적어 주세요'); if (!grade) return err('학년을 골라 주세요');
+  if (!$('birth').value) return err('생년월일을 적어 주세요');
   if (!ph.pMother && !ph.pFather) return err('어머님이나 아버님 휴대폰 번호를 적어 주세요');
   if (!ph.pStudent) return err('학생 휴대폰 번호를 적어 주세요');
   if (Object.values(ph).some(p => p && !/^01\d{8,9}$/.test(p))) return err('휴대폰 번호를 확인해 주세요');
