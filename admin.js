@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.4.5';
+const ADMIN_VERSION = '2.4.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -76,6 +76,26 @@ function inviteText(m) {
     + '설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.' + (m.rel === 'student' && m.grade === '중1' ? '\n※ 부모님이 먼저 가입해 주셔야 학생 가입이 열려요.' : '');
 }
 const shortInvite = m => '[더밀착수학] ' + mLabel(m) + ' 앱 안내\n설치: https://themilchak-math.github.io/install.html\n가입 번호: ' + fmtP(m.phone) + ' (비밀번호는 원하는 걸로)';
+const KAKAO_JS_KEY = '1a4da179bbea2afbb606a5d77bf4caf4';
+function kakaoReady() {
+  if (window.Kakao && Kakao.isInitialized && Kakao.isInitialized()) return Promise.resolve(true);
+  return new Promise(res => {
+    const go = () => { try { if (!Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY); res(true); } catch (e) { res(false); } };
+    if (window.Kakao) return go();
+    const sc = document.createElement('script'); sc.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js'; sc.crossOrigin = 'anonymous';
+    sc.onload = go; sc.onerror = () => res(false); document.head.appendChild(sc);
+  });
+}
+async function kakaoInvite(m) {
+  if (!(await kakaoReady())) return toast('카카오톡 공유를 불러오지 못했어요. [문구 복사]를 써 주세요');
+  const inst = APP_URL + '/install.html';
+  try {
+    Kakao.Share.sendDefault({ objectType: 'feed',
+      content: { title: '[더밀착수학] ' + mLabel(m) + ' 앱 설치 안내', description: '가입 번호: ' + fmtP(m.phone) + ' (비밀번호는 원하는 걸로) · 설치 후 [알림 받기]를 꼭 눌러 주세요',
+        imageUrl: APP_URL + '/icon-512.png?v=2', imageWidth: 512, imageHeight: 512, link: { mobileWebUrl: inst, webUrl: inst } },
+      buttons: [{ title: '설치 안내 보기', link: { mobileWebUrl: inst, webUrl: inst } }] });
+  } catch (e) { toast('카카오톡 공유를 열지 못했어요: ' + (e.message || e)); }
+}
 const smsHref = (m) => 'sms:' + m.phone + (isIOSdev() ? '&' : '?') + 'body=' + encodeURIComponent(inviteText(m));
 const thOf = (sid, rel) => sid + '|' + (rel === 'student' ? 'student' : 'parent');
 
@@ -669,8 +689,8 @@ function modalHtml() {
   }
   if (V.modal === 'invite') {
     const list = D.members.filter(m => (V.inviteSids || []).includes(m.sid) && m.phone).sort((a, b) => (V.inviteSids.indexOf(a.sid) - V.inviteSids.indexOf(b.sid)) || ['student', 'father', 'mother'].indexOf(a.rel) - ['student', 'father', 'mother'].indexOf(b.rel));
-    return '<div class="mbg" data-a="close"><div class="modal wide"><h2>가입 안내 문자 보내기</h2><p class="sub">원장님 휴대폰 문자로 보내요 (무료, 원장님 요금제). <b>PC에서는</b> QR을 폰 카메라로 찍으면 받는 사람과 문구가 채워진 문자 화면이 열려요 → 전송만 누르세요. <b>폰에서는</b> [문자 앱 열기]를 누르면 돼요.</p>' +
-      (list.length ? '<table><tbody>' + list.map(m => '<tr><td><b>' + esc(mLabel(m)) + '</b><div class="sub">' + esc(fmtP(m.phone)) + '</div></td><td>' + memChip(m) + '</td><td class="r"><a class="btn xs" href="' + esc(smsHref(m)) + '">문자 앱 열기</a> <button class="btn xs ghost" data-a="invQR" data-id="' + m.id + '">' + (V.invQR === m.id ? 'QR 닫기' : 'QR') + '</button> <button class="btn xs ghost" data-a="invCopy" data-id="' + m.id + '">문구 복사</button></td></tr>' + (V.invQR === m.id ? '<tr><td colspan="3" style="text-align:center"><div id="invQRBox" style="display:inline-block;padding:14px;background:#fff;border:1px solid var(--line);border-radius:14px"></div><p class="sub">폰 기본 카메라로 찍으세요 → 뜨는 알림을 누르면 문자 화면이 열려요</p></td></tr>' : '')).join('') + '</tbody></table>' : '<p class="empty">보낼 번호가 없어요</p>') +
+    return '<div class="mbg" data-a="close"><div class="modal wide"><h2>가입 안내 문자 보내기</h2><p class="sub"><b>[카톡으로 보내기]</b>를 누르면 카카오톡 공유 창이 열려요 → 받을 사람(친구·채팅방)을 고르고 보내기. 처음 한 번은 카카오 계정 로그인이 필요해요. 문자로 보내려면 [QR]을 폰 카메라로 찍거나, 폰에서 [문자 앱 열기]를 누르세요.</p>' +
+      (list.length ? '<table><tbody>' + list.map(m => '<tr><td><b>' + esc(mLabel(m)) + '</b><div class="sub">' + esc(fmtP(m.phone)) + '</div></td><td>' + memChip(m) + '</td><td class="r"><button class="btn xs" data-a="invKakao" data-id="' + m.id + '" style="background:#FEE500;color:#191919;border-color:#FEE500">카톡으로 보내기</button> <a class="btn xs ghost" href="' + esc(smsHref(m)) + '">문자 앱 열기</a> <button class="btn xs ghost" data-a="invQR" data-id="' + m.id + '">' + (V.invQR === m.id ? 'QR 닫기' : 'QR') + '</button> <button class="btn xs ghost" data-a="invCopy" data-id="' + m.id + '">문구 복사</button></td></tr>' + (V.invQR === m.id ? '<tr><td colspan="3" style="text-align:center"><div id="invQRBox" style="display:inline-block;padding:14px;background:#fff;border:1px solid var(--line);border-radius:14px"></div><p class="sub">폰 기본 카메라로 찍으세요 → 뜨는 알림을 누르면 문자 화면이 열려요</p></td></tr>' : '')).join('') + '</tbody></table>' : '<p class="empty">보낼 번호가 없어요</p>') +
       '<details style="margin-top:8px"><summary class="sub">보낼 문구 미리보기</summary><pre style="white-space:pre-wrap;font:inherit;background:var(--soft);padding:10px;border-radius:10px">' + esc(list[0] ? inviteText(list[0]) : '') + '</pre></details><div class="mf"><span style="flex:1"></span><button type="button" class="btn" data-a="close">닫기</button></div></div></div>';
   }
   if (V.modal === 'bulk') {
@@ -871,6 +891,7 @@ app.addEventListener('click', async e => {
     if (a === 'modal') { V.modal = v; V.editId = id || null; V.bulk = null; return render(); }
     if (a === 'invite') { V.modal = 'invite'; V.inviteSids = [id]; V.invQR = null; return render(); }
     if (a === 'invQR') { V.invQR = V.invQR === id ? null : id; return render(); }
+    if (a === 'invKakao') { const m = D.members.find(x => x.id === id); if (m) kakaoInvite(m); return; }
     if (a === 'invCopy') { const m = D.members.find(x => x.id === id); try { await navigator.clipboard.writeText(inviteText(m)); toast('문구를 복사했어요. 카톡·문자에 붙여넣으세요'); } catch (e) { toast('복사하지 못했어요'); } return; }
     if (a === 'close') { V.modal = null; V.editId = null; V.bulk = null; return render(); }
     if (a === 'calM') { let [y, m] = V.calM.split('-').map(Number); m += +v; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } V.calM = y + '-' + pad(m); return render(); }
