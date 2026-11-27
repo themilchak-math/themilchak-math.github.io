@@ -11,7 +11,7 @@ import { ensureCodes } from './invcode.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.8.2';
+const ADMIN_VERSION = '2.8.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -207,7 +207,7 @@ function memCell(s, rel) {
   if (m.st === 'pending') act = '<button class="btn xs" data-a="mOk" data-id="' + m.id + '">승인</button>';
   else if (m.st === 'ok') act = '<button class="btn xs ghost" data-a="mReset" data-id="' + m.id + '" title="비밀번호 분실 시 재가입 허용">비번분실</button><button class="btn xs ghost" data-a="mBlock" data-id="' + m.id + '">차단</button>';
   else if (m.st === 'block') act = '<button class="btn xs ghost" data-a="mUnblock" data-id="' + m.id + '">해제</button>';
-  return '<div class="mem"><span>' + esc(fmtP(m.phone)) + '</span> ' + memChip(m) + '<span class="acts">' + act + '</span></div>';
+  return '<div class="mem"><div class="ph">' + esc(fmtP(m.phone)) + '</div><div class="st">' + memChip(m) + (act ? '<span class="acts">' + act + '</span>' : '') + '</div></div>';
 }
 /* ---------- 학생 관리 (연락처·앱 연결 / 학생명부 / 재학 학교 통합) ---------- */
 /* ---------- 신규 등록 신청 (join.html) ---------- */
