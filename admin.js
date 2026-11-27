@@ -8,7 +8,7 @@ import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from '
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 
-const ADMIN_VERSION = '2.4.1';
+const ADMIN_VERSION = '2.4.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -638,13 +638,17 @@ function sysHtml(m) { const x = /^\[([^\]]+)\]\s*/.exec(m.t || ''); const ttl = 
 function pMsg() {
   const keys = []; active().forEach(s => { keys.push(s.id + '|student'); if (famSids(s.id)[0] === s.id) keys.push(s.id + '|parent'); });
   const items = keys.map(k => { const t = fthread(k); const last = t[t.length - 1]; return { k, last, un: t.filter(m => m.f === 'o' && !m.r).length }; }).sort((a, b) => ((b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0)));
-  const list = items.map(i => { const [sid, r] = i.k.split('|'); const s = stu(sid); return '<button class="th' + (V.chat === i.k ? ' on' : '') + '" data-a="open" data-v="' + esc(i.k) + '"><b>' + esc(r === 'parent' ? famLabel(sid) : s.name + ' 학생') + '</b>' + (i.un ? '<span class="badge">' + i.un + '</span>' : '') + '<span class="sub ell">' + (i.last ? esc(i.last.t) : '대화 없음') + '</span></button>'; }).join('');
+  const nameK = k => { const [sd, rr] = k.split('|'); return rr === 'parent' ? famLabel(sd) : stu(sd).name + ' 학생'; };
+  const empty = items.filter(i => !i.last && i.k !== V.chat);
+  const newSel = empty.length ? '<select id="newChat" style="width:100%;margin-bottom:6px"><option value="">+ 새 대화 시작…</option>' + empty.map(i => '<option value="' + esc(i.k) + '">' + esc(nameK(i.k)) + '</option>').join('') + '</select>' : '';
+  const list = items.filter(i => i.last || i.k === V.chat).map(i => { const [sid, r] = i.k.split('|'); const s = stu(sid); return '<button class="th' + (V.chat === i.k ? ' on' : '') + '" data-a="open" data-v="' + esc(i.k) + '"><b>' + esc(r === 'parent' ? famLabel(sid) : s.name + ' 학생') + '</b>' + (i.un ? '<span class="badge">' + i.un + '</span>' : '') + '<span class="sub ell">' + (i.last ? esc(i.last.t) : '새 대화') + '</span></button>'; }).join('');
   let chat = '<p class="empty">왼쪽에서 대화를 고르세요</p>';
   if (V.chat) {
     const [sid, r] = V.chat.split('|'); const s = stu(sid); const t = fthread(V.chat);
-    chat = '<h2>' + esc(r === 'parent' ? famLabel(sid) : (s ? s.name : '') + ' 학생') + '</h2><div class="chat" id="chatBody">' + (t.length ? t.map(m => m.f === 's' ? sysHtml(m) : '<div class="m ' + (m.f === 't' ? 'me' : 'you') + '">' + esc(m.t) + '<small>' + esc((m.at || '').slice(5)) + (m.f === 't' && m.r ? ' · 읽음' : '') + '</small></div>').join('') : '<p class="empty">첫 메시지를 보내보세요</p>') + '</div><form id="sendF" class="send"><input id="msgIn" placeholder="메시지 입력 후 Enter" autocomplete="off"><button class="btn" type="submit">전송</button></form>';
+    const mx = m => m.id ? '<button class="mx" data-a="msgDel" data-id="' + m.id + '" title="이 메시지 삭제 (상대방 화면에서도 사라져요)">×</button>' : '';
+    chat = '<h2 style="display:flex;align-items:center;gap:8px">' + esc(r === 'parent' ? famLabel(sid) : (s ? s.name : '') + ' 학생') + (t.length ? '<button class="btn xs ghost" style="margin-left:auto" data-a="chatDel">대화 삭제</button>' : '') + '</h2><div class="chat" id="chatBody">' + (t.length ? t.map(m => m.f === 's' ? sysHtml(m).replace('<div class="m sys">', '<div class="m sys">' + mx(m)) : '<div class="m ' + (m.f === 't' ? 'me' : 'you') + '">' + mx(m) + esc(m.t) + '<small>' + esc((m.at || '').slice(5)) + (m.f === 't' && m.r ? ' · 읽음' : '') + '</small></div>').join('') : '<p class="empty">첫 메시지를 보내보세요</p>') + '</div><form id="sendF" class="send"><input id="msgIn" placeholder="메시지 입력 후 Enter" autocomplete="off"><button class="btn" type="submit">전송</button></form>';
   }
-  return '<h1>메시지</h1><div class="msgs"><section class="card tl">' + (list || '<p class="empty">학생이 없어요</p>') + '</section><section class="card cv">' + chat + '</section></div>';
+  return '<h1>메시지</h1><div class="msgs"><section class="card tl">' + newSel + (list || '<p class="empty">아직 대화가 없어요</p>') + '</section><section class="card cv">' + chat + '</section></div>';
 }
 
 function modalHtml() {
@@ -847,6 +851,8 @@ app.addEventListener('click', async e => {
     if (a === 'stCopy') { const x = D.staff.find(y => y.id === id); try { await navigator.clipboard.writeText(staffInvite(x)); toast('문구를 복사했어요'); } catch (e) { toast('복사하지 못했어요'); } return; }
     if (a === 'schF') { V.schF = v; return render(); }
     if (a === 'exDel') { if (!confirm('이 일정을 삭제할까요?')) return; await deleteDoc(doc(db, 'exams', id)); return toast('일정을 삭제했어요'); }
+    if (a === 'msgDel') { if (!confirm('이 메시지를 삭제할까요?\n학생·학부모님 화면에서도 처음부터 없었던 것처럼 사라져요.')) return; await deleteDoc(doc(db, 'msgs', id)); return toast('메시지를 삭제했어요'); }
+    if (a === 'chatDel') { const l = fthread(V.chat).filter(m => m.id); if (!l.length || !confirm('이 대화 전체(' + l.length + '개)를 삭제할까요?\n학생·학부모님 화면에서도 모두 사라지고 되돌릴 수 없어요.')) return; for (let i = 0; i < l.length; i += 400) { const b = writeBatch(db); l.slice(i, i + 400).forEach(m => b.delete(doc(db, 'msgs', m.id))); await b.commit(); } V.chat = null; return toast('대화를 삭제했어요'); }
     if (a === 'apCopy') { try { await navigator.clipboard.writeText(JOIN_URL); toast('신청 링크를 복사했어요 · 카톡이나 문자로 보내 주세요'); } catch (e) { toast(JOIN_URL); } return; }
     if (a === 'apDel') { const x = D.apply.find(y => y.id === id); if (!x || !confirm(x.name + ' 학생 신청서를 삭제할까요?')) return; await deleteDoc(doc(db, 'apply', id)); return toast('신청서를 삭제했어요'); }
     if (a === 'apOk') { const x = D.apply.find(y => y.id === id); if (!x) return; if (D.students.some(s => s.name === x.name) && !confirm('이미 ' + x.name + ' 학생이 있어요. 그래도 새로 등록할까요?')) return;
@@ -915,6 +921,7 @@ app.addEventListener('click', async e => {
 });
 
 app.addEventListener('change', async e => {
+  if (e.target.id === 'newChat' && e.target.value) { V.chat = e.target.value; return render(); }
   if (e.target.id === 'dashD') { V.dashD = e.target.value && e.target.value !== dashDefault() ? e.target.value : null; V.calM = curDay().slice(0, 7); return render(); }
   if (e.target.id === 'wifiPc') { try { localStorage.setItem('tmm-academy-pc', e.target.checked ? '1' : '0'); } catch (x) { } if (e.target.checked) { await wifiAutoSync(true); toast('이 PC를 교습소 PC로 지정했어요'); } else toast('교습소 PC 지정을 해제했어요'); return render(); }
   if (e.target.id === 'xlIn' && e.target.files && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; return importXlsx(f); }

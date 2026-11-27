@@ -8,7 +8,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.0.4';
+const APP_VERSION = '2.0.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -326,7 +326,8 @@ function tComm(){
   else{
     const keys=[];D.students.forEach(s=>{keys.push(s.id+'|student');if(famSids(s.id)[0]===s.id)keys.push(s.id+'|parent')});
     const items=keys.map(k=>{const t=fthread(k);const last=t[t.length-1];return {k,last,un:t.filter(m=>m.f==='o'&&!m.r).length}}).sort((a,b)=>((b.last?b.last.at:'')>(a.last?a.last.at:'')?1:-1));
-    inner='<div class="card">'+items.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r==='parent'?' p':'')+'">'+(r==='parent'?'학부':esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r==='parent'?famLabel(sid):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'</button>'}).join('')+'</div>';
+    const nameK=k=>{const [sd,rr]=k.split('|');return rr==='parent'?famLabel(sd):stu(sd).name+' 학생'};const empty=items.filter(i=>!i.last);const shown=items.filter(i=>i.last);
+    inner=(empty.length?'<select id="newChat" style="width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--ink);font-size:15px"><option value="">+ 새 대화 시작…</option>'+empty.map(i=>'<option value="'+esc(i.k)+'">'+esc(nameK(i.k))+'</option>').join('')+'</select>':'')+(shown.length?'':'<div class="empty">아직 대화가 없어요</div>')+'<div class="card"'+(shown.length?'':' hidden')+'>'+shown.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r==='parent'?' p':'')+'">'+(r==='parent'?'학부':esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r==='parent'?famLabel(sid):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'</button>'}).join('')+'</div>';
   }
   return header('소통','학생·학부모 메시지와 공지')+'<div class="body">'+commTabs()+inner+'</div>';
 }
@@ -339,7 +340,8 @@ function chatView(){
   const t=fthread(U.chat);
   const mine=U.role==='teacher'?'t':'o';
   const title=U.role==='teacher'?(r==='parent'?famLabel(sid):s.name+' 학생'):TNAME();
-  const body=t.length?t.map(m=>m.f==='s'?sysHtml(m):'<div class="msg '+(m.f===mine?'me':'you')+'">'+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine&&m.r?' · 읽음':'')+'</div>').join(''):'<div class="empty">첫 메시지를 보내보세요</div>';
+  const T=U.role==='teacher';const sel=m=>T&&m.id?' data-act="msgSel" data-id="'+m.id+'"':'';const delB=m=>T&&U.msgSel===m.id?'<button class="btn sm ghost" style="align-self:'+(m.f===mine?'flex-end':'flex-start')+';color:var(--acc);margin-top:-4px" data-act="msgDel" data-id="'+m.id+'">이 메시지 삭제</button>':'';
+  const body=(T&&t.length?'<div style="text-align:right;margin-bottom:6px"><button class="btn sm ghost" style="color:var(--acc)" data-act="chatDel">대화 전체 삭제</button></div><p class="sub" style="margin:0 0 8px;text-align:center;font-size:12px">메시지를 누르면 하나씩 지울 수 있어요 · 지우면 상대방 화면에서도 사라져요</p>':'')+(t.length?t.map(m=>(m.f==='s'?sysHtml(m).replace('<div class="msg sys">','<div class="msg sys"'+sel(m)+'>'):'<div class="msg '+(m.f===mine?'me':'you')+'"'+sel(m)+'>'+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine&&m.r?' · 읽음':'')+'</div>')+delB(m)).join(''):'<div class="empty">첫 메시지를 보내보세요</div>');
   return header(title,r==='parent'?'학부모 상담':'학생 질문·안내',true)+'<div class="body" id="chatBody"><div class="chat">'+body+'</div></div><form class="send" id="sendF"><input id="msgIn" placeholder="메시지 입력" autocomplete="off" aria-label="메시지"><button class="btn" type="submit">전송</button></form>';
 }
 
@@ -819,6 +821,9 @@ app.addEventListener('click',async e=>{
   if(a==='wifiReg'){await registerWifi();return}
   if(a==='wifiTog'){await updateDoc(doc(db,'config','main'),{wifiAuto:!(D.cfg&&D.cfg.wifiAuto)});return toast(D.cfg&&D.cfg.wifiAuto?'와이파이 자동 등원을 껐어요':'와이파이 자동 등원을 켰어요')}
   if(a==='wifiClr'){if(!confirm('등록된 교습소 와이파이 주소를 지울까요?'))return;await updateDoc(doc(db,'config','main'),{wifiIps:[],wifiAuto:false});return toast('지웠어요')}
+  if(a==='msgSel'){U.msgSel=U.msgSel===id?null:id;return render()}
+  if(a==='msgDel'){if(!confirm('이 메시지를 삭제할까요?\n상대방 화면에서도 처음부터 없었던 것처럼 사라져요.'))return;U.msgSel=null;await deleteDoc(doc(db,'msgs',id));return toast('메시지를 삭제했어요')}
+  if(a==='chatDel'){const l=fthread(U.chat).filter(m=>m.id);if(!l.length||!confirm('이 대화 전체('+l.length+'개)를 삭제할까요?\n상대방 화면에서도 모두 사라지고 되돌릴 수 없어요.'))return;for(let i=0;i<l.length;i+=400){const b=writeBatch(db);l.slice(i,i+400).forEach(m=>b.delete(doc(db,'msgs',m.id)));await b.commit()}U.chat=null;return toast('대화를 삭제했어요')}
   if(a==='absDel'){const x=D.abs.find(y=>y.id===id);if(!x||!confirm(fmtD(x.date)+' 결석 통보를 취소할까요?'))return;const s=stu(x.sid);await deleteDoc(doc(db,'abs',id));const tx='[결석 취소] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 취소했어요 (수업 참석)';push(['teacher'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'o',tx).catch(()=>{});return toast('결석 통보를 취소했어요')}
   if(a==='dayM'){const d=new Date(curDay()+'T00:00');d.setDate(d.getDate()+(+v));const n=ds(d);U.dayPick=n===homeDefault()?null:n;U.calM=curDay().slice(0,7);return render()}
   if(a==='dayT'){U.dayPick=null;U.calM=curDay().slice(0,7);return render()}
@@ -854,6 +859,7 @@ app.addEventListener('change',async e=>{
   const t=e.target;
   try{
   if(t.id==='whoSel'){U.me=t.value;famRole();U.chat=null;U.tab='home';U.wifiState=null;setTimeout(autoCheckin,300);return render()}
+  if(t.id==='newChat'&&t.value){U.chat=t.value;return render()}
   if(t.id==='attDate'&&t.value){U.dayPick=t.value===homeDefault()?null:t.value;U.calM=curDay().slice(0,7);return render()}
   if(t.id==='autoN'){await updateDoc(doc(db,'config','main'),{autoNotify:t.checked});return toast(t.checked?'자동 알림 켬':'자동 알림 끔')}
   if(t.id==='lfCourse'){U.lf.course=t.value;U.lf.unit=null;lfStash();return render()}
