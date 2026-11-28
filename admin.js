@@ -14,7 +14,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.22.0';
+const ADMIN_VERSION = '2.22.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -849,7 +849,8 @@ function pNotice() {
 }
 
 // 시스템 자동 알림 말풍선 (원장님이 직접 보낸 메시지와 구분)
-const rdTag = m => m.r ? ' · <span style="color:var(--ok)">읽음</span>' : ' · <span style="color:var(--acc);font-weight:700">안 읽음</span>';
+// 읽음/안 읽음: 파란 말풍선 안에서도 잘 보이게 흰 바탕 작은 딱지로
+const rdTag = m => ' <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:9px;background:#fff;border:1px solid ' + (m.r ? '#bfe5cc;color:#1f9d55' : '#f5c2c3;color:#e5484d') + ';font-weight:700;font-size:11px;line-height:1.5">' + (m.r ? '읽음' : '안 읽음') + '</span>';
 function sysHtml(m) { const x = /^\[([^\]]+)\]\s*/.exec(m.t || ''); const ttl = x ? x[1] : '알림'; const body = x ? m.t.slice(x[0].length) : (m.t || '');
   return '<div class="m sys"><span class="sl">🔔 더밀착수학 자동 알림</span><b>' + esc(ttl) + '</b>' + esc(body) + '<small>' + esc((m.at || '').slice(5)) + rdTag(m) + '</small></div>'; }
 function pMsg() {

@@ -13,7 +13,7 @@ import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.8.0';
+const APP_VERSION = '2.8.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -354,7 +354,7 @@ function tComm(){
 }
 
 // 시스템 자동 알림: 원장님이 직접 보낸 메시지와 구분되게 '자동 알림' 말풍선으로
-const rdTag=m=>m.r?' · <span style="color:var(--ok)">읽음</span>':' · <span style="color:var(--acc);font-weight:700">안 읽음</span>';
+const rdTag=m=>' <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:9px;background:#fff;border:1px solid '+(m.r?'#bfe5cc;color:#1f9d55':'#f5c2c3;color:#e5484d')+';font-weight:700;font-size:11px;line-height:1.5">'+(m.r?'읽음':'안 읽음')+'</span>';
 function sysHtml(m,showRead){const x=/^\[([^\]]+)\]\s*/.exec(m.t||'');const ttl=x?x[1]:'알림';const body=x?m.t.slice(x[0].length):(m.t||'');
   return '<div class="msg sys"><div class="sl">🔔 더밀착수학 자동 알림</div><b>'+esc(ttl)+'</b>'+esc(body)+'</div><div class="mt l">'+esc((m.at||'').slice(5))+(showRead?rdTag(m):'')+'</div>'}
 function chatView(){
