@@ -15,7 +15,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}' + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.27.1';
+const ADMIN_VERSION = '2.27.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -203,7 +203,8 @@ function pDash() {
   const present = st.filter(isIn).length; const expIn = exp ? st.filter(s => expSet.has(s.id) && isIn(s)).length : 0;
   const notYet = exp ? [...st.filter(s => expSet.has(s.id) && !exSet.has(s.id) && !a[s.id]), ...ex.map(id => stu(id)).filter(s => s && expSet.has(s.id) && !a[s.id])] : [];
   const toCheck = D.hw.filter(h => h.st === 'done');
-  const kpi = exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>' + dayLbl + ' 등원 (' + WD[new Date(day + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (ex.length ? ' · 보충 ' + ex.length + '명 포함' : '') + (absN ? ' · 결석 통보 ' + absN + '명 제외' : '') + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>' + dayLbl + ' 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
+  const allOut = present > 0 && !notYet.length && st.filter(isIn).every(s => a[s.id].out);
+  const kpi = allOut ? '<div><b style="color:#1a7f4b">✅ ' + dayLbl + ' 수업 종료</b><span>등원한 ' + present + '명 모두 하원했어요' + (absN ? ' · 결석 통보 ' + absN + '명' : '') + '</span></div>' : exp ? '<div><b>' + expIn + '/' + exp.length + '</b><span>' + dayLbl + ' 등원 (' + WD[new Date(day + 'T00:00').getDay()] + '요일 예정 ' + exp.length + '명' + (ex.length ? ' · 보충 ' + ex.length + '명 포함' : '') + (absN ? ' · 결석 통보 ' + absN + '명 제외' : '') + (present > expIn ? ' · 예정 외 ' + (present - expIn) + '명' : '') + ')</span></div>' : '<div><b>' + present + '/' + st.length + '</b><span>' + dayLbl + ' 등원 (정산에 요일을 넣으면 예정 인원 기준)</span></div>';
   const rk = x => exSet.has(x.id) ? 2 : expSet.has(x.id) ? 3 : absT.has(x.id) ? 1 : 0; const order = exp ? [...st].sort((x, y) => (rk(y) - rk(x)) || (exSet.has(x.id) && exSet.has(y.id) ? ex.indexOf(x.id) - ex.indexOf(y.id) : x.name.localeCompare(y.name, 'ko'))) : st;
   return '<h1>' + esc(TNAME()) + ' </h1>' + purgeAlert() + leadDash() + (D.calls.filter(callOpen).length ? '<section class="card hl"><h2>📞 전화 상담 요청 ' + D.calls.filter(callOpen).length + '</h2>' + callsHtml(D.calls.filter(callOpen), { attr: 'data-a', sm: 'xs', esc, fmtD, fmtP }) + '</section>' : '') +
     dayBar(day, isT) + (() => { const l = D.exams.filter(e => onDay(e, day)); return l.length ? '<section class="card' + (l.some(e => evKind(e) === 'off') ? ' hl' : '') + '"><h2>' + dayLbl + ' 일정</h2><p>' + l.map(e => kindChip(e) + ' <b>' + esc((evKind(e) !== 'off' && e.school ? e.school + ' ' : '') + e.title) + '</b>' + (e.memo ? ' <span class="sub">' + esc(e.memo) + '</span>' : '')).join(' &nbsp; ') + '</p></section>' : ''; })() +
