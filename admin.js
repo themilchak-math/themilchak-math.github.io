@@ -15,7 +15,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}' + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.27.2';
+const ADMIN_VERSION = '2.27.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -284,6 +284,7 @@ function mealCardAdm(day) {
   if (!isOwnerMe() || !isMealDay(day)) return ''; const isT = day === off(0); const h = hm();
   if (isT && !(h >= '19:00' || h < '0' + DAY_CUT + ':00')) return ''; if (day > off(0)) return '';
   const people = mealPeople(D.students, D.att[day] || {}); const fin = D.fin[day.slice(0, 7)]; const done = mealDone(fin, day);
+  if (!isT && (done || people.length <= 2)) return ''; // 지난 날: 아직 입력 안 된 날만
   if (V.mealDay !== day) { V.mealDay = day; V.mealNo = new Set(done ? people.filter(p => !mealAte(fin, day, p.key)).map(p => p.key) : []); }
   return mealCardHtml({ day, people, no: V.mealNo, done, fin, attr: 'data-a', esc, fmtD, busy: V.mealBusy }).replace('<div class="card', '<section class="card').replace(/<\/div>$/, '</section>');
 }

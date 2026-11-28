@@ -11,7 +11,8 @@ export function mealPeople(students, attDay) {
     .sort((x, y) => (attDay[x.id].at < attDay[y.id].at ? -1 : 1)).map(s => ({ key: s.name, label: s.name, sub: attDay[s.id].at + ' 등원' }));
   return [{ key: '원장', label: '원장', sub: '' }, { key: '부원장', label: '부원장', sub: '' }].concat(l);
 }
-export const mealDone = (fin, day) => !!fin && (fin.mealOk || []).includes(+day.slice(8));
+// 확인 완료: 저녁 확인을 저장했거나, 식대 출석표에 그날 1이 하나라도 있으면(엑셀·직접 입력)
+export const mealDone = (fin, day) => { if (!fin) return false; const d = +day.slice(8); return (fin.mealOk || []).includes(d) || Object.values(fin.meals || {}).some(a => (a || []).includes(d)); };
 export const mealAte = (fin, day, key) => !!fin && ((fin.meals || {})[key] || []).includes(+day.slice(8));
 // 저장: 대상 중 '안 먹음'으로 뺀 사람은 그날 체크를 지우고, 나머지는 체크해요
 export async function saveMeal(db, day, people, noSet) {

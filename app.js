@@ -14,7 +14,7 @@ import { isMealDay, mealPeople, mealDone, mealAte, saveMeal, mealCardHtml } from
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS, syncTeacherSubs, remindLater, remindCancel, syncOwnerSub } from './push.js';
 
-const APP_VERSION = '2.10.0';
+const APP_VERSION = '2.10.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
