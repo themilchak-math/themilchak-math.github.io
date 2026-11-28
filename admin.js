@@ -14,7 +14,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}' + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.23.0';
+const ADMIN_VERSION = '2.24.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -341,7 +341,7 @@ function pAtt() {
   return '<h1>출결 <span class="sub">칸을 누르면 등원·하원 시각을 직접 입력·수정·삭제할 수 있어요</span></h1>' + dayBar(day, isT) +
     '<div class="grid2"><section class="card"><h2>' + dayLbl + ' 등·하원 <span class="sub">' + fmtD(day) + '</span></h2><table><tbody>' + (todayRows || '<tr><td class="empty">학생이 없어요</td></tr>') + '</tbody></table></section><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section></div>' +
     wifiSection() +
-    '<div class="bar"><button class="btn sm ghost" data-a="calM" data-v="-1">‹ 이전 달</button><b class="mon">' + y + '년 ' + m + '월</b><button class="btn sm ghost" data-a="calM" data-v="1">다음 달 ›</button>' + (isOwnerMe() ? '<label class="sw"><input type="checkbox" id="autoN" ' + (D.cfg && D.cfg.autoNotify !== false ? 'checked' : '') + '> 등·하원 시 학부모님께 알림 자동 발송</label>' : '') + '</div>' +
+    '<div class="bar"><button class="btn sm ghost" data-a="calM" data-v="-1">‹ 이전 달</button><b class="mon">' + y + '년 ' + m + '월</b><button class="btn sm ghost" data-a="calM" data-v="1">다음 달 ›</button>' + (isOwnerMe() ? '<label class="btn sm ghost" style="cursor:pointer;margin:0" title="매쓰프로 [출결 현황] 엑셀(월별)을 넣으면 예전 등·하원 기록을 앱 달력에 채워요">📥 매쓰프로 출결 불러오기<input type="file" id="mpIn" accept=".xls,.html,.htm" multiple hidden></label>' : '') + (isOwnerMe() ? '<label class="sw"><input type="checkbox" id="autoN" ' + (D.cfg && D.cfg.autoNotify !== false ? 'checked' : '') + '> 등·하원 시 학부모님께 알림 자동 발송</label>' : '') + '</div>' +
     '<section class="card scroll"><table class="att"><thead><tr><th class="nm">학생</th>' + head + '<th>등원</th><th>결석</th></tr></thead><tbody>' + (rows || '<tr><td class="empty">학생이 없어요</td></tr>') + '</tbody></table><p class="sub legend">' + chip('● 등원·하원', 'ok') + ' ' + chip('● 하원 기록 없음', 'warn') + ' ' + chip('결 결석', 'bad') + ' ' + chip('통 결석 통보', 'bad') + ' 칸에 마우스를 올리면 시각이 보여요.</p></section>';
 }
 async function myIp() {
@@ -753,6 +753,30 @@ function parseWorkbook(wb) {
   return out;
 }
 const colL = n => String.fromCharCode(65 + n); // 0→A (A~Z 범위만)
+// 매쓰프로 출결 현황(월별, .xls로 저장된 HTML 표) → 앱 출결(att). 이름이 같은 학생만, 앱에 이미 있는 날은 건드리지 않아요
+async function importMathpro(files) {
+  try {
+    const recs = []; const unknown = new Set(); const months = [];
+    for (const f of files) {
+      const h = await f.text(); const doc0 = new DOMParser().parseFromString(h, 'text/html');
+      const mm = /(\d{4})년\s*(\d{1,2})월/.exec(doc0.body.textContent || ''); if (!mm) continue; const ym = mm[1] + '-' + pad(+mm[2]); months.push(ym);
+      const rows = [...doc0.querySelectorAll('tr')].map(tr => [...tr.querySelectorAll('td,th')].map(c => c.textContent.trim()));
+      const hd = rows.find(r => r.includes('이름')); if (!hd) continue; const ni = hd.indexOf('이름'), d1 = hd.indexOf('1');
+      for (const r of rows) { if (r === hd || !r[ni]) continue; const s = D.students.find(x => x.name === r[ni]); if (!s) { unknown.add(r[ni]); continue; }
+        for (let k = d1; k < r.length; k++) { const day = +hd[k]; if (!day) continue; const v = r[k]; const date = ym + '-' + pad(day); if (!v || v === '-') continue;
+          const fix = t => { const [a, b] = t.split(':').map(Number); return pad(a >= 24 ? a - 24 : a) + ':' + pad(b); };
+          if (v === '결') recs.push({ id: date + '_' + s.id, d: { date, sid: s.id, st: '결석', by: 'mathpro' } });
+          else { const m2 = /^(\d{1,2}:\d\d)(?:~(\d{1,2}:\d\d))?$/.exec(v); if (!m2) continue; recs.push({ id: date + '_' + s.id, d: Object.assign({ date, sid: s.id, st: '출석', at: fix(m2[1]), by: 'mathpro', logged: true }, m2[2] ? { out: fix(m2[2]) } : {}) }); } } }
+    }
+    if (!recs.length) return toast('불러올 출결을 찾지 못했어요. 매쓰프로 [출결 현황]에서 받은 엑셀 파일인지 확인해 주세요');
+    // 이미 앱에 있는 기록은 그대로 두려고 해당 달 기록을 먼저 읽어요
+    const have = new Set(); for (const ym of [...new Set(months)]) { const s = await getDocs(query(collection(db, 'att'), where('date', '>=', ym + '-01'), where('date', '<=', ym + '-31'))); s.docs.forEach(d => have.add(d.id)); }
+    const todo = recs.filter(r => !have.has(r.id));
+    if (!confirm('매쓰프로 출결 ' + [...new Set(months)].sort().map(ymLabel).join(', ') + '\n새로 넣을 기록 ' + todo.length + '건 (이미 앱에 있는 ' + (recs.length - todo.length) + '건은 그대로)' + (unknown.size ? '\n앱에 없는 학생은 건너뛰어요: ' + [...unknown].join(', ') : '') + '\n\n가져올까요? (학부모님께 알림은 가지 않아요)')) return;
+    for (let i = 0; i < todo.length; i += 400) { const b = writeBatch(db); todo.slice(i, i + 400).forEach(r => b.set(doc(db, 'att', r.id), r.d)); await b.commit(); }
+    toast('출결 ' + todo.length + '건을 가져왔어요');
+  } catch (e) { fail(e, '매쓰프로 파일을 읽지 못했어요: ' + e.message); }
+}
 async function importXlsx(file) {
   try { const wb = await readXlsx(file); const p = parseWorkbook(wb);
     if (!p.roster.length && !p.months.length) return toast('학생명부나 월별(예: 2026.12) 시트를 찾지 못했어요');
@@ -765,16 +789,18 @@ function xlModal() {
   const set = p.settings || finSet();
   return '<div class="mbg" data-a="close"><div class="modal wide"><h2>엑셀 불러오기 <span class="sub">' + esc(V.xlName || '') + '</span></h2>' +
     '<table><tbody><tr><td>설정</td><td>' + (p.settings ? '식대 ' + won(p.settings.meal) + '원 · 1층 ' + p.settings.cap1 + '명 · 2층 ' + p.settings.cap2 + '명' : '<span class="sub">없음</span>') + '</td></tr>' +
-    '<tr><td>학생명부</td><td>' + p.roster.length + '명 (앱에 이미 있는 학생 ' + (p.roster.length - newOnes.length) + '명은 정보 갱신, 새로 추가 ' + newOnes.length + '명' + (newOnes.length ? ': ' + newOnes.map(r => esc(r.name) + (r.status === '퇴원' ? '(퇴원)' : '')).join(', ') : '') + ')</td></tr>' +
-    '<tr><td>월별 정산</td><td>' + (p.months.length ? p.months.map(m => { const c = calcMonth(m, set); return '<div>' + ymLabel(m.ym) + ' · ' + c.n + '명 · 원비 ' + won(c.fee) + ' · 식대 ' + won(c.meal) + ' · 총 ' + won(c.total) + (D.fin[m.ym] ? ' <span class="chip warn">앱에 있는 이 달을 덮어써요</span>' : '') + '</div>'; }).join('') : '<span class="sub">없음</span>') + '</td></tr></tbody></table>' +
+    '<tr><td>학생명부</td><td><label style="display:inline-flex;flex-direction:row;gap:6px;align-items:center;font-weight:700;margin:0 0 4px"><input type="checkbox" id="xlR" style="width:auto;min-height:0"' + (D.students.length ? '' : ' checked') + '> 학생명부도 가져오기</label>' + (D.students.length ? '<div class="sub" style="color:var(--acc)">앱에 학생이 이미 있어요. 예전 엑셀의 재원/퇴원 상태로 덮어쓰지 않게 기본은 꺼 뒀어요.</div>' : '') + p.roster.length + '명 (앱에 이미 있는 학생 ' + (p.roster.length - newOnes.length) + '명은 정보 갱신, 새로 추가 ' + newOnes.length + '명' + (newOnes.length ? ': ' + newOnes.map(r => esc(r.name) + (r.status === '퇴원' ? '(퇴원)' : '')).join(', ') : '') + ')</td></tr>' +
+    '<tr><td>월별 정산</td><td>' + (p.months.length ? p.months.map(m => { const c = calcMonth(m, set); return '<div><label style="display:inline-flex;flex-direction:row;gap:6px;align-items:center;font-weight:400;margin:0"><input type="checkbox" class="xlM" value="' + m.ym + '" style="width:auto;min-height:0"' + (D.fin[m.ym] ? '' : ' checked') + '> <b>' + ymLabel(m.ym) + '</b></label> · ' + c.n + '명 · 원비 ' + won(c.fee) + ' · 식대 출석표 ' + Object.values(m.meals || {}).reduce((x, l) => x + l.length, 0) + '회' + (D.fin[m.ym] ? ' <span class="chip warn">앱에 이미 있어요 · 체크하면 덮어써요</span>' : ' <span class="chip ok">앱에 없는 달</span>') + '</div>'; }).join('') + '<label style="display:inline-flex;flex-direction:row;gap:6px;align-items:center;font-weight:400;margin:8px 0 0"><input type="checkbox" id="xlPaid" checked style="width:auto;min-height:0"> 이번 달 전까지는 원비·식대·교재비 <b>모두 납부 완료</b>로 표시</label>' : '<span class="sub">없음</span>') + '</td></tr></tbody></table>' +
     '<p class="sub">새로 추가되는 재원 학생은 학생·학부모 번호도 함께 등록돼요(가입 안내 문자는 따로 보내세요). 위 금액이 기존 엑셀의 월별요약과 같은지 확인한 뒤 [가져오기]를 누르세요.</p>' +
     '<div class="mf"><span style="flex:1"></span><button type="button" class="btn ghost" data-a="close">취소</button><button class="btn" data-a="xlGo">가져오기</button></div></div></div>';
 }
 async function xlCommit() {
   const p = V.xl; if (!p) return; const b = writeBatch(db); let ops = 0; const nameToSid = {};
   D.students.forEach(s => { nameToSid[s.name] = s.id; });
-  if (p.settings) { b.set(doc(db, 'fin', 'settings'), p.settings); ops++; }
-  for (const r of p.roster) {
+  if (p.settings && !Object.keys(D.fin || {}).length) { b.set(doc(db, 'fin', 'settings'), p.settings); ops++; } // 앱에서 이미 쓰고 있으면 설정은 그대로 둬요
+  const withRoster = !!(document.getElementById('xlR') || {}).checked; const pick = new Set([...document.querySelectorAll('.xlM')].filter(x => x.checked).map(x => x.value)); const paidOld = !!(document.getElementById('xlPaid') || {}).checked;
+  if (!withRoster && !pick.size) return toast('가져올 달을 골라 주세요');
+  for (const r of withRoster ? p.roster : []) {
     let sid = nameToSid[r.name]; const left = r.status === '퇴원'; const grade = r.grade || (stu(sid) || {}).grade || '중2';
     if (!sid) { const ref = doc(collection(db, 'students')); sid = ref.id; nameToSid[r.name] = sid;
       b.set(ref, Object.assign({ name: r.name, grade, school: r.school, course: DEF_COURSE[grade] || '중2-2', left, ts: now() }, left ? { leftAt: TODAY } : {})); ops++;
@@ -782,10 +808,11 @@ async function xlCommit() {
     else { const upd = { left }; if (left && !(stu(sid) || {}).left) upd.leftAt = TODAY; if (r.school) upd.school = r.school; if (r.grade) upd.grade = r.grade; b.update(doc(db, 'students', sid), upd); ops++; }
     b.set(doc(db, 'sinfo', sid), { birth: r.birth, joined: r.joined, kind: r.kind, memo: r.memo, phones: r.phones }, { merge: true }); ops++;
   }
-  for (const m of p.months) { m.rows.forEach(r => { if (r.name && nameToSid[r.name]) r.sid = nameToSid[r.name]; }); b.set(doc(db, 'fin', 'm_' + m.ym), m); ops++; }
+  const curYm = TODAY.slice(0, 7); const done = [];
+  for (const m of p.months) { if (!pick.has(m.ym)) continue; m.rows.forEach(r => { if (r.name && nameToSid[r.name]) r.sid = nameToSid[r.name]; if (paidOld && m.ym < curYm && r.name) { const d = m.ym + '-01'; r.paidFee = r.paidMeal = r.paidBook = d; } }); b.set(doc(db, 'fin', 'm_' + m.ym), m); ops++; done.push(m.ym); }
   if (ops > 480) return toast('한 번에 가져오기엔 내용이 너무 많아요. 시트를 나눠서 가져와 주세요.');
   await b.commit(); V.xl = null; V.modal = null; V.ym = null; V.finEdit = null;
-  toast('엑셀을 가져왔어요 · 학생 ' + p.roster.length + '명 · ' + p.months.length + '개월');
+  toast('엑셀을 가져왔어요 · ' + (withRoster ? '학생 ' + p.roster.length + '명 · ' : '') + done.length + '개월 (' + done.map(ymLabel).join(', ') + ')');
 }
 function exportXlsx() {
   const set = finSet(); const sheets = []; const ms = finMonths();
@@ -1308,6 +1335,7 @@ app.addEventListener('change', async e => {
   if (e.target.id === 'newChat' && e.target.value) { V.chat = e.target.value; if ((D.hid || {})[V.chat]) setDoc(doc(db, 'config', 'hid'), { [V.chat]: 0 }, { merge: true }).catch(() => { }); markRead(V.chat); return render(); }
   if (e.target.id === 'dashD') { V.dashD = e.target.value && e.target.value !== dashDefault() ? e.target.value : null; V.calM = curDay().slice(0, 7); return render(); }
   if (e.target.id === 'wifiPc') { try { localStorage.setItem('tmm-academy-pc', e.target.checked ? '1' : '0'); } catch (x) { } if (e.target.checked) { await wifiAutoSync(true); toast('이 PC를 교습소 PC로 지정했어요'); } else toast('교습소 PC 지정을 해제했어요'); return render(); }
+  if (e.target.id === 'mpIn' && e.target.files && e.target.files.length) { const fs = [...e.target.files]; e.target.value = ''; return importMathpro(fs); }
   if (e.target.id === 'xlIn' && e.target.files && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; return importXlsx(f); }
   if (e.target.dataset && e.target.dataset.fi !== undefined) { finField(e.target); return render(); }
   if (e.target.id === 'schAllCk') { document.querySelectorAll('input[name=schCk]').forEach(x => x.checked = e.target.checked); return; }
