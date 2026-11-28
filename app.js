@@ -13,7 +13,7 @@ import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.7.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
