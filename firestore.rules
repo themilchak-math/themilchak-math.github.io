@@ -232,5 +232,9 @@ service cloud.firestore {
       // 정산(원비·식대): 원장님만
       allow read, write: if isOwner();
     }
+    match /backups/{id} {
+      // 전체 백업: 원장님만
+      allow read, write: if isOwner();
+    }
   }
 }

@@ -15,7 +15,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}' + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.26.0';
+const ADMIN_VERSION = '2.27.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -277,7 +277,7 @@ const isDue = s => !!(s.left && s.leftAt && addYear(s.leftAt) <= TODAY);
 const dueList = () => D.students.filter(isDue);
 const purgeAlert = () => isOwnerMe() && dueList().length ? '<section class="card hl"><h2>개인정보 파기 대상 ' + dueList().length + '명</h2><p class="sub" style="margin:0 0 8px">퇴원 후 1년이 지났어요: ' + dueList().map(s => esc(s.name)).join(', ') + ' · 학생 관리 → 퇴원한 학생에서 [정보 삭제]를 눌러 주세요.</p><button class="btn sm" data-a="goPurge">학생 관리로 가기</button></section>' : '';
 // 백업 알림: 마지막 백업이 30일 넘으면 대시보드에 한 줄
-const bkAlert = () => { if (!isOwnerMe()) return ''; const lb = (D.cfg && D.cfg.lastBackup) || ''; if (lb && lb >= off(-30)) return ''; return '<section class="card" style="padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>💾 백업할 때예요</b><span class="sub" style="flex:1">' + (lb ? '마지막 백업 ' + fmtD(lb) + ' · 한 달에 한 번 받아 두세요' : '아직 한 번도 백업하지 않았어요') + '</span><button class="btn sm" data-a="backup"' + (V.bkBusy ? ' disabled' : '') + '>' + (V.bkBusy || '지금 백업 받기') + '</button></section>'; };
+const bkAlert = () => { if (!isOwnerMe()) return ''; const lb = (D.cfg && D.cfg.lastBackup) || ''; if (lb && lb >= off(-30)) return ''; return '<section class="card" style="padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>💾 백업할 때예요</b><span class="sub" style="flex:1">' + (lb ? '한 달에 한 번은 백업해 두세요' : '아직 한 번도 백업하지 않았어요') + '</span>' + bkBtn('지금 백업하기') + '</section>'; };
 // 저녁 식대 확인 카드 (원장님 · 월~금). 오늘은 저녁 7시부터, 지난 날짜는 대시보드에서 날짜를 바꾸면 언제든 고칠 수 있어요
 function mealCardAdm(day) {
   if (!isOwnerMe() || !isMealDay(day)) return ''; const isT = day === off(0); const h = hm();
@@ -287,13 +287,38 @@ function mealCardAdm(day) {
   return mealCardHtml({ day, people, no: V.mealNo, done, fin, attr: 'data-a', esc, fmtD, busy: V.mealBusy }).replace('<div class="card', '<section class="card').replace(/<\/div>$/, '</section>');
 }
 const BK_COLS = ['leads', 'calls', 'config', 'students', 'sinfo', 'members', 'users', 'staff', 'att', 'abs', 'reqs', 'extra', 'logs', 'hw', 'exams', 'notices', 'msgs', 'fin', 'apply', 'forms', 'push'];
+// 백업: Firestore backups 컬렉션에 저장 (문서 1MB 제한 → 25만 자씩 나눠 저장), 최근 6개만 보관
+const BK_KEEP = 6, BK_CHUNK = 250000;
 async function backupAll() {
   const out = { app: '더밀착수학', ver: ADMIN_VERSION, at: new Date().toISOString(), data: {} };
-  for (const c of BK_COLS) { V.bkBusy = '받는 중… ' + c; render(); const s = await getDocs(collection(db, c)); out.data[c] = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); }
-  download(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }), '더밀착수학_백업_' + TODAY + '.json');
-  await setDoc(doc(db, 'config', 'main'), { lastBackup: TODAY }, { merge: true });
-  return Object.values(out.data).reduce((n, o) => n + Object.keys(o).length, 0);
+  for (const c of BK_COLS) { V.bkBusy = '저장 중… ' + c; render(); const s = await getDocs(collection(db, c)); out.data[c] = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); }
+  const n = Object.values(out.data).reduce((k, o) => k + Object.keys(o).length, 0);
+  const txt = JSON.stringify(out); const parts = Math.ceil(txt.length / BK_CHUNK) || 1;
+  const id = 'b_' + out.at.replace(/[-:]/g, '').slice(0, 15);
+  V.bkBusy = '저장 중… 업로드'; render();
+  for (let i = 0; i < parts; i++) await setDoc(doc(db, 'backups', id + '_p' + i), { s: txt.slice(i * BK_CHUNK, (i + 1) * BK_CHUNK) });
+  await setDoc(doc(db, 'backups', id), { at: out.at, day: TODAY, n, parts, size: txt.length, ver: ADMIN_VERSION, head: true });
+  const at = out.at;
+  await setDoc(doc(db, 'config', 'main'), { lastBackup: TODAY, lastBackupAt: at }, { merge: true });
+  if (D.cfg) { D.cfg.lastBackup = TODAY; D.cfg.lastBackupAt = at; }
+  // 오래된 백업 정리
+  try {
+    const all = await getDocs(collection(db, 'backups')); const heads = all.docs.filter(d => d.data().head).map(d => d.id).sort().reverse();
+    const drop = new Set(heads.slice(BK_KEEP));
+    for (const d of all.docs) { const base = d.id.replace(/_p\d+$/, ''); if (drop.has(base)) await deleteDoc(doc(db, 'backups', d.id)); }
+  } catch (e) {}
+  return n;
 }
+// 저장된 최신 백업을 파일로 내려받기
+async function backupDownload() {
+  const all = await getDocs(collection(db, 'backups')); const heads = all.docs.filter(d => d.data().head).sort((a, b) => b.id.localeCompare(a.id));
+  if (!heads.length) throw new Error('저장된 백업이 없어요');
+  const h = heads[0], m = h.data(); let txt = '';
+  for (let i = 0; i < m.parts; i++) { const p = all.docs.find(d => d.id === h.id + '_p' + i); if (!p) throw new Error('백업 조각이 빠졌어요'); txt += p.data().s; }
+  download(new Blob([txt], { type: 'application/json' }), '더밀착수학_백업_' + m.day + '.json');
+}
+const bkWhen = () => { const c = D.cfg || {}; if (c.lastBackupAt) { const d = new Date(c.lastBackupAt); const ymd = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); return fmtD(ymd) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); } return c.lastBackup ? fmtD(c.lastBackup) : ''; };
+const bkBtn = (label) => '<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap"><button class="btn' + (label ? ' sm' : '') + '" data-a="backup"' + (V.bkBusy ? ' disabled' : '') + '>' + (V.bkBusy ? esc(V.bkBusy) : (label || '💾 지금 백업하기')) + '</button><small class="sub" style="font-size:11.5px">' + (bkWhen() ? '최근 백업 ' + esc(bkWhen()) : '백업 기록 없음') + '</small></span>';
 // 퇴원생 개인정보 영구 삭제 (정산 기록은 남김)
 async function purgeStudent(sid) {
   const refs = [];
@@ -317,7 +342,7 @@ function pStudents() {
     (active().length ? active().map(s => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.school ? esc(s.school) : '<span class="sub">-</span>') + '</td><td>' + esc(s.course) + '</td><td>' + memCell(s, 'student') + '</td><td>' + memCell(s, 'father') + '</td><td>' + memCell(s, 'mother') + '</td><td class="r">' + (D.members.some(m => m.sid === s.id && needsInvite(m)) ? '<button class="btn xs" data-a="invite" data-id="' + s.id + '">안내 문자</button> ' : '') + '<button class="btn xs ghost" data-a="modal" data-v="stu" data-id="' + s.id + '">수정</button></td></tr>').join('') : '<tr><td colspan="9" class="empty">아직 등록된 학생이 없어요</td></tr>') +
     '</tbody></table></section>' +
     (left.length ? '<details class="card"' + (V.openLeft ? ' open' : '') + '><summary>퇴원한 학생 ' + left.length + '명' + (dueList().length ? ' · <b style="color:var(--acc)">정보 파기 대상 ' + dueList().length + '명</b>' : '') + '</summary><p class="sub" style="margin:8px 0">개인정보 처리방침에 따라 <b>퇴원 후 1년</b>이 지나면 정보를 지워요. 정산 기록(교습비)은 세금 신고용으로 남아요.</p><table><tbody>' + left.map(s => { const due = isDue(s); return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td><td>' + (s.leftAt ? '퇴원 ' + ymdDot(s.leftAt) : '<span class="sub">퇴원일 기록 없음</span>') + (due ? ' ' + chip('파기 대상', 'bad') : s.leftAt ? ' <span class="sub">(' + ymdDot(addYear(s.leftAt)) + '부터 파기)</span>' : '') + '</td><td class="r" style="white-space:nowrap"><button class="btn xs ghost" data-a="rejoin" data-id="' + s.id + '">복귀</button> <button class="btn xs ghost danger" data-a="purge" data-id="' + s.id + '">' + (V.confirmPurge === s.id ? '한 번 더 누르면 영구 삭제' : '정보 삭제') + '</button></td></tr>'; }).join('') + '</tbody></table></details>' : '') +
-    (isOwnerMe() ? '<section class="card"><h2>데이터 백업</h2><p class="sub" style="margin:0 0 10px">학생·출결·수업 기록·숙제·메시지·정산 등 앱의 모든 기록을 파일 한 개(.json)로 내려받아요. 한 달에 한 번 정도 받아서 PC나 구글 드라이브에 보관해 두세요. 문제가 생기면 이 파일로 되살릴 수 있어요. (게시판 첨부 사진·파일은 포함되지 않아요)</p><button class="btn" data-a="backup"' + (V.bkBusy ? ' disabled' : '') + '>' + (V.bkBusy ? esc(V.bkBusy) : '⬇ 전체 백업 받기') + '</button>' + (D.cfg && D.cfg.lastBackup ? ' <span class="sub">마지막 백업: ' + esc(D.cfg.lastBackup) + '</span>' : '') + '</section>' : '');
+    (isOwnerMe() ? '<section class="card"><h2>데이터 백업</h2><p class="sub" style="margin:0 0 10px">학생·출결·수업 기록·숙제·메시지·정산 등 앱의 모든 기록을 Firebase 서버에 따로 저장해요. 최근 6번의 백업이 보관되고, 그보다 오래된 건 자동으로 지워져요. (게시판 첨부 사진·파일은 포함되지 않아요)</p>' + bkBtn() + (bkWhen() ? ' <button class="btn ghost sm" data-a="bkDl" style="margin-left:6px">⬇ 최근 백업 파일로 받기</button>' : '') + '</section>' : '');
 }
 
 function pAtt() {
@@ -1274,7 +1299,8 @@ app.addEventListener('click', async e => {
       V.page = 'students'; V.modal = 'invite'; V.inviteSids = [r.sid]; V.invQR = null; render(); return toast(l.name + ' 등록 완료' + (r.auto ? ' · 형제 부모님 계정에 자동 연결' : '') + ' · 설치 안내 문자를 보내 주세요');
     }
     if (a === 'goPurge') { V.page = 'students'; V.stuV = 'list'; V.openLeft = true; return render(); }
-    if (a === 'backup') { if (V.bkBusy) return; V.bkBusy = '받는 중…'; render(); try { const n = await backupAll(); V.bkBusy = ''; render(); return toast('백업 파일을 내려받았어요 (' + n + '건)'); } catch (e) { V.bkBusy = ''; render(); return toast('백업하지 못했어요: ' + (e.code || e.message)); } }
+    if (a === 'bkDl') { try { await backupDownload(); return toast('백업 파일을 내려받았어요'); } catch (e) { return toast('받지 못했어요: ' + (e.code || e.message)); } }
+    if (a === 'backup') { if (V.bkBusy) return; V.bkBusy = '저장 중…'; render(); try { const n = await backupAll(); V.bkBusy = ''; render(); return toast('Firebase에 백업했어요 (' + n + '건)'); } catch (e) { V.bkBusy = ''; render(); return toast('백업하지 못했어요: ' + (e.code || e.message)); } }
     if (a === 'purge') {
       const s = stu(id); if (!s || !s.left) return; if (V.confirmPurge !== id) { V.confirmPurge = id; V.openLeft = true; render(); setTimeout(() => { if (V.confirmPurge === id) { V.confirmPurge = null; render(); } }, 5000); return; }
       V.confirmPurge = null; toast(s.name + ' 정보를 지우는 중…');
