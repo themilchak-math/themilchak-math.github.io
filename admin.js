@@ -13,7 +13,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.20.2';
+const ADMIN_VERSION = '2.20.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -848,8 +848,9 @@ function pNotice() {
 }
 
 // 시스템 자동 알림 말풍선 (원장님이 직접 보낸 메시지와 구분)
+const rdTag = m => m.r ? ' · <span style="color:var(--ok)">읽음</span>' : ' · <span style="color:var(--acc);font-weight:700">안 읽음</span>';
 function sysHtml(m) { const x = /^\[([^\]]+)\]\s*/.exec(m.t || ''); const ttl = x ? x[1] : '알림'; const body = x ? m.t.slice(x[0].length) : (m.t || '');
-  return '<div class="m sys"><span class="sl">🔔 더밀착수학 자동 알림</span><b>' + esc(ttl) + '</b>' + esc(body) + '<small>' + esc((m.at || '').slice(5)) + '</small></div>'; }
+  return '<div class="m sys"><span class="sl">🔔 더밀착수학 자동 알림</span><b>' + esc(ttl) + '</b>' + esc(body) + '<small>' + esc((m.at || '').slice(5)) + rdTag(m) + '</small></div>'; }
 function pMsg() {
   const keys = []; active().forEach(s => { keys.push(...stuKey(s.id)); if (famSids(s.id)[0] === s.id) keys.push(...parKeys(s.id)); });
   const items = keys.map(k => { const t = fthread(k); const last = t[t.length - 1]; return { k, last, un: t.filter(m => m.f === 'o' && !m.r).length }; }).sort((a, b) => ((b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0)));
@@ -869,7 +870,7 @@ function pMsg() {
   if (V.chat) {
     const [sid, r] = V.chat.split('|'); const s = stu(sid); const t = fthread(V.chat);
     const mx = m => m.id ? '<button class="mx" data-a="msgDel" data-id="' + m.id + '" title="이 메시지 삭제 (상대방 화면에서도 사라져요)">×</button>' : '';
-    chat = '<h2 style="display:flex;align-items:center;gap:8px">' + esc(r !== 'student' ? famLabel(sid, REL[r]) : (s ? s.name : '') + ' 학생') + (t.length ? '<button class="btn xs ghost" style="margin-left:auto" data-a="chatDel">대화 삭제</button>' : '') + '</h2><div class="chat" id="chatBody">' + (t.length ? t.map(m => m.f === 's' ? sysHtml(m).replace('<div class="m sys">', '<div class="m sys">' + mx(m)) : '<div class="m ' + (m.f === 't' ? 'me' : 'you') + '">' + mx(m) + esc(m.t) + '<small>' + esc((m.at || '').slice(5)) + (m.f === 't' && m.r ? ' · 읽음' : '') + '</small></div>').join('') : '<p class="empty">첫 메시지를 보내보세요</p>') + '</div><form id="sendF" class="send"><input id="msgIn" placeholder="메시지 입력 후 Enter" autocomplete="off"><button class="btn" type="submit">전송</button></form>';
+    chat = '<h2 style="display:flex;align-items:center;gap:8px">' + esc(r !== 'student' ? famLabel(sid, REL[r]) : (s ? s.name : '') + ' 학생') + (t.length ? '<button class="btn xs ghost" style="margin-left:auto" data-a="chatDel">대화 삭제</button>' : '') + '</h2><div class="chat" id="chatBody">' + (t.length ? t.map(m => m.f === 's' ? sysHtml(m).replace('<div class="m sys">', '<div class="m sys">' + mx(m)) : '<div class="m ' + (m.f === 't' ? 'me' : 'you') + '">' + mx(m) + esc(m.t) + '<small>' + esc((m.at || '').slice(5)) + (m.f === 't' ? rdTag(m) : '') + '</small></div>').join('') : '<p class="empty">첫 메시지를 보내보세요</p>') + '</div><form id="sendF" class="send"><input id="msgIn" placeholder="메시지 입력 후 Enter" autocomplete="off"><button class="btn" type="submit">전송</button></form>';
   }
   return '<h1>메시지</h1><div class="msgs"><section class="card tl">' + newSel + (shownAll.length ? list : '<p class="empty">아직 대화가 없어요</p>') + '</section><section class="card cv">' + chat + '</section></div>';
 }

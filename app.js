@@ -12,7 +12,7 @@ import { syncSched, plannedOn } from './sched.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.6.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -351,15 +351,16 @@ function tComm(){
 }
 
 // 시스템 자동 알림: 원장님이 직접 보낸 메시지와 구분되게 '자동 알림' 말풍선으로
-function sysHtml(m){const x=/^\[([^\]]+)\]\s*/.exec(m.t||'');const ttl=x?x[1]:'알림';const body=x?m.t.slice(x[0].length):(m.t||'');
-  return '<div class="msg sys"><div class="sl">🔔 더밀착수학 자동 알림</div><b>'+esc(ttl)+'</b>'+esc(body)+'</div><div class="mt l">'+esc((m.at||'').slice(5))+'</div>'}
+const rdTag=m=>m.r?' · <span style="color:var(--ok)">읽음</span>':' · <span style="color:var(--acc);font-weight:700">안 읽음</span>';
+function sysHtml(m,showRead){const x=/^\[([^\]]+)\]\s*/.exec(m.t||'');const ttl=x?x[1]:'알림';const body=x?m.t.slice(x[0].length):(m.t||'');
+  return '<div class="msg sys"><div class="sl">🔔 더밀착수학 자동 알림</div><b>'+esc(ttl)+'</b>'+esc(body)+'</div><div class="mt l">'+esc((m.at||'').slice(5))+(showRead?rdTag(m):'')+'</div>'}
 function chatView(){
   const [sid,r]=U.chat.split('|');const s=stu(sid);
   const t=fthread(U.chat);
   const mine=U.role==='teacher'?'t':'o';
   const title=U.role==='teacher'?(r!=='student'?famLabel(sid,REL[r]):s.name+' 학생'):TNAME();
   const T=U.role==='teacher';const sel=m=>T&&m.id?' data-act="msgSel" data-id="'+m.id+'"':'';const delB=m=>T&&U.msgSel===m.id?'<button class="btn sm ghost" style="align-self:'+(m.f===mine?'flex-end':'flex-start')+';color:var(--acc);margin-top:-4px" data-act="msgDel" data-id="'+m.id+'">이 메시지 삭제</button>':'';
-  const body=(T&&t.length?'<div style="text-align:right;margin-bottom:6px"><button class="btn sm ghost" style="color:var(--acc)" data-act="chatDel">대화 전체 삭제</button></div><p class="sub" style="margin:0 0 8px;text-align:center;font-size:12px">메시지를 누르면 하나씩 지울 수 있어요 · 지우면 상대방 화면에서도 사라져요</p>':'')+(t.length?t.map(m=>(m.f==='s'?sysHtml(m).replace('<div class="msg sys">','<div class="msg sys"'+sel(m)+'>'):'<div class="msg '+(m.f===mine?'me':'you')+'"'+sel(m)+'>'+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine&&m.r?' · 읽음':'')+'</div>')+delB(m)).join(''):'<div class="empty">첫 메시지를 보내보세요</div>');
+  const body=(T&&t.length?'<div style="text-align:right;margin-bottom:6px"><button class="btn sm ghost" style="color:var(--acc)" data-act="chatDel">대화 전체 삭제</button></div><p class="sub" style="margin:0 0 8px;text-align:center;font-size:12px">메시지를 누르면 하나씩 지울 수 있어요 · 지우면 상대방 화면에서도 사라져요</p>':'')+(t.length?t.map(m=>(m.f==='s'?sysHtml(m,T).replace('<div class="msg sys">','<div class="msg sys"'+sel(m)+'>'):'<div class="msg '+(m.f===mine?'me':'you')+'"'+sel(m)+'>'+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine?rdTag(m):'')+'</div>')+delB(m)).join(''):'<div class="empty">첫 메시지를 보내보세요</div>');
   return header(title,r!=='student'?(U.role==='teacher'?REL[r]+'과 1:1 대화 (다른 보호자는 못 봐요)':'원장님과 1:1 대화'):'학생 질문·안내',true)+'<div class="body" id="chatBody"><div class="chat">'+body+'</div></div><form class="send" id="sendF"><input id="msgIn" placeholder="메시지 입력" autocomplete="off" aria-label="메시지"><button class="btn" type="submit">전송</button></form>';
 }
 
