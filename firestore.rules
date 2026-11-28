@@ -194,13 +194,8 @@ service cloud.firestore {
       allow read, write: if isTeacher();
     }
     match /apply/{id} {
-      // 신규 등록 신청서(join.html): 누구나 보낼 수 있고(로그인 없음), 원장님만 보고 승인·삭제
-      allow create: if request.resource.data.keys().hasOnly(['name', 'school', 'grade', 'birth', 'pMother', 'pFather', 'pStudent', 'days', 'memo', 'st', 'ts'])
-        && request.resource.data.st == 'new' && request.resource.data.ts == request.time
-        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 20
-        && request.resource.data.school is string && request.resource.data.school.size() <= 20
-        && request.resource.data.memo is string && request.resource.data.memo.size() <= 500
-        && request.resource.data.days is list && request.resource.data.days.size() == 6;
+      // 예전 신규 등록 신청서(join.html 옛 양식): 지금은 새 입학신청서(forms)로 받아서 새로 쓰는 건 막고, 남은 것만 원장님이 보고 정리
+      allow create: if false;
       allow read, update, delete: if isOwner();
     }
     match /leads/{id} {

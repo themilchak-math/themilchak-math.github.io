@@ -15,6 +15,8 @@ const fmtP = d => { d = digits(d); return d.length === 11 ? d.slice(0, 3) + '-' 
 const won = n => (+n || 0).toLocaleString('ko-KR');
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 const DEF = { parent: PARENT, student: STUDENT };
+// 원장님 폰으로 알림 (알림 서버가 확인 후 보내요). 3초 안에 안 끝나도 신청은 이미 저장돼 있어요
+const notifyT = body => Promise.race([fetch('https://themilchak-push.djkim0075.workers.dev/notify-form', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => { }), new Promise(r => setTimeout(r, 3000))]);
 const TITLE = { parent: '학부모 사전 진단 설문', student: '학생 설문', apply: '입학신청서' };
 const narrow = () => window.innerWidth < 700;
 
@@ -190,7 +192,7 @@ app.addEventListener('click', async e => {
     if (A.agree !== '동의합니다') { S.err = '개인정보 수집·이용에 동의해 주셔야 신청할 수 있어요'; return render(); }
     S.busy = true; render();
     try { const ref = doc(collection(db, 'forms')); await setDoc(ref, { st: 'open', self: 'book', name: String(A.name).trim().slice(0, 20), grade: A.grade || '중1', school: String(A.school || '').trim().slice(0, 30), pMother: pm, pStudent: ps, src: A.src || '', wantDate: A.wantDate || '', wantTime: A.wantTime || '', note: String(A.note || '').slice(0, 500), ts: Date.now(), up: Date.now() });
-      location.replace(location.pathname + '?t=' + ref.id + '&w=booked'); }
+      await notifyT({ tok: ref.id }); location.replace(location.pathname + '?t=' + ref.id + '&w=booked'); }
     catch (er) { S.busy = false; S.err = '신청하지 못했어요. 인터넷 연결을 확인해 주세요.'; render(); }
     return;
   }
@@ -204,7 +206,8 @@ app.addEventListener('click', async e => {
     S.busy = true; render();
     try { const ex = { signP: sp, signS: sigData('sigS'), price: priceOf(A.cls, A.grade), date: A.date || today() };
       if (REMOTE) { const ref = doc(collection(db, 'forms')); await setDoc(ref, { st: 'remote', name: String(A.name).slice(0, 20), grade: A.grade || '', school: A.school || '', src: '온라인 신청', apply: { ...A, ...ex, savedAt: Date.now() }, ts: Date.now(), up: Date.now() }); }
-      else await save('apply', ex); S.busy = false; S.w = 'done-apply'; render(); scrollTo(0, 0); }
+      else await save('apply', ex);
+      if (REMOTE) await notifyT({ kind: 'remote' }); S.busy = false; S.w = 'done-apply'; render(); scrollTo(0, 0); }
     catch (er) { S.busy = false; S.err = '저장하지 못했어요. 인터넷 연결을 확인해 주세요.'; render(); }
   }
 });

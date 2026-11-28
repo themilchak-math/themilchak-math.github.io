@@ -151,6 +151,33 @@ export default {
         if (r.uid !== u.sub && !(await isTeacherReq(req))) return json(req, { error: 'not allowed' }, 403);
         await env.KV.put('rems', JSON.stringify(rems.filter(x => x.id !== id))); return json(req, { ok: true, n: 1 });
       }
+      // 원장님·부원장 기기 목록을 KV에 복사 (로그인 없는 상담 화면에서 원장님께 알림을 보내려고)
+      if (url.pathname === '/tsubs' && req.method === 'POST') {
+        await requireTeacher(req); const { subs } = await req.json();
+        if (Array.isArray(subs) && subs.length) await env.KV.put('tsubs', JSON.stringify(subs.filter(x => x && x.endpoint).slice(0, 30)));
+        return json(req, { ok: true });
+      }
+      // 학부모님 진단 예약 신청·비대면 입학신청서가 들어오면 원장님 폰으로 알림 (로그인 없음 → 시간당 20건 제한, 같은 신청 1번만)
+      if (url.pathname === '/notify-form' && req.method === 'POST') {
+        const { tok, kind } = await req.json().catch(() => ({}));
+        const hk = 'nfc:' + Math.floor(Date.now() / 3600e3); const n = +(await env.KV.get(hk) || 0);
+        if (n >= 20) return json(req, { ok: false, why: 'limit' });
+        let title = '더밀착수학', body = '';
+        if (kind === 'remote') { body = '📝 비대면 입학신청서가 들어왔어요 · 관리자 [진단·상담]에서 확인해 주세요'; }
+        else {
+          if (!/^[A-Za-z0-9]{20,40}$/.test(String(tok || ''))) return json(req, { ok: false });
+          if (await env.KV.get('nf:' + tok)) return json(req, { ok: true, dup: true });
+          const r = await fetch('https://firestore.googleapis.com/v1/projects/' + PROJECT + '/databases/(default)/documents/forms/' + tok);
+          if (!r.ok) return json(req, { ok: false });
+          const f = (await r.json()).fields || {}; const sv = k => (f[k] && (f[k].stringValue ?? f[k].integerValue)) || '';
+          if (sv('self') !== 'book' || Date.now() - +sv('ts') > 15 * 60e3) return json(req, { ok: false });
+          await env.KV.put('nf:' + tok, '1', { expirationTtl: 86400 });
+          body = '📅 진단 예약 신청 · ' + sv('name') + ' ' + sv('grade') + (sv('wantDate') ? ' · 희망 ' + sv('wantDate').slice(5).replace('-', '/') + (sv('wantTime') ? ' ' + sv('wantTime') : '') : '');
+        }
+        await env.KV.put(hk, String(n + 1), { expirationTtl: 7200 });
+        const subs = (await env.KV.get('tsubs', 'json')) || [];
+        return json(req, { ok: true, ...(await sendAll(env, subs, { title, body, url: '/admin.html', tag: 'lead' })) });
+      }
       if (url.pathname === '/run-reminders' && req.method === 'POST') { await requireTeacher(req); return json(req, { sent: await runReminders(env) }); }
       // 소식 첨부파일
       if (url.pathname === '/file' && req.method === 'POST') {

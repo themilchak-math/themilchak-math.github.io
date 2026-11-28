@@ -4,7 +4,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from
 import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, ACT_UNITS, isAct } from './subjects.js';
-import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
+import { pushState, enablePush, sendPush, pushErrorText, announceUpdate, syncTeacherSubs } from './push.js';
 import { syncSched } from './sched.js';
 import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { LEAD_SRC, LEAD_ST, LEAD_REACT, stLabel, leadPhone, leadTodo, leadSummary } from './leads.js';
@@ -14,7 +14,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}' + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.22.2';
+const ADMIN_VERSION = '2.23.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -212,7 +212,9 @@ function pDash() {
         '<p>' + (notYet.length ? (() => { const rg = notYet.filter(x => !exSet.has(x.id)), sp = notYet.filter(x => exSet.has(x.id)); return rg.map(x => '<b>' + esc(x.name) + '</b>' + noshowBtn(x, day)).join(' · ') + (sp.length ? (rg.length ? '<span style="margin:0 10px"></span>' : '') + chip('보충', 'pri') + ' ' + sp.map(x => '<b>' + esc(x.name) + '</b>' + noshowBtn(x, day) + ' <button class="btn xs ghost" data-a="exDel" data-id="' + x.id + '" title="보충 취소">×</button>').join(' · ') : ''); })() : '<span class="sub">' + (exp ? (D.exams.some(e => evKind(e) === 'off' && onDay(e, day)) ? '교습소 휴무일이에요' : '예정된 학생이 모두 왔어요') : '정산 메뉴에 등원 요일을 넣으면 예정 학생이 보여요') + '</span>') + '</p>' +
         (cand.length ? '<div class="bar" style="margin:10px 0 0"><select id="exSel" style="width:auto"><option value="">보충 올 학생 선택</option>' + cand.map(x => '<option value="' + x.id + '">' + esc(x.name) + ' (' + esc(x.grade) + ')</option>').join('') + '</select><button class="btn sm" data-a="exAdd">+ 보충 학생 추가</button></div>' : '') + '</section>'; })() +
     (isOwnerMe() && D.staff.some(x => x.st === 'pending') ? '<section class="card hl"><h2>부원장 가입 승인</h2><table><tbody>' + D.staff.filter(x => x.st === 'pending').map(x => '<tr><td><b>' + esc(x.name || '') + ' 부원장</b></td><td>' + esc(fmtP(x.phone)) + '</td><td class="r"><button class="btn sm ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn sm" data-a="stOk" data-id="' + x.id + '">승인</button></td></tr>').join('') + '</tbody></table></section>' : '') +
-    applyCard(false) + absSection() + pushCard() +
+    (() => { const l = st.filter(s => a[s.id] && a[s.id].st !== '결석' && !a[s.id].out && D.logs.some(g => g.sid === s.id && g.date === day));
+      return l.length ? '<section class="card hl"><h2>하원 체크 안 한 학생 <span class="sub">학습 기록은 올렸는데 하원을 안 눌렀어요</span></h2><p style="margin:0">' + l.map(s => '<b>' + esc(s.name) + '</b> <span class="sub">등원 ' + esc(a[s.id].at || '') + '</span> <button class="btn xs" data-a="outNow" data-id="' + s.id + '" data-v="' + day + '">하원 처리</button>').join('<span style="margin:0 10px"></span>') + '</p></section>' : ''; })() +
+    bkAlert() + applyCard(false) + absSection() + pushCard() +
     (pending().length || mPending().length ? '<div class="grid2">' + (pending().length ? '<section class="card hl"><h2>등원 승인 대기</h2>' + reqRows() + '</section>' : '') + (mPending().length ? '<section class="card hl"><h2>가입 승인 대기</h2>' + joinRows() + '</section>' : '') + '</div>' : '') +
     '<section class="card"><h2>' + dayLbl + ' 출결 <span class="sub">' + fmtD(day) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th>' + (exp ? '<th>수업</th>' : '') + '<th>상태</th><th>수업 기록</th></tr></thead><tbody>' +
     order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === day).pop(); const e = expSet.has(s.id); const ab = absT.has(s.id) && !a[s.id] ? absOf(s.id, day) : null; return '<tr' + (exp && !e && !a[s.id] && !ab ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + (exSet.has(s.id) ? (!a[s.id] ? chip('보충 예정', 'pri') : a[s.id].st === '결석' ? chip('결석', 'bad') : a[s.id].out ? chip('완료', 'pri') : chip('학습중', 'ok')) : clsChip(a[s.id], e, ab)) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (ab ? '<span class="sub">결석 사유: ' + esc(ab.reason) + '</span>' : lg ? esc(lg.unit || subjOf(lg) + ' (메모 기록)') + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
@@ -273,6 +275,8 @@ const addYear = d => { const [y, m, dd] = d.split('-'); return (+y + 1) + '-' + 
 const isDue = s => !!(s.left && s.leftAt && addYear(s.leftAt) <= TODAY);
 const dueList = () => D.students.filter(isDue);
 const purgeAlert = () => isOwnerMe() && dueList().length ? '<section class="card hl"><h2>개인정보 파기 대상 ' + dueList().length + '명</h2><p class="sub" style="margin:0 0 8px">퇴원 후 1년이 지났어요: ' + dueList().map(s => esc(s.name)).join(', ') + ' · 학생 관리 → 퇴원한 학생에서 [정보 삭제]를 눌러 주세요.</p><button class="btn sm" data-a="goPurge">학생 관리로 가기</button></section>' : '';
+// 백업 알림: 마지막 백업이 30일 넘으면 대시보드에 한 줄
+const bkAlert = () => { if (!isOwnerMe()) return ''; const lb = (D.cfg && D.cfg.lastBackup) || ''; if (lb && lb >= off(-30)) return ''; return '<section class="card" style="padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>💾 백업할 때예요</b><span class="sub" style="flex:1">' + (lb ? '마지막 백업 ' + fmtD(lb) + ' · 한 달에 한 번 받아 두세요' : '아직 한 번도 백업하지 않았어요') + '</span><button class="btn sm" data-a="backup"' + (V.bkBusy ? ' disabled' : '') + '>' + (V.bkBusy || '지금 백업 받기') + '</button></section>'; };
 const BK_COLS = ['leads', 'calls', 'config', 'students', 'sinfo', 'members', 'users', 'staff', 'att', 'abs', 'reqs', 'extra', 'logs', 'hw', 'exams', 'notices', 'msgs', 'fin', 'apply', 'forms', 'push'];
 async function backupAll() {
   const out = { app: '더밀착수학', ver: ADMIN_VERSION, at: new Date().toISOString(), data: {} };
@@ -286,7 +290,7 @@ async function purgeStudent(sid) {
   const refs = [];
   for (const c of ['att', 'abs', 'logs', 'hw', 'reqs', 'msgs', 'members', 'calls', 'leads', 'forms']) { const s = await getDocs(query(collection(db, c), where('sid', '==', sid))); s.docs.forEach(d => refs.push(doc(db, c, d.id))); }
   ['student', 'parent', 'father', 'mother'].forEach(r => refs.push(doc(db, 'push', sid + '|' + r)));
-  refs.push(doc(db, 'sinfo', sid));
+  refs.push(doc(db, 'sinfo', sid), doc(db, 'sched', sid)); ['student', 'parent', 'father', 'mother'].forEach(r => refs.push(doc(db, 'typing', sid + '|' + r)));
   const ms = D.members.filter(m => m.sid === sid && m.uid);
   for (let i = 0; i < refs.length; i += 400) { const b = writeBatch(db); refs.slice(i, i + 400).forEach(r => b.delete(r)); await b.commit(); }
   const b = writeBatch(db);
@@ -571,7 +575,16 @@ const adopting = new Set();
 async function adoptRemote() {
   for (const [fid, f] of Object.entries(D.forms)) {
     if (f.self === 'book' && !f.lead && !adopting.has(fid)) { adopting.add(fid);
-      try { const id = 'b_' + fid; const b = writeBatch(db);
+      try {
+        // 같은 어머님 번호·같은 학생 이름으로 진행 중인 기록이 있으면 새 줄 대신 그 줄에 합쳐요
+        const same = D.leads.find(l => l.st !== 'enrolled' && l.st !== 'lost' && digits(l.pMother) === digits(f.pMother) && (l.name || '').trim() === (f.name || '').trim());
+        // 새로 받은 링크(어머님이 지금 쓰는 중)를 살리고, 예전 링크에 적어 둔 설문·신청서는 새 링크로 옮긴 뒤 예전 링크는 닫아요
+        if (same) { const of = (same.tok && D.forms[same.tok]) || {}; const carry = {}; ['parent', 'student', 'apply'].forEach(k => { if (of[k] && !f[k]) carry[k] = of[k]; }); const b = writeBatch(db);
+          b.update(doc(db, 'leads', same.id), { fresh: true, up: TODAY, tok: fid, ...(same.date ? {} : { date: f.wantDate || '', time: f.wantTime || '' }), ...(f.pStudent && !same.pStudent ? { pStudent: f.pStudent } : {}), memo: [same.memo, f.note ? '신청 메모: ' + f.note : '', '(예약 신청 한 번 더 들어옴)'].filter(Boolean).join(' / ') });
+          b.update(doc(db, 'forms', fid), { lead: same.id, up: Date.now(), ...carry });
+          if (same.tok && same.tok !== fid && D.forms[same.tok]) b.update(doc(db, 'forms', same.tok), { st: 'closed', up: Date.now() });
+          await b.commit(); continue; }
+        const id = 'b_' + fid; const b = writeBatch(db);
         b.set(doc(db, 'leads', id), { name: f.name || '', grade: f.grade || '', school: f.school || '', src: f.src || '학부모 직접 신청', pMother: f.pMother || '', pFather: '', pStudent: f.pStudent || '', date: f.wantDate || '', time: f.wantTime || '', st: 'booked', selfBook: true, fresh: true, tok: fid, memo: f.note ? '신청 메모: ' + f.note : '', ts: now(), up: TODAY }, { merge: true });
         b.update(doc(db, 'forms', fid), { lead: id, up: Date.now() }); await b.commit();
       } catch (e) { console.warn('예약 신청 가져오기 실패', e); } continue; }
@@ -582,6 +595,9 @@ async function adoptRemote() {
     } catch (e) { console.warn('비대면 신청 가져오기 실패', e); }
   }
 }
+// 등록하지 않은 진단 기록의 마지막 활동일(수정일·진단일·만든 날 중 가장 늦은 날)이 1년 지났으면 파기 대상 — 예약만 하고 안 온 기록·비대면 신청서도 포함
+const leadLastDay = l => [l.up, l.date, l.ts ? ds(new Date(l.ts)) : ''].filter(x => typeof x === 'string' && /^\d{4}-\d\d-\d\d$/.test(x)).sort().pop() || '';
+const leadExpired = l => l.st !== 'enrolled' && leadLastDay(l) && leadLastDay(l) < off(-365);
 const leadDays = l => l.date ? fmtD(l.date) + (l.time ? ' ' + l.time : '') : '<span class="sub">' + (l.remote ? '비대면 신청' : '날짜 미정') + '</span>';
 const leadTel = l => leadPhone(l) ? '<a class="btn xs ghost" href="tel:' + esc(leadPhone(l)) + '">📞 ' + esc(fmtP(leadPhone(l))) + '</a>' : '';
 function leadDash() {
@@ -601,7 +617,7 @@ function pLeads() {
   const list = groups[t].slice().sort((a, b) => ord(a).localeCompare(ord(b)));
   const ym = TODAY.slice(0, 7); const mon = all.filter(l => (l.date || '').startsWith(ym) && l.st !== 'booked'); const monE = mon.filter(l => l.st === 'enrolled').length;
   const tot = all.filter(l => l.st === 'enrolled' || l.st === 'lost'); const totE = tot.filter(l => l.st === 'enrolled').length;
-  const old = all.filter(l => (l.st === 'lost' || l.st === 'done') && (l.up || l.date || '') && (l.up || l.date) < off(-365));
+  const old = all.filter(leadExpired);
   const stc = { booked: 'pri', done: 'warn', enrolled: 'ok', lost: '' };
   return '<h1>진단·상담 <span class="sub">무료 정밀진단 예약 → 진단 결과·상담 기록 → 등록하면 학생으로 바로 넘어가요</span></h1>' +
     '<div class="bar"><button class="btn" data-a="modal" data-v="lead">직접 입력</button><a class="btn" href="' + esc(bookSms()) + '" title="어머님께 진단 예약 신청 링크를 문자로 보내요">💬 문자로 발송</a><button class="btn ghost" data-a="guidePrint">🖨 교습소 안내문 인쇄</button>' + ['open', 'enrolled', 'lost', 'all'].map(k => '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-a="leadT" data-v="' + k + '">' + { open: '진행 중', enrolled: '등록함', lost: '등록 안 함', all: '전체' }[k] + ' ' + groups[k].length + '</button>').join(' ') +
@@ -998,6 +1014,7 @@ const L = (q, fn) => unsubs.push(onSnapshot(q, fn, e => console.warn('구독 오
 function subscribe() {
   L(doc(db, 'config', 'main'), d => { D.cfg = d.exists() ? d.data() : null; sr(); });
   L(doc(db, 'config', 'hid'), d => { D.hid = d.exists() ? d.data() : {}; sr(); });
+  setTimeout(() => syncTeacherSubs(db, auth), 4000);
   L(collection(db, 'students'), s => { D.students = docs(s).sort((a, b) => a.name.localeCompare(b.name, 'ko')); if (isOwnerMe()) { const nl = D.students.filter(x => x.left && !x.leftAt); if (nl.length) { const b = writeBatch(db); nl.forEach(x => b.update(doc(db, 'students', x.id), { leftAt: TODAY })); b.commit().catch(e => console.warn(e)); } } sr(); });
   L(query(collection(db, 'att'), where('date', '>=', off(-400))), s => { D.att = {}; docs(s).forEach(x => { (D.att[x.date] || (D.att[x.date] = {}))[x.sid] = x; }); sr(); });
   L(query(collection(db, 'msgs'), where('ts', '>=', now() - 150 * 864e5)), s => { D.threads = {}; docs(s).forEach(m => (D.threads[m.th] || (D.threads[m.th] = [])).push(m)); Object.values(D.threads).forEach(t => t.sort((a, b) => (a.ts || 0) - (b.ts || 0))); if (V.chat && V.page === 'msg') markRead(V.chat); sr(); });
@@ -1179,9 +1196,10 @@ app.addEventListener('click', async e => {
       const ok = await scheduleRemind(db, auth, { ...c, at }, c.who); return toast(c.who + ' ' + at + ' 상담 확정' + (ok ? ' · 10분 전에 알려 드릴게요' : ' · 알림 예약은 못 했어요'));
     }
     if (a === 'leadT') { V.leadT = v; return render(); }
-    if (a === 'leadLost' || a === 'leadReopen') { const l = D.leads.find(x => x.id === id); if (!l) return; await updateDoc(doc(db, 'leads', id), { st: a === 'leadLost' ? 'lost' : 'done', up: TODAY }); return toast(l.name + (a === 'leadLost' ? ' · 등록 안 함으로 정리했어요' : ' · 다시 진행 중으로 옮겼어요')); }
+    if (a === 'leadLost' || a === 'leadReopen') { const l = D.leads.find(x => x.id === id); if (!l) return; await updateDoc(doc(db, 'leads', id), { st: a === 'leadLost' ? 'lost' : 'done', up: TODAY }); if (a === 'leadLost' && l.tok && D.forms[l.tok] && D.forms[l.tok].st === 'open') await updateDoc(doc(db, 'forms', l.tok), { st: 'closed', up: Date.now() }).catch(() => { }); return toast(l.name + (a === 'leadLost' ? ' · 등록 안 함으로 정리했어요' : ' · 다시 진행 중으로 옮겼어요')); }
     if (a === 'leadDel') { if (V.confirmLeadDel !== id) { V.confirmLeadDel = id; render(); setTimeout(() => { if (V.confirmLeadDel === id) { V.confirmLeadDel = null; render(); } }, 4000); return; } V.confirmLeadDel = null; { const l = D.leads.find(x => x.id === id); if (l && l.tok && l.st !== 'enrolled') await deleteDoc(doc(db, 'forms', l.tok)).catch(() => { }); } await deleteDoc(doc(db, 'leads', id)); V.modal = null; V.editId = null; render(); return toast('진단 기록을 삭제했어요'); }
-    if (a === 'leadClean') { const old = D.leads.filter(l => (l.st === 'lost' || l.st === 'done') && (l.up || l.date) && (l.up || l.date) < off(-365)); if (!old.length || !confirm('등록하지 않고 1년이 지난 진단 기록 ' + old.length + '건을 영구 삭제할까요?')) return; const b = writeBatch(db); old.forEach(l => { b.delete(doc(db, 'leads', l.id)); if (l.tok) b.delete(doc(db, 'forms', l.tok)); }); await b.commit(); return toast(old.length + '건을 정리했어요'); }
+    if (a === 'outNow') { const d = el.dataset.v; let t = d === off(0) ? hm() : prompt('하원 시각 (예: 22:00)', '22:00'); if (!t) return; t = t.trim(); if (!/^\d{1,2}:\d\d$/.test(t)) return toast('시각을 22:00 처럼 적어 주세요'); t = t.padStart(5, '0'); await updateDoc(doc(db, 'att', d + '_' + id), { out: t }); return toast((stu(id) || {}).name + ' 하원 처리했어요 (' + t + ')'); }
+    if (a === 'leadClean') { const old = D.leads.filter(leadExpired); if (!old.length || !confirm('등록하지 않고 1년이 지난 진단 기록 ' + old.length + '건을 영구 삭제할까요?')) return; const b = writeBatch(db); old.forEach(l => { b.delete(doc(db, 'leads', l.id)); if (l.tok) b.delete(doc(db, 'forms', l.tok)); }); await b.commit(); return toast(old.length + '건을 정리했어요'); }
     if (a === 'formNew') { const l = D.leads.find(x => x.id === id); if (!l) return; const tok = newTok();
       const b = writeBatch(db); b.set(doc(db, 'forms', tok), { st: 'open', lead: id, name: l.name || '', school: l.school || '', grade: l.grade || '', pMother: l.pMother || '', pFather: l.pFather || '', pStudent: l.pStudent || '', src: l.src || '', ts: Date.now(), up: Date.now() }); b.update(doc(db, 'leads', id), { tok, up: TODAY }); await b.commit();
       return toast('상담 서류 링크를 만들었어요 · [📋 태블릿]을 누르면 태블릿 화면이 열려요'); }

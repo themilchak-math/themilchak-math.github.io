@@ -94,3 +94,13 @@ export async function announceUpdate(db, auth) {
     await sendPush(db, auth, ids, (note ? note + ' · ' : '') + '알림을 누르면 새 버전으로 바로 바뀌어요.', { title: '더밀착수학 앱 업데이트 (v' + v + ')', tag: 'update', url: './?u=1' });
   } catch (e) { console.warn('업데이트 알림 실패', e); } finally { announcing = false; }
 }
+
+// 원장님·부원장 기기 목록을 알림 서버에 맡겨 둬요 → 로그인 없는 상담 화면(예약 신청·입학신청서)에서도 원장님 폰으로 알림이 가요
+export async function syncTeacherSubs(db, auth) {
+  try {
+    const u = auth.currentUser; if (!u) return;
+    const d = await getDoc(doc(db, 'push', 'teacher')); const subs = d.exists() ? (d.data().subs || []) : []; if (!subs.length) return;
+    const tok = await u.getIdToken();
+    await fetch(PUSH_URL + '/tsubs', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ subs }) });
+  } catch (e) { console.warn('tsubs', e); }
+}

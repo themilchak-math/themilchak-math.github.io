@@ -11,9 +11,9 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 import { syncSched, plannedOn } from './sched.js';
 import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
-import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
+import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS, syncTeacherSubs } from './push.js';
 
-const APP_VERSION = '2.8.2';
+const APP_VERSION = '2.8.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -626,6 +626,7 @@ function subTeacher(){
   L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
   L(query(collection(db,'calls'),where('st','in',['new','ok'])),s=>{D.calls=docs(s);sr()});
   L(doc(db,'config','hid'),d=>{D.hid=d.exists()?d.data():{};sr()});
+  setTimeout(()=>syncTeacherSubs(db,auth),4000);
   D.sched=null;L(collection(db,'sched'),s=>{D.sched=Object.fromEntries(s.docs.map(d=>[d.id,d.data()]));schedSoon()});
   L(query(collection(db,'extra'),where('date','>=',off(-60))),s=>{D.extra={};s.docs.forEach(d=>{D.extra[d.id]=d.data()});schedSoon();sr()});
   if(isOwnerMe())L(collection(db,'apply'),s=>{D.apply=docs(s).filter(x=>x.st==='new');sr()});
