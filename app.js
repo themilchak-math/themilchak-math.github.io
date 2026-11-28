@@ -12,7 +12,7 @@ import { syncSched, plannedOn } from './sched.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.6.2';
+const APP_VERSION = '2.6.3';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -344,8 +344,10 @@ function tComm(){
   else{
     const keys=[];D.students.forEach(s=>{keys.push(...stuKey(s.id));if(famSids(s.id)[0]===s.id)keys.push(...parKeys(s.id))});
     const items=keys.map(k=>{const t=fthread(k);const last=t[t.length-1];return {k,last,un:t.filter(m=>m.f==='o'&&!m.r).length}}).sort((a,b)=>((b.last?b.last.at:'')>(a.last?a.last.at:'')?1:-1));
-    const nameK=k=>{const [sd,rr]=k.split('|');return rr!=='student'?famLabel(sd,REL[rr]):stu(sd).name+' 학생'};const empty=items.filter(i=>!i.last);const isP=i=>i.k.split('|')[1]!=='student';const mf=U.mf||'all';const allS=items.filter(i=>i.last);const pL=allS.filter(isP),sL=allS.filter(i=>!isP(i));const shown=mf==='parent'?pL:mf==='student'?sL:allS;const unOf=l=>l.reduce((a,i)=>a+i.un,0);const og=(lab,l)=>l.length?'<optgroup label="'+lab+'">'+l.map(i=>'<option value="'+esc(i.k)+'">'+esc(nameK(i.k))+'</option>').join('')+'</optgroup>':'';
-    inner=(empty.length?'<select id="newChat" style="width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--ink);font-size:15px"><option value="">+ 새 대화 시작…</option>'+og('학부모',empty.filter(isP))+og('학생',empty.filter(i=>!isP(i)))+'</select>':'')+(allS.length?'<div class="pills">'+[['all','전체',allS],['parent','👪 학부모',pL],['student','🎒 학생',sL]].map(([v,lab,l])=>'<button data-act="mf" data-v="'+v+'" class="'+(mf===v?'on':'')+'">'+lab+' '+l.length+(unOf(l)?' · '+unOf(l):'')+'</button>').join('')+'</div>':'')+(shown.length?'':'<div class="empty">'+(allS.length?'이쪽 대화가 없어요':'아직 대화가 없어요')+'</div>')+'<div class="card"'+(shown.length?'':' hidden')+'>'+shown.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r!=='student'?' p':'')+'">'+(r!=='student'?esc(REL[r]?REL[r].slice(0,2):'학부'):esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r!=='student'?famLabel(sid,REL[r]):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'</button>'}).join('')+'</div>';
+    // 닫은 대화: 목록에서만 숨겨요(내용은 그대로). [+ 새 대화 시작]에서 다시 열거나, 상대가 새 메시지를 보내면 다시 나타나요
+    const hidT=k=>(D.hid||{})[k]||0;const isHid=i=>hidT(i.k)&&!fthread(i.k).some(m=>m.f==='o'&&(m.ts||0)>hidT(i.k));
+    const nameK=k=>{const [sd,rr]=k.split('|');return rr!=='student'?famLabel(sd,REL[rr]):stu(sd).name+' 학생'};const empty=items.filter(i=>!i.last||isHid(i));const isP=i=>i.k.split('|')[1]!=='student';const mf=U.mf||'all';const allS=items.filter(i=>i.last&&!isHid(i));const pL=allS.filter(isP),sL=allS.filter(i=>!isP(i));const shown=mf==='parent'?pL:mf==='student'?sL:allS;const unOf=l=>l.reduce((a,i)=>a+i.un,0);const og=(lab,l)=>l.length?'<optgroup label="'+lab+'">'+l.map(i=>'<option value="'+esc(i.k)+'">'+esc(nameK(i.k))+(i.last?' (닫은 대화)':'')+'</option>').join('')+'</optgroup>':'';
+    inner=(empty.length?'<select id="newChat" style="width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--ink);font-size:15px"><option value="">+ 새 대화 시작…</option>'+og('학부모',empty.filter(isP))+og('학생',empty.filter(i=>!isP(i)))+'</select>':'')+(allS.length?'<div class="pills">'+[['all','전체',allS],['parent','👪 학부모',pL],['student','🎒 학생',sL]].map(([v,lab,l])=>'<button data-act="mf" data-v="'+v+'" class="'+(mf===v?'on':'')+'">'+lab+' '+l.length+(unOf(l)?' · '+unOf(l):'')+'</button>').join('')+'</div>':'')+(shown.length?'':'<div class="empty">'+(allS.length?'이쪽 대화가 없어요':'아직 대화가 없어요')+'</div>')+'<div class="card"'+(shown.length?'':' hidden')+'>'+shown.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r!=='student'?' p':'')+'">'+(r!=='student'?esc(REL[r]?REL[r].slice(0,2):'학부'):esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r!=='student'?famLabel(sid,REL[r]):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'<span data-act="hideTh" data-k="'+i.k+'" title="목록에서 닫기 (대화 내용은 남아요)" style="padding:6px 4px 6px 8px;color:var(--mut);font-size:18px;line-height:1">×</span></button>'}).join('')+'</div>';
   }
   return header('소통','학생·학부모 메시지와 소식')+'<div class="body">'+commTabs()+inner+'</div>';
 }
@@ -607,6 +609,7 @@ function subTeacher(){
   L(collection(db,'staff'),s=>{D.staff=docs(s);sr()});
   L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
   L(query(collection(db,'calls'),where('st','in',['new','ok'])),s=>{D.calls=docs(s);sr()});
+  L(doc(db,'config','hid'),d=>{D.hid=d.exists()?d.data():{};sr()});
   D.sched=null;L(collection(db,'sched'),s=>{D.sched=Object.fromEntries(s.docs.map(d=>[d.id,d.data()]));schedSoon()});
   L(query(collection(db,'extra'),where('date','>=',off(-60))),s=>{D.extra={};s.docs.forEach(d=>{D.extra[d.id]=d.data()});schedSoon();sr()});
   if(isOwnerMe())L(collection(db,'apply'),s=>{D.apply=docs(s).filter(x=>x.st==='new');sr()});
@@ -832,6 +835,7 @@ app.addEventListener('click',async e=>{
   if(a==='calM'){let [y,m]=U.calM.split('-').map(Number);m+=+v;if(m<1){m=12;y--}if(m>12){m=1;y++}U.calM=y+'-'+pad(m);return render()}
   if(a==='calD'){U.calD=v;return render()}
   if(a==='calS'){U.calS=v;return render()}
+  if(a==='hideTh'){const k=el.dataset.k;await setDoc(doc(db,'config','hid'),{[k]:now()},{merge:true});if(U.chat===k)U.chat=null;return toast('목록에서 닫았어요 · [+ 새 대화 시작]에서 다시 열 수 있어요')}
   if(a==='open'){const [sd,rr]=el.dataset.k.split('|');U.chat=rr!=='student'&&U.role==='teacher'?famSids(sd)[0]+'|'+rr:el.dataset.k;markRead(U.chat);return render()}
   if(a==='sheet'){
     if(el.dataset.s==='log'||el.dataset.s==='hw'){if(!D.students.length)return toast('학생을 먼저 등록해 주세요');}
@@ -945,7 +949,7 @@ app.addEventListener('change',async e=>{
   try{
   if(t.id==='bFile'&&t.files){(U.bf=U.bf||[]).push(...t.files);t.value='';return render()}
   if(t.id==='whoSel'){U.me=t.value;famRole();U.chat=null;U.tab='home';U.wifiState=null;setTimeout(autoCheckin,300);return render()}
-  if(t.id==='newChat'&&t.value){U.chat=t.value;return render()}
+  if(t.id==='newChat'&&t.value){U.chat=t.value;if((D.hid||{})[t.value])setDoc(doc(db,'config','hid'),{[t.value]:0},{merge:true}).catch(()=>{});markRead(U.chat);return render()}
   if(t.id==='attDate'&&t.value){U.dayPick=t.value===homeDefault()?null:t.value;U.calM=curDay().slice(0,7);return render()}
   if(t.id==='autoN'){await updateDoc(doc(db,'config','main'),{autoNotify:t.checked});return toast(t.checked?'자동 알림 켬':'자동 알림 끔')}
   if(t.id==='lfCourse'){U.lf.course=t.value;U.lf.unit=null;lfStash();return render()}

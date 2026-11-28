@@ -13,7 +13,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.20.4';
+const ADMIN_VERSION = '2.20.5';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -855,15 +855,17 @@ function pMsg() {
   const keys = []; active().forEach(s => { keys.push(...stuKey(s.id)); if (famSids(s.id)[0] === s.id) keys.push(...parKeys(s.id)); });
   const items = keys.map(k => { const t = fthread(k); const last = t[t.length - 1]; return { k, last, un: t.filter(m => m.f === 'o' && !m.r).length }; }).sort((a, b) => ((b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0)));
   const nameK = k => { const [sd, rr] = k.split('|'); return rr !== 'student' ? famLabel(sd, REL[rr]) : stu(sd).name + ' 학생'; };
-  const empty = items.filter(i => !i.last && i.k !== V.chat);
-  const isP = i => i.k.split('|')[1] !== 'student'; const og = (lab, l) => l.length ? '<optgroup label="' + lab + '">' + l.map(i => '<option value="' + esc(i.k) + '">' + esc(nameK(i.k)) + '</option>').join('') + '</optgroup>' : '';
+  // 닫은 대화: 목록에서만 숨김(내용 그대로). [+ 새 대화 시작]에서 다시 열거나, 상대가 새 메시지를 보내면 다시 나타나요
+  const hidT = k => (D.hid || {})[k] || 0; const isHid = i => hidT(i.k) && i.k !== V.chat && !fthread(i.k).some(m => m.f === 'o' && (m.ts || 0) > hidT(i.k));
+  const empty = items.filter(i => (!i.last || isHid(i)) && i.k !== V.chat);
+  const isP = i => i.k.split('|')[1] !== 'student'; const og = (lab, l) => l.length ? '<optgroup label="' + lab + '">' + l.map(i => '<option value="' + esc(i.k) + '">' + esc(nameK(i.k)) + (i.last ? ' (닫은 대화)' : '') + '</option>').join('') + '</optgroup>' : '';
   const newSel = empty.length ? '<select id="newChat" style="width:100%;margin-bottom:6px"><option value="">+ 새 대화 시작…</option>' + og('학부모', empty.filter(isP)) + og('학생', empty.filter(i => !isP(i))) + '</select>' : '';
   // 학부모 / 학생 나눠 보기 (전체에서는 두 묶음으로)
-  const mf = V.mf || 'all'; const shownAll = items.filter(i => i.last || i.k === V.chat); const unOf = l => l.reduce((a, i) => a + i.un, 0);
+  const mf = V.mf || 'all'; const shownAll = items.filter(i => (i.last && !isHid(i)) || i.k === V.chat); const unOf = l => l.reduce((a, i) => a + i.un, 0);
   const pL = shownAll.filter(isP), sL = shownAll.filter(i => !isP(i));
   const pill = (v, lab, l) => '<button class="btn sm ' + (mf === v ? '' : 'ghost') + '" data-a="mf" data-v="' + v + '">' + lab + ' ' + l.length + (unOf(l) ? ' <span class="badge" style="position:static;margin-left:2px">' + unOf(l) + '</span>' : '') + '</button>';
   const pills = '<div class="bar" style="margin:0 0 8px;gap:4px;flex-wrap:nowrap">' + pill('all', '전체', shownAll) + pill('parent', '학부모', pL) + pill('student', '학생', sL) + '</div>';
-  const row = i => { const [sid, r] = i.k.split('|'); const s = stu(sid); return '<button class="th' + (V.chat === i.k ? ' on' : '') + '" data-a="open" data-v="' + esc(i.k) + '"><b>' + esc(r !== 'student' ? famLabel(sid, REL[r]) : s.name + ' 학생') + '</b>' + (i.un ? '<span class="badge">' + i.un + '</span>' : '') + '<span class="sub ell">' + (i.last ? esc(i.last.t) : '새 대화') + '</span></button>'; };
+  const row = i => { const [sid, r] = i.k.split('|'); const s = stu(sid); return '<button class="th' + (V.chat === i.k ? ' on' : '') + '" data-a="open" data-v="' + esc(i.k) + '"><b>' + esc(r !== 'student' ? famLabel(sid, REL[r]) : s.name + ' 학생') + '</b>' + (i.un ? '<span class="badge">' + i.un + '</span>' : '') + '<span class="sub ell">' + (i.last ? esc(i.last.t) : '새 대화') + '</span><span class="thx" data-a="hideTh" data-v="' + esc(i.k) + '" title="목록에서 닫기 (대화 내용은 남아요)">×</span></button>'; };
   const hd = (lab, l) => '<div class="sub" style="font-weight:700;margin:10px 4px 4px">' + lab + ' · ' + l.length + '</div>';
   const list = pills + (mf === 'parent' ? (pL.map(row).join('') || '<p class="empty">학부모 대화가 없어요</p>') : mf === 'student' ? (sL.map(row).join('') || '<p class="empty">학생 대화가 없어요</p>') : (pL.length ? hd('👪 학부모', pL) + pL.map(row).join('') : '') + (sL.length ? hd('🎒 학생', sL) + sL.map(row).join('') : ''));
   let chat = '<p class="empty">왼쪽에서 대화를 고르세요</p>';
@@ -992,6 +994,7 @@ let schedT = null; const schedSoon = () => { clearTimeout(schedT); schedT = setT
 const L = (q, fn) => unsubs.push(onSnapshot(q, fn, e => console.warn('구독 오류', e.code)));
 function subscribe() {
   L(doc(db, 'config', 'main'), d => { D.cfg = d.exists() ? d.data() : null; sr(); });
+  L(doc(db, 'config', 'hid'), d => { D.hid = d.exists() ? d.data() : {}; sr(); });
   L(collection(db, 'students'), s => { D.students = docs(s).sort((a, b) => a.name.localeCompare(b.name, 'ko')); if (isOwnerMe()) { const nl = D.students.filter(x => x.left && !x.leftAt); if (nl.length) { const b = writeBatch(db); nl.forEach(x => b.update(doc(db, 'students', x.id), { leftAt: TODAY })); b.commit().catch(e => console.warn(e)); } } sr(); });
   L(query(collection(db, 'att'), where('date', '>=', off(-400))), s => { D.att = {}; docs(s).forEach(x => { (D.att[x.date] || (D.att[x.date] = {}))[x.sid] = x; }); sr(); });
   L(query(collection(db, 'msgs'), where('ts', '>=', now() - 150 * 864e5)), s => { D.threads = {}; docs(s).forEach(m => (D.threads[m.th] || (D.threads[m.th] = [])).push(m)); Object.values(D.threads).forEach(t => t.sort((a, b) => (a.ts || 0) - (b.ts || 0))); if (V.chat && V.page === 'msg') markRead(V.chat); sr(); });
@@ -1147,6 +1150,7 @@ app.addEventListener('click', async e => {
     if (a === 'invCopy') { const m = D.members.find(x => x.id === id); try { await navigator.clipboard.writeText(inviteText(m)); toast('문구를 복사했어요. 카톡·문자에 붙여넣으세요'); } catch (e) { toast('복사하지 못했어요'); } return; }
     if (a === 'close') { V.modal = null; V.editId = null; V.bulk = null; return render(); }
     if (a === 'calM') { let [y, m] = V.calM.split('-').map(Number); m += +v; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } V.calM = y + '-' + pad(m); return render(); }
+    if (a === 'hideTh') { await setDoc(doc(db, 'config', 'hid'), { [v]: now() }, { merge: true }); if (V.chat === v) V.chat = null; render(); return toast('목록에서 닫았어요 · [+ 새 대화 시작]에서 다시 열 수 있어요'); }
     if (a === 'open') { const [sd, rr] = v.split('|'); V.chat = rr !== 'student' ? famSids(sd)[0] + '|' + rr : v; markRead(V.chat); return render(); }
     if (a === 'bulkCheck') { V.bulk = parseBulk(document.getElementById('bulkIn').value); return render(); }
     if (a === 'mOk') { const m = D.members.find(x => x.id === id); if (!m || !m.uid) return; const all = D.members.filter(x => x.uid === m.uid && x.st === 'pending'); const b = writeBatch(db); all.forEach(x => linkUser(b, x)); await b.commit(); for (const x of all) if (x.rel !== 'student') await msg(thsOf(x.sid, x.rel).pop(), x.sid, 's', '[가입 승인] ' + mLabel(x) + '으로 연결되었어요. 환영합니다!'); push([...new Set(all.flatMap(x => thsOf(x.sid, x.rel)))], '[가입 승인] 더밀착수학 앱 이용이 승인됐어요. 앱을 열어 주세요.'); return toast(all.map(mLabel).join(', ') + ' 승인 완료'); }
@@ -1276,7 +1280,7 @@ app.addEventListener('click', async e => {
 
 app.addEventListener('change', async e => {
   if (e.target.id === 'bFile' && e.target.files) { (V.bf = V.bf || []).push(...e.target.files); e.target.value = ''; return render(); }
-  if (e.target.id === 'newChat' && e.target.value) { V.chat = e.target.value; return render(); }
+  if (e.target.id === 'newChat' && e.target.value) { V.chat = e.target.value; if ((D.hid || {})[V.chat]) setDoc(doc(db, 'config', 'hid'), { [V.chat]: 0 }, { merge: true }).catch(() => { }); markRead(V.chat); return render(); }
   if (e.target.id === 'dashD') { V.dashD = e.target.value && e.target.value !== dashDefault() ? e.target.value : null; V.calM = curDay().slice(0, 7); return render(); }
   if (e.target.id === 'wifiPc') { try { localStorage.setItem('tmm-academy-pc', e.target.checked ? '1' : '0'); } catch (x) { } if (e.target.checked) { await wifiAutoSync(true); toast('이 PC를 교습소 PC로 지정했어요'); } else toast('교습소 PC 지정을 해제했어요'); return render(); }
   if (e.target.id === 'xlIn' && e.target.files && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; return importXlsx(f); }
