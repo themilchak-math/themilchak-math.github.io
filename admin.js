@@ -15,7 +15,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}' + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.27.0';
+const ADMIN_VERSION = '2.27.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -291,7 +291,12 @@ const BK_COLS = ['leads', 'calls', 'config', 'students', 'sinfo', 'members', 'us
 const BK_KEEP = 6, BK_CHUNK = 250000;
 async function backupAll() {
   const out = { app: '더밀착수학', ver: ADMIN_VERSION, at: new Date().toISOString(), data: {} };
-  for (const c of BK_COLS) { V.bkBusy = '저장 중… ' + c; render(); const s = await getDocs(collection(db, c)); out.data[c] = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); }
+  for (const c of BK_COLS) {
+    V.bkBusy = '저장 중… ' + c; render();
+    if (c === 'config') { out.data.config = {}; for (const id of ['main', 'hid', 'qr']) { const d = await getDoc(doc(db, 'config', id)); if (d.exists()) out.data.config[id] = d.data(); } continue; }
+    try { const s = await getDocs(collection(db, c)); out.data[c] = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); }
+    catch (e) { throw new Error(c + ' 읽기 실패 (' + (e.code || e.message) + ')'); }
+  }
   const n = Object.values(out.data).reduce((k, o) => k + Object.keys(o).length, 0);
   const txt = JSON.stringify(out); const parts = Math.ceil(txt.length / BK_CHUNK) || 1;
   const id = 'b_' + out.at.replace(/[-:]/g, '').slice(0, 15);
