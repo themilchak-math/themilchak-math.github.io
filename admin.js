@@ -13,7 +13,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.20.3';
+const ADMIN_VERSION = '2.20.4';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -132,7 +132,7 @@ const thsOf = (sid, rel) => rel === 'student' ? [sid + '|student'] : [sid + '|pa
 
 /* ---------- 화면 조각 ---------- */
 // 미등원 안내: 오늘 이미 보냈으면 보낸 시각
-const noshowAt = sid => { const m = thread(sid + '|parent').filter(x => /^\[미등원 안내\]/.test(x.t || '') && (x.at || '').startsWith(TODAY)).pop(); return m ? (m.at || '').slice(11, 16) : ''; };
+const noshowAt = sid => { const m = [sid + '|parent', sid + '|mother', sid + '|father'].flatMap(k => thread(k)).sort((a, b) => (a.ts || 0) - (b.ts || 0)).filter(x => /^\[미등원 안내\]/.test(x.t || '') && (x.at || '').startsWith(TODAY)).pop(); return m ? (m.at || '').slice(11, 16) : ''; };
 const noshowTxt = s => '[미등원 안내] ' + s.name + ' 학생이 아직 등원하지 않았어요. 혹시 늦거나 못 오게 되면 원장님께 알려 주세요.';
 const noshowBtn = (x, day) => day !== TODAY ? '' : (noshowAt(x.id) ? ' <span class="chip ok" title="부모님께 미등원 안내를 보냈어요">안내 ' + noshowAt(x.id) + '</span>' : ' <button class="btn xs ghost" data-a="noshow" data-id="' + x.id + '">미등원 안내</button>');
 const chip = (t, c) => '<span class="chip ' + (c || '') + '">' + esc(t) + '</span>';
@@ -1041,7 +1041,10 @@ onAuthStateChanged(auth, user => {
 /* ---------- 쓰기 ---------- */
 const msg = (th, sid, f, t) => addDoc(collection(db, 'msgs'), { th, sid, f, t, at: stamp(), ts: now(), r: false });
 const push = (targets, text, opts) => { sendPush(db, auth, targets, text, Object.assign({ prune: true }, opts || {})); };
-const notifyParent = (sid, t) => { if (D.cfg && D.cfg.autoNotify === false) return Promise.resolve(); push([sid + '|parent'], t); return msg(sid + '|parent', sid, 's', t).catch(e => console.warn(e)); };
+// 자동 알림은 어머님·아버님 대화방에 각각 따로 → 읽음도 각자. 푸시는 '학생id|parent'로 한 번(두 분 기기 모두 받음)
+const PTH = sid => PREL.map(r => sid + '|' + r);
+const sysP = (sid, t) => Promise.all(PTH(sid).map(th => msg(th, sid, 's', t)));
+const notifyParent = (sid, t) => { if (D.cfg && D.cfg.autoNotify === false) return Promise.resolve(); push([sid + '|parent'], t); return sysP(sid, t).catch(e => console.warn(e)); };
 function pushCard() {
   const st = pushState(auth.currentUser && auth.currentUser.uid); if (st === 'off' || st === 'on' || V.pushHide) return '';
   const inner = st === 'denied' ? '<p class="sub">이 PC 브라우저에서 알림이 차단돼 있어요. 주소창 왼쪽 자물쇠 → 사이트 설정 → 알림 → 허용으로 바꿔 주세요.</p>' : st === 'unsupported' ? '<p class="sub">이 브라우저는 알림을 지원하지 않아요. 크롬이나 엣지에서 열어 주세요.</p>' : '<p class="sub">등원·가입 요청, 숙제 완료, 학생·학부모 메시지가 오면 이 PC에도 알림이 떠요. (폰 앱에서도 따로 켜 주세요)</p><button class="btn" data-a="pushOn">이 PC에서 알림 받기</button>';
@@ -1071,12 +1074,12 @@ async function saveLogFor(sid, b, ovr) {
   items.forEach((it, k) => b.set(doc(collection(db, 'logs')), { sid, date: day, subj: it.subj, course: it.course, unit: it.unit, c: it.c, p: it.p, w: it.w, cm: k ? '' : cm, sh, ts: ts + k }));
   const math = items.filter(it => it.subj === '수학').pop(); if (math && s.course !== math.course) b.update(doc(db, 'students', sid), { course: math.course });
   if (r) b.update(doc(db, 'att', day + '_' + sid), { logged: true });
-  if (open) b.set(doc(collection(db, 'msgs')), { th: sid + '|student', sid, f: 's', t: '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.', at: stamp(), ts: now(), r: false });
+  // 학습 기록을 올려도 학생에게는 알림·메시지를 보내지 않아요 (원장님 요청)
   // 학부모님께는 수업 중간에 보내지 않고, 하원 알림에 수업 내용을 함께 보내요. 이미 하원한 뒤에 기록을 올린 경우에만 따로 보내요.
   const late = sh && r && r.out && r.st !== '결석' && !(D.cfg && D.cfg.autoNotify === false);
   const sumTxt = late ? '[수업 내용] ' + s.name + ' 학생 ' + fmtD(day) + '\n' + lessonSummary(items.map((it, i) => ({ ...it, sh: true, cm: i ? '' : cm }))) : '';
-  if (late) b.set(doc(collection(db, 'msgs')), { th: sid + '|parent', sid, f: 's', t: sumTxt, at: stamp(), ts: now(), r: false });
-  pendingPush.push(() => { if (open) push([sid + '|student'], '[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.'); if (late) push([sid + '|parent'], sumTxt); });
+  if (late) PTH(sid).forEach(th => b.set(doc(collection(db, 'msgs')), { th, sid, f: 's', t: sumTxt, at: stamp(), ts: now(), r: false }));
+  pendingPush.push(() => { if (late) push([sid + '|parent'], sumTxt); });
   if (V.logN) delete V.logN[sid];
   return s.name + (items.length > 1 ? '(' + items.length + ')' : '');
 }
@@ -1127,7 +1130,7 @@ app.addEventListener('click', async e => {
     if (a === 'msgDel') { if (!confirm('이 메시지를 삭제할까요?\n학생·학부모님 화면에서도 처음부터 없었던 것처럼 사라져요.')) return; await deleteDoc(doc(db, 'msgs', id)); return toast('메시지를 삭제했어요'); }
     if (a === 'noshow') { const s = stu(id); if (!s) return; const ps = D.members.filter(m => m.sid === id && m.rel !== 'student' && m.st === 'ok').map(m => REL[m.rel]); const tx = noshowTxt(s);
       if (!confirm(s.name + ' 학생 부모님께 미등원 안내를 보낼까요?\n\n받는 분: ' + (ps.length ? ps.join('·') : '앱에 가입한 부모님이 아직 없어요 (가입하면 대화에서 볼 수 있어요)') + '\n\n' + tx)) return;
-      await msg(id + '|parent', id, 's', tx); push([id + '|parent'], tx, { title: '미등원 안내', tag: 'ns' + id }); return toast(s.name + ' 부모님께 미등원 안내를 보냈어요'); }
+      await sysP(id, tx); push([id + '|parent'], tx, { title: '미등원 안내', tag: 'ns' + id }); return toast(s.name + ' 부모님께 미등원 안내를 보냈어요'); }
     if (a === 'chatDel') { const pr = PREL.includes(V.chat.split('|')[1]); const l = fthread(V.chat).filter(m => m.id && !(pr && /\|parent$/.test(m.th))); if (!l.length || !confirm('이 대화 전체(' + l.length + '개)를 삭제할까요?\n학생·학부모님 화면에서도 모두 사라지고 되돌릴 수 없어요.')) return; for (let i = 0; i < l.length; i += 400) { const b = writeBatch(db); l.slice(i, i + 400).forEach(m => b.delete(doc(db, 'msgs', m.id))); await b.commit(); } V.chat = null; return toast('대화를 삭제했어요'); }
     if (a === 'apCopy') { try { await navigator.clipboard.writeText(joinText()); toast('입학 안내 문구와 신청 링크를 복사했어요 · 카톡이나 문자에 붙여넣으세요'); } catch (e) { toast('복사하지 못했어요. 미리보기의 문구를 직접 복사해 주세요'); } return; }
     if (a === 'apDel') { const x = D.apply.find(y => y.id === id); if (!x || !confirm(x.name + ' 학생 신청서를 삭제할까요?')) return; await deleteDoc(doc(db, 'apply', id)); return toast('신청서를 삭제했어요'); }
@@ -1214,7 +1217,7 @@ app.addEventListener('click', async e => {
     if (a === 'dashT') { V.dashD = null; V.calM = curDay().slice(0, 7); return render(); }
     if (a === 'logAll') { V.logAll = !V.logAll; return render(); }
     if (a === 'logDone') { V.logDone = !V.logDone; return render(); }
-    if (a === 'absOk') { const x = D.abs.find(y => y.id === id); if (!x) return; const s = stu(x.sid) || { name: '' }; await updateDoc(doc(db, 'abs', id), { ok: true, okBy: TNAME() }); const tx = '[결석 확인] ' + s.name + ' 학생 ' + fmtD(x.date) + ' 결석 통보를 확인했어요.'; push([x.sid + '|parent'], tx, { tag: 'abs' }); await msg(x.sid + '|parent', x.sid, 's', tx).catch(() => { }); return toast(s.name + ' 결석 확인 · 학부모님께 알렸어요'); }
+    if (a === 'absOk') { const x = D.abs.find(y => y.id === id); if (!x) return; const s = stu(x.sid) || { name: '' }; await updateDoc(doc(db, 'abs', id), { ok: true, okBy: TNAME() }); const tx = '[결석 확인] ' + s.name + ' 학생 ' + fmtD(x.date) + ' 결석 통보를 확인했어요.'; push([x.sid + '|parent'], tx, { tag: 'abs' }); await sysP(x.sid, tx).catch(() => { }); return toast(s.name + ' 결석 확인 · 학부모님께 알렸어요'); }
     if (a === 'ok' || a === 'rej') {
       const q = D.req.find(x => x.id === id); if (!q) return; const s = stu(q.sid);
       if (a === 'rej') { await updateDoc(doc(db, 'reqs', q.id), { st: 'rej' }); await msg(q.sid + '|student', q.sid, 's', '[등원 요청 반려] 선생님께 직접 말씀드려 주세요.'); push([q.sid + '|student'], '[등원 요청 반려] 선생님께 직접 말씀드려 주세요.'); return toast(s.name + ' 등원 요청을 거절했어요'); }
@@ -1357,7 +1360,7 @@ app.addEventListener('submit', async e => {
       await setDoc(doc(db, 'att', d + '_' + sid), rec);
       const q = D.req.find(x => x.sid === sid && x.st === 'pending' && x.date === d); if (q && !isAbs) await updateDoc(doc(db, 'reqs', q.id), { st: 'ok' });
       const noti = !!(document.getElementById('atNoti') || {}).checked; const nm = (stu(sid) || {}).name || '';
-      if (noti) { const t = isAbs ? '[출결 알림] ' + nm + ' 학생이 ' + fmtD(d) + ' 결석으로 처리되었습니다.' : '[등·하원 알림] ' + nm + ' 학생 ' + fmtD(d) + ' 등원 ' + at + (out ? ' · 하원 ' + out : '') + (out ? (sm => sm ? '\n' + sm : '')(lessonSummary(D.logs.filter(l => l.sid === sid && l.date === d && l.sh))) : ''); push([sid + '|parent'], t); await msg(sid + '|parent', sid, 's', t).catch(e => console.warn(e)); }
+      if (noti) { const t = isAbs ? '[출결 알림] ' + nm + ' 학생이 ' + fmtD(d) + ' 결석으로 처리되었습니다.' : '[등·하원 알림] ' + nm + ' 학생 ' + fmtD(d) + ' 등원 ' + at + (out ? ' · 하원 ' + out : '') + (out ? (sm => sm ? '\n' + sm : '')(lessonSummary(D.logs.filter(l => l.sid === sid && l.date === d && l.sh))) : ''); push([sid + '|parent'], t); await sysP(sid, t).catch(e => console.warn(e)); }
       V.modal = null; return toast(nm + ' ' + fmtD(d) + ' 출결을 저장했어요' + (noti ? ' · 학부모 알림 발송' : ''));
     }
     if (f === 'finSetF') { const meal = +digits(g('fsMeal')), cap1 = +digits(g('fsCap1')), cap2 = +digits(g('fsCap2')); if (!meal || !cap1) return toast('숫자를 확인해 주세요'); await setDoc(doc(db, 'fin', 'settings'), { meal, cap1, cap2: cap2 || 0, sibPct: +digits(g('fsSib')) || 10, longAmt: +digits(g('fsLong')) || 40000 }); return toast('설정을 저장했어요'); }

@@ -12,7 +12,7 @@ import { syncSched, plannedOn } from './sched.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.6.1';
+const APP_VERSION = '2.6.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -35,7 +35,7 @@ const PCT=[0,10,20,30,40,50,60,70,80,90,100];
 
 const stu=id=>D.students.find(s=>s.id===id);
 const thread=k=>D.threads[k]||(D.threads[k]=[]);
-const noshowAt=sid=>{const m=thread(sid+'|parent').filter(x=>/^\[미등원 안내\]/.test(x.t||'')&&(x.at||'').startsWith(TODAY)).pop();return m?(m.at||'').slice(11,16):''};
+const noshowAt=sid=>{const m=[sid+'|parent',sid+'|mother',sid+'|father'].flatMap(k=>thread(k)).sort((a,b)=>(a.ts||0)-(b.ts||0)).filter(x=>/^\[미등원 안내\]/.test(x.t||'')&&(x.at||'').startsWith(TODAY)).pop();return m?(m.at||'').slice(11,16):''};
 const noshowTxt=s=>'[미등원 안내] '+s.name+' 학생이 아직 등원하지 않았어요. 혹시 늦거나 못 오게 되면 원장님께 알려 주세요.';
 const noshowBtn=(x,day)=>day!==TODAY?'':(noshowAt(x.id)?' <span class="chip c-ok">안내 '+noshowAt(x.id)+'</span>':' <button class="btn sm ghost" style="padding:2px 8px" data-act="noshow" data-id="'+x.id+'">미등원 안내</button>');
 // 형제: 같은 학부모 번호로 연결된 학생들 → 학부모 대화는 하나로 묶어 보여요 ("홍길동/길순 학부모님")
@@ -725,7 +725,10 @@ const msg=(th,sid,f,t)=>addDoc(collection(db,'msgs'),{th,sid,f,t,at:stamp(),ts:n
 const isTeacher=()=>U.role==='teacher'&&(isOwnerMe()||U.isStaff);
 const push=(targets,text,opts)=>{sendPush(db,auth,targets,text,Object.assign({prune:isTeacher()},opts||{}))};
 const famName=()=>{const s=stu(U.me);return U.role==='student'?(s?s.name:'')+' 학생':famLabel(U.me,myRel())};
-function notifyParent(sid,text){if(!D.autoNotify)return Promise.resolve();push([sid+'|parent'],text);return msg(sid+'|parent',sid,'s',text).catch(e=>console.warn(e))}
+// 자동 알림은 어머님·아버님 대화방에 각각 따로 남겨요 → 읽음도 각자. 푸시는 예전처럼 '학생id|parent'로 한 번(두 분 기기 모두 받음)
+const PTH=sid=>PREL.map(r=>sid+'|'+r);
+const sysP=(sid,t)=>Promise.all(PTH(sid).map(th=>msg(th,sid,'s',t)));
+function notifyParent(sid,text){if(!D.autoNotify)return Promise.resolve();push([sid+'|parent'],text);return sysP(sid,text).catch(e=>console.warn(e))}
 function pushHelp(){
   const android=/Android/i.test(navigator.userAgent);
   const sysPath='휴대폰 <b>설정 → 애플리케이션 → '+(isSamsung()?'삼성 인터넷':'사용 중인 인터넷 앱')+' → 알림 → 알림 허용</b>이 켜져 있는지도 확인해 주세요.';
@@ -742,7 +745,7 @@ function pushCard(){
   if(st==='ios-install')inner='<p class="sub" style="margin:0 0 10px">아이폰은 <b>홈 화면에 설치한 앱</b>에서만 알림을 받을 수 있어요.</p><button class="btn" style="width:100%" data-act="iosG">홈 화면에 추가하기</button>';
   else if(st==='unsupported')inner='<p class="sub" style="margin:0">이 브라우저는 알림을 지원하지 않아요. '+(pushIOS()?'iOS 16.4 이상으로 업데이트해 주세요.':'삼성 인터넷 또는 크롬을 최신으로 업데이트해 주세요.')+'</p>';
   else if(st==='denied')inner=(/Android/i.test(navigator.userAgent)&&isStandalone())?'<p class="sub" style="margin:0">이 앱의 알림이 꺼져 있어요.<br>① 홈 화면의 <b>더밀착수학 아이콘을 길게 누르기</b> → <b>ⓘ 앱 정보</b><br>② <b>알림</b> 누르기 → <b>알림 허용</b> 켜기<br>③ 앱을 닫았다가 다시 열고 [알림 받기] 누르기</p><button class="btn" style="width:100%;margin-top:10px" data-act="pushOn">다시 시도</button>':'<p class="sub" style="margin:0">알림이 차단돼 있어요. 휴대폰 <b>설정 → 알림</b>(또는 브라우저 사이트 설정)에서 더밀착수학 알림을 허용해 주세요.</p>';
-  else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 하원 가능, 메시지·공지가 오면':'등·하원, 수업 기록, 새 숙제, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+((U.pushHint||(/Android/i.test(navigator.userAgent)&&isSamsung()))?pushHelp():'')+'';
+  else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 메시지·공지가 오면':'등·하원, 수업 기록, 새 숙제, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+((U.pushHint||(/Android/i.test(navigator.userAgent)&&isSamsung()))?pushHelp():'')+'';
   let pm='?';try{pm=Notification.permission}catch(e){pm='없음'}
   const ua=navigator.userAgent;const br=/SamsungBrowser\/([\d.]+)/.exec(ua);const ch=/Chrome\/(\d+)/.exec(ua);
   inner+='<p style="margin:10px 0 0;font-size:12px;color:#888">진단: v'+APP_VERSION+' · 권한 '+pm+' · '+(br?'삼성인터넷 '+br[1]:ch?'크롬 '+ch[1]:'기타')+' · '+(isStandalone()?'설치앱':'브라우저')+(U.pushAutoErr?' · 자동등록 실패: '+esc(U.pushAutoErr):'')+'</p>';
@@ -890,7 +893,7 @@ app.addEventListener('click',async e=>{
   if(a==='msgDel'){if(!confirm('이 메시지를 삭제할까요?\n상대방 화면에서도 처음부터 없었던 것처럼 사라져요.'))return;U.msgSel=null;await deleteDoc(doc(db,'msgs',id));return toast('메시지를 삭제했어요')}
   if(a==='noshow'){const s=stu(id);if(!s)return;const ps=(D.members||[]).filter(m=>m.sid===id&&m.rel!=='student'&&m.st==='ok').map(m=>REL[m.rel]);const tx=noshowTxt(s);
     if(!confirm(s.name+' 학생 부모님께 미등원 안내를 보낼까요?\n\n받는 분: '+(ps.length?ps.join('·'):'앱에 가입한 부모님이 아직 없어요')+'\n\n'+tx))return;
-    await msg(id+'|parent',id,'s',tx);push([id+'|parent'],tx,{title:'미등원 안내',tag:'ns'+id});return toast(s.name+' 부모님께 미등원 안내를 보냈어요')}
+    await sysP(id,tx);push([id+'|parent'],tx,{title:'미등원 안내',tag:'ns'+id});return toast(s.name+' 부모님께 미등원 안내를 보냈어요')}
   if(a==='chatDel'){const pr=PREL.includes(U.chat.split('|')[1]);const l=fthread(U.chat).filter(m=>m.id&&!(pr&&/\|parent$/.test(m.th)));if(!l.length||!confirm('이 대화 전체('+l.length+'개)를 삭제할까요?\n상대방 화면에서도 모두 사라지고 되돌릴 수 없어요.'))return;for(let i=0;i<l.length;i+=400){const b=writeBatch(db);l.slice(i,i+400).forEach(m=>b.delete(doc(db,'msgs',m.id)));await b.commit()}U.chat=null;return toast('대화를 삭제했어요')}
   if(a==='callCancel'){const c=(D.calls||[]).find(x=>x.id===id);if(!c||!confirm(fmtD(c.date)+' 상담 요청을 취소할까요?'))return;await updateDoc(doc(db,'calls',id),{st:'cancel'});cancelRemind(auth,id);push(['teacher'],'[상담 취소] '+fmtD(c.date)+' '+(c.st==='ok'?c.at:rangeTxt(c))+' 상담 요청을 취소했어요',{title:c.who,tag:'call'});return toast('상담 요청을 취소했어요')}
   if(a==='callOk'||a==='callNo'||a==='callDone'){const c=(D.calls||[]).find(x=>x.id===id);if(!c)return;const th=c.sid+'|'+(PREL.includes(c.rel)?c.rel:'parent');
@@ -898,11 +901,11 @@ app.addEventListener('click',async e=>{
     if(a==='callNo'){if(!confirm(c.who+' 상담을 '+(c.st==='ok'?'취소':'다른 시간으로 미룰')+'까요? 학부모님께 알림이 가요.'))return;await updateDoc(doc(db,'calls',id),{st:'cancel'});cancelRemind(auth,id);const tx='[상담 안내] '+fmtD(c.date)+' 상담은 '+(c.st==='ok'?'사정이 생겨 취소됐어요':'요청하신 시간에는 통화가 어려워요')+'. 편한 시간을 메시지로 알려 주시거나 다시 요청해 주세요.';push([th],tx,{tag:'call'});await msg(th,c.sid,'s',tx).catch(()=>{});return toast('학부모님께 알렸어요')}
     const at=(document.getElementById('ch_'+id)||{}).value||hh(c.from);await updateDoc(doc(db,'calls',id),{st:'ok',at});const tx='[상담 확정] '+fmtD(c.date)+' '+at+'에 원장님이 전화드릴게요.';push([th],tx,{tag:'call'});await msg(th,c.sid,'s',tx).catch(()=>{});
     const ok=await scheduleRemind(db,auth,{...c,at},c.who);return toast(c.who+' '+at+' 상담 확정'+(ok?' · 10분 전에 알려 드릴게요':' · 알림 예약은 못 했어요'))}
-  if(a==='absDel'){const x=D.abs.find(y=>y.id===id);if(!x||!confirm(fmtD(x.date)+' 결석 통보를 취소할까요?'))return;const s=stu(x.sid);await deleteDoc(doc(db,'abs',id));const tx='[결석 취소] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 취소했어요 (수업 참석)';push(['teacher'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'o',tx).catch(()=>{});return toast('결석 통보를 취소했어요')}
+  if(a==='absDel'){const x=D.abs.find(y=>y.id===id);if(!x||!confirm(fmtD(x.date)+' 결석 통보를 취소할까요?'))return;const s=stu(x.sid);await deleteDoc(doc(db,'abs',id));const tx='[결석 취소] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 취소했어요 (수업 참석)';push(['teacher'],tx,{tag:'abs'});msg(x.sid+'|'+(PREL.includes(ME.rels[x.sid])?ME.rels[x.sid]:'parent'),x.sid,'o',tx).catch(()=>{});return toast('결석 통보를 취소했어요')}
   if(a==='dayM'){const d=new Date(curDay()+'T00:00');d.setDate(d.getDate()+(+v));const n=ds(d);U.dayPick=n===homeDefault()?null:n;U.calM=curDay().slice(0,7);return render()}
   if(a==='dayT'){U.dayPick=null;U.calM=curDay().slice(0,7);return render()}
   if(a==='exAdd'||a==='exDel'){const day=curDay();const sid=a==='exAdd'?(document.getElementById('exSel')||{}).value:id;if(!sid)return toast('보충 올 학생을 골라 주세요');await setDoc(doc(db,'extra',day),{date:day,sids:a==='exAdd'?arrayUnion(sid):arrayRemove(sid)},{merge:true});return toast((stu(sid)||{}).name+(a==='exAdd'?' 보충 추가':' 보충 취소'))}
-  if(a==='absOk'){const x=D.abs.find(y=>y.id===id);if(!x)return;const s=stu(x.sid);await updateDoc(doc(db,'abs',id),{ok:true,okBy:TNAME()});const tx='[결석 확인] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 확인했어요.';push([x.sid+'|parent'],tx,{tag:'abs'});msg(x.sid+'|parent',x.sid,'s',tx).catch(()=>{});return toast(s.name+' 결석 확인 · 학부모님께 알렸어요')}
+  if(a==='absOk'){const x=D.abs.find(y=>y.id===id);if(!x)return;const s=stu(x.sid);await updateDoc(doc(db,'abs',id),{ok:true,okBy:TNAME()});const tx='[결석 확인] '+s.name+' 학생 '+fmtD(x.date)+' 결석 통보를 확인했어요.';push([x.sid+'|parent'],tx,{tag:'abs'});sysP(x.sid,tx).catch(()=>{});return toast(s.name+' 결석 확인 · 학부모님께 알렸어요')}
   if(a==='checkin'){const s=stu(U.me);if((D.att[TODAY]||{})[s.id])return toast('이미 등원했어요');
     if(wifiOn()&&!U.wifiBusy){U.wifiBusy=true;U.wifiState='checking';render();let ok=false;try{const ip=await myIp();ok=!!(ip&&(D.cfg.wifiIps||[]).includes(ip))}catch(e){}U.wifiBusy=false;if(ok){try{await wifiIn(s)}catch(e){U.wifiState='err';toast('등원 기록에 실패했어요. 다시 눌러 주세요')}return render()}U.wifiState='no'}
     if(myReq(s.id))return toast('이미 요청했어요');const t=hm();await addDoc(collection(db,'reqs'),{sid:s.id,uid:ME.uid,at:t,date:TODAY,st:'pending',ts:now()});push(['teacher'],'[등원 요청] '+s.name+' 학생 '+t+' 등원 · 승인해 주세요',{tag:'req'});return toast('원장님께 등원 승인 요청을 보냈어요')}
@@ -1054,9 +1057,9 @@ app.addEventListener('submit',async e=>{
     items.forEach((it,k)=>{const c=it.subj===ACT?null:(it.c==null?50:it.c);b.set(doc(collection(db,'logs')),{sid,date:LD,subj:it.subj,course:it.course,unit:it.unit,c,p:c==null?null:100-c,w:items.length>1?(+it.w||0):100,cm:k===0?(f.cm||'').trim():'',sh:f.sh,ts:ts+k})});
     const math=items.filter(it=>it.subj==='수학').pop();if(math&&s.course!==math.course)b.update(doc(db,'students',sid),{course:math.course});
     if(r)b.update(doc(db,'att',LD+'_'+sid),{logged:true});
-    if(open)b.set(doc(collection(db,'msgs')),{th:sid+'|student',sid,f:'s',t:'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.',at:stamp(),ts:now(),r:false});
+    // 학습 기록을 올려도 학생에게는 알림·메시지를 보내지 않아요 (원장님 요청) — 학생 앱 [하원] 버튼만 열려요
     await b.commit();
-    if(open)push([sid+'|student'],'[하원 가능] 오늘 학습 정리가 올라왔어요. 하원 체크를 해주세요.');
+
     // 학부모님께는 하원 알림에 수업 내용을 함께 보내요(중간 발송 없음). 이미 하원한 뒤 올린 기록만 따로 보내요.
     if(f.sh&&r&&r.out&&r.st!=='결석')await notifyParent(sid,'[수업 내용] '+stu(sid).name+' 학생 '+fmtD(LD)+'\n'+lessonSummary(items.map((it,i)=>({...it,sh:true,cm:i?'':(f.cm||'').trim()}))));
     const last=items[items.length-1];U.psj=U.psj||{};U.psj[sid]=last.subj;U.pc[sid]=last.course;U.logS=sid;U.sheet=null;U.lf=null;U.tab=U.ret||'log';U.ret=null;return toast((items.length>1?items.length+'개 항목 · ':'')+(open?'정리 완료 · 하원이 열렸어요':'기록을 저장했어요'));

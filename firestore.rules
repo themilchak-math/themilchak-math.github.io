@@ -126,7 +126,7 @@ service cloud.firestore {
       allow create: if isTeacher()
         || (myThread(request.resource.data.th) && request.resource.data.f == 'o')
         || (hasProfile() && request.resource.data.f == 's' && request.resource.data.sid in me().sids
-            && request.resource.data.th == request.resource.data.sid + '|parent');
+            && request.resource.data.th in [request.resource.data.sid + '|parent', request.resource.data.sid + '|mother', request.resource.data.sid + '|father']);
       allow update: if (isTeacher() && onlyKeys(['r']))
         || (myThread(resource.data.th) && resource.data.f != 'o' && onlyKeys(['r']));
       allow delete: if isTeacher();
