@@ -7,12 +7,13 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT,
 import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fmtSize, filesHtml, lightbox, visibleTo, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
-{const st=document.createElement('style');st.textContent=BOARD_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
+{const st=document.createElement('style');st.textContent=BOARD_CSS+TYPING_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { syncSched, plannedOn } from './sched.js';
+import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.6.4';
+const APP_VERSION = '2.7.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -363,7 +364,7 @@ function chatView(){
   const title=U.role==='teacher'?(r!=='student'?famLabel(sid,REL[r]):s.name+' 학생'):TNAME();
   const T=U.role==='teacher';const sel=m=>T&&m.id?' data-act="msgSel" data-id="'+m.id+'"':'';const delB=m=>T&&U.msgSel===m.id?'<button class="btn sm ghost" style="align-self:'+(m.f===mine?'flex-end':'flex-start')+';color:var(--acc);margin-top:-4px" data-act="msgDel" data-id="'+m.id+'">이 메시지 삭제</button>':'';
   const body=(T&&t.length?'<div style="text-align:right;margin-bottom:6px"><button class="btn sm ghost" style="color:var(--acc)" data-act="chatDel">대화 전체 삭제</button></div><p class="sub" style="margin:0 0 8px;text-align:center;font-size:12px">메시지를 누르면 하나씩 지울 수 있어요 · 지우면 상대방 화면에서도 사라져요</p>':'')+(t.length?t.map(m=>(m.f==='s'?sysHtml(m,T).replace('<div class="msg sys">','<div class="msg sys"'+sel(m)+'>'):'<div class="msg '+(m.f===mine?'me':'you')+'"'+sel(m)+'>'+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine?rdTag(m):'')+'</div>')+delB(m)).join(''):'<div class="empty">첫 메시지를 보내보세요</div>');
-  return header(title,r!=='student'?(U.role==='teacher'?REL[r]+'과 1:1 대화 (다른 보호자는 못 봐요)':'원장님과 1:1 대화'):'학생 질문·안내',true)+'<div class="body" id="chatBody"><div class="chat">'+body+'</div></div><form class="send" id="sendF"><input id="msgIn" placeholder="메시지 입력" autocomplete="off" aria-label="메시지"><button class="btn" type="submit">전송</button></form>';
+  return header(title,r!=='student'?(U.role==='teacher'?REL[r]+'과 1:1 대화 (다른 보호자는 못 봐요)':'원장님과 1:1 대화'):'학생 질문·안내',true)+'<div class="body" id="chatBody"><div class="chat">'+body+typingHtml('msg')+'</div></div><form class="send" id="sendF"><input id="msgIn" placeholder="메시지 입력" autocomplete="off" aria-label="메시지"><button class="btn" type="submit">전송</button></form>';
 }
 
 function sHome(){
@@ -441,6 +442,10 @@ function sheetHtml(){
 
 
 const app=document.getElementById('app');
+// 입력 중 표시: 학부모 대화는 형제가 있으면 각 형제 방 이름으로도 같이 써요 (원장님 화면은 첫째 기준 방을 보기 때문)
+const TY=createTyping({db,doc,setDoc,onSnapshot,myF:()=>U.role==='teacher'?'t':'o',writeKeys:k=>{const [sid,r]=k.split('|');return r==='student'?[k]:famSids(sid).map(x=>x+'|'+r).filter(x=>U.role==='teacher'||(ME&&ME.ths||[]).includes(x))}});
+document.addEventListener('input',e=>{if(e.target&&e.target.id==='msgIn'){if(e.target.value.trim())TY.ping();else TY.stop()}});
+document.addEventListener('focusout',e=>{if(e.target&&e.target.id==='msgIn')setTimeout(()=>{const x=document.activeElement;if(!x||x.id!=='msgIn')TY.stop()},300)});
 /* ================= 상태 ================= */
 const D={apply:[],sinfo:{},students:[],att:{},threads:{},hw:[],logs:[],notices:[],req:[],members:[],exams:[],staff:[],abs:[],fin:{},extra:{},autoNotify:true,cfg:null};
 const ME={uid:null,phone:'',sids:[],rels:{},ths:[]};
@@ -574,6 +579,7 @@ function render(){
   Object.entries(keep).forEach(([id,k])=>{const el=document.getElementById(id);if(!el)return;if('c' in k){if(el.type==='checkbox'&&id!=='autoN'&&id!=='lgSh')el.checked=k.c}else if((el.tagName!=='SELECT'||id==='bCat'||id==='bTo')&&id!=='attDate')el.value=k.v});
   app.querySelectorAll('input[name=hwS]').forEach(el=>{if(el.value in checks)el.checked=checks[el.value]});
   if(focusId){const el=document.getElementById(focusId);if(el){el.focus();try{if(selS!=null)el.setSelectionRange(selS,selE)}catch(e){}}}
+  TY.sync(U.chat||null);
   const nb=app.querySelector('.body');
   if(U.chat){const b=document.getElementById('chatBody');if(b)b.scrollTop=b.scrollHeight}
   else if(nb&&sameView)nb.scrollTop=scroll;
@@ -990,7 +996,7 @@ app.addEventListener('submit',async e=>{
       U.pendingSetup=false;toast('원장님 계정이 만들어졌어요');
     }catch(err){U.pendingSetup=false;U.authMsg=err.code==='permission-denied'?'이미 원장님 계정이 설정된 앱이에요.':authErr(err.code);if(auth.currentUser)await signOut(auth)}
     U.busy=false;return render()}
-  if(fid==='sendF'){const t=g('msgIn').trim();if(!t)return;const [sid]=U.chat.split('|');document.getElementById('msgIn').value='';await msg(U.chat,sid,U.role==='teacher'?'t':'o',t);if(U.role==='teacher')push([U.chat],t,{title:TNAME()+' 메시지',tag:'m'+U.chat});else push(['teacher'],t,{title:famName()+' 메시지',tag:'m'+U.chat});return}
+  if(fid==='sendF'){const t=g('msgIn').trim();if(!t)return;TY.stop();const [sid]=U.chat.split('|');document.getElementById('msgIn').value='';await msg(U.chat,sid,U.role==='teacher'?'t':'o',t);if(U.role==='teacher')push([U.chat],t,{title:TNAME()+' 메시지',tag:'m'+U.chat});else push(['teacher'],t,{title:famName()+' 메시지',tag:'m'+U.chat});return}
   if(fid==='examF'){
     const kind=U.exK||'exam',school=kind==='off'?'':g('exS').trim(),title=g('exT').trim(),start=g('exA'),end=g('exB')||g('exA'),memo=g('exM').trim();
     if((kind==='exam'&&!school)||!title||!start)return toast(kind==='exam'?'학교·시험·시작일을 입력해 주세요':'일정 이름·시작일을 입력해 주세요');

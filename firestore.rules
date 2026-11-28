@@ -43,6 +43,12 @@ service cloud.firestore {
       allow update: if isOwner() && request.resource.data.owner == resource.data.owner;
       allow delete: if false;
     }
+    match /typing/{th} {
+      // 대화방 "입력 중…" 표시: 그 방에 들어갈 수 있는 사람만 읽고, 자기 쪽(f) 표시만 써요
+      allow read: if isTeacher() || myThread(th);
+      allow write: if request.resource.data.keys().hasOnly(['f', 'on', 'at']) && request.resource.data.on is bool
+        && ((isTeacher() && request.resource.data.f == 't') || (myThread(th) && request.resource.data.f == 'o'));
+    }
     match /config/hid {
       // 원장님·부원장이 소통 목록에서 닫은 대화 (목록에서만 숨김)
       allow read, write: if isTeacher();

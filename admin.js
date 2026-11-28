@@ -6,14 +6,15 @@ import { firebaseConfig } from './firebase-config.js';
 import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, ACT_UNITS, isAct } from './subjects.js';
 import { pushState, enablePush, sendPush, pushErrorText, announceUpdate } from './push.js';
 import { syncSched } from './sched.js';
+import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { LEAD_SRC, LEAD_ST, LEAD_REACT, stLabel, leadPhone, leadTodo, leadSummary } from './leads.js';
 import { callOpen, hh, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
 import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
-{ const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
+{ const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.20.6';
+const ADMIN_VERSION = '2.21.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -872,7 +873,7 @@ function pMsg() {
   if (V.chat) {
     const [sid, r] = V.chat.split('|'); const s = stu(sid); const t = fthread(V.chat);
     const mx = m => m.id ? '<button class="mx" data-a="msgDel" data-id="' + m.id + '" title="이 메시지 삭제 (상대방 화면에서도 사라져요)">×</button>' : '';
-    chat = '<h2 style="display:flex;align-items:center;gap:8px">' + esc(r !== 'student' ? famLabel(sid, REL[r]) : (s ? s.name : '') + ' 학생') + (t.length ? '<button class="btn xs ghost" style="margin-left:auto" data-a="chatDel">대화 삭제</button>' : '') + '</h2><div class="chat" id="chatBody">' + (t.length ? t.map(m => m.f === 's' ? sysHtml(m).replace('<div class="m sys">', '<div class="m sys">' + mx(m)) : '<div class="m ' + (m.f === 't' ? 'me' : 'you') + '">' + mx(m) + esc(m.t) + '<small>' + esc((m.at || '').slice(5)) + (m.f === 't' ? rdTag(m) : '') + '</small></div>').join('') : '<p class="empty">첫 메시지를 보내보세요</p>') + '</div><form id="sendF" class="send"><input id="msgIn" placeholder="메시지 입력 후 Enter" autocomplete="off"><button class="btn" type="submit">전송</button></form>';
+    chat = '<h2 style="display:flex;align-items:center;gap:8px">' + esc(r !== 'student' ? famLabel(sid, REL[r]) : (s ? s.name : '') + ' 학생') + (t.length ? '<button class="btn xs ghost" style="margin-left:auto" data-a="chatDel">대화 삭제</button>' : '') + '</h2><div class="chat" id="chatBody">' + (t.length ? t.map(m => m.f === 's' ? sysHtml(m).replace('<div class="m sys">', '<div class="m sys">' + mx(m)) : '<div class="m ' + (m.f === 't' ? 'me' : 'you') + '">' + mx(m) + esc(m.t) + '<small>' + esc((m.at || '').slice(5)) + (m.f === 't' ? rdTag(m) : '') + '</small></div>').join('') : '<p class="empty">첫 메시지를 보내보세요</p>') + typingHtml('m') + '</div><form id="sendF" class="send"><input id="msgIn" placeholder="메시지 입력 후 Enter" autocomplete="off"><button class="btn" type="submit">전송</button></form>';
   }
   return '<h1>메시지</h1><div class="msgs"><section class="card tl">' + newSel + (shownAll.length ? list : '<p class="empty">아직 대화가 없어요</p>') + '</section><section class="card cv">' + chat + '</section></div>';
 }
@@ -970,6 +971,7 @@ function render() {
   app.querySelectorAll('input[name=hwS],input[name=schCk]').forEach(el => { if (el.value in hw) el.checked = hw[el.value]; });
   { const lf = document.getElementById('leadF'); if (lf && V.modal === 'lead' && !V.editId) window.__leadV(lf); }
   if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); }
+  TY.sync(V.page === 'msg' && V.chat ? V.chat : null);
   const nm = app.querySelector('main'); if (nm && same) nm.scrollTop = sc;
   const cb = document.getElementById('chatBody'); if (cb) cb.scrollTop = cb.scrollHeight;
   if (window.innerWidth <= 800 && V.navSeen !== V.page) { const on = document.querySelector('nav button.on'); if (on) { V.navSeen = V.page; const nv = on.parentElement; nv.scrollLeft = (on.offsetLeft - nv.offsetLeft) - (nv.clientWidth - on.offsetWidth) / 2; } }
@@ -1047,6 +1049,10 @@ const push = (targets, text, opts) => { sendPush(db, auth, targets, text, Object
 // 자동 알림은 어머님·아버님 대화방에 각각 따로 → 읽음도 각자. 푸시는 '학생id|parent'로 한 번(두 분 기기 모두 받음)
 const PTH = sid => PREL.map(r => sid + '|' + r);
 const sysP = (sid, t) => Promise.all(PTH(sid).map(th => msg(th, sid, 's', t)));
+// 입력 중 표시 (상대 화면에 ● ● ●): 학부모 대화는 형제 방 이름으로도 같이 써요
+const TY = createTyping({ db, doc, setDoc, onSnapshot, myF: () => 't', writeKeys: k => { const [sid, r] = k.split('|'); return r === 'student' ? [k] : famSids(sid).map(x => x + '|' + r); } });
+document.addEventListener('input', e => { if (e.target && e.target.id === 'msgIn') { if (e.target.value.trim()) TY.ping(); else TY.stop(); } });
+document.addEventListener('focusout', e => { if (e.target && e.target.id === 'msgIn') setTimeout(() => { const x = document.activeElement; if (!x || x.id !== 'msgIn') TY.stop(); }, 300); });
 const notifyParent = (sid, t) => { if (D.cfg && D.cfg.autoNotify === false) return Promise.resolve(); push([sid + '|parent'], t); return sysP(sid, t).catch(e => console.warn(e)); };
 function pushCard() {
   const st = pushState(auth.currentUser && auth.currentUser.uid); if (st === 'off' || st === 'on' || V.pushHide) return '';
@@ -1316,7 +1322,7 @@ app.addEventListener('submit', async e => {
   e.preventDefault(); const g = id => (document.getElementById(id) || {}).value || ''; const f = e.target.id;
   try {
     if (f === 'loginF') { const ph = digits(g('lP')); if (ph.length < 10) { V.msg = '휴대폰번호를 확인해 주세요'; return render(); } V.busy = true; V.msg = ''; render(); try { await signInWithEmailAndPassword(auth, ph + MAIL, g('lW')); } catch (err) { V.msg = '번호나 비밀번호가 맞지 않아요.'; } V.busy = false; return render(); }
-    if (f === 'sendF') { const t = g('msgIn').trim(); if (!t || !V.chat) return; document.getElementById('msgIn').value = ''; await msg(V.chat, V.chat.split('|')[0], 't', t); push([V.chat], t, { title: TNAME() + ' 메시지', tag: 'm' + V.chat }); return; }
+    if (f === 'sendF') { const t = g('msgIn').trim(); if (!t || !V.chat) return; TY.stop(); document.getElementById('msgIn').value = ''; await msg(V.chat, V.chat.split('|')[0], 't', t); push([V.chat], t, { title: TNAME() + ' 메시지', tag: 'm' + V.chat }); return; }
     if (f === 'hwF') {
       const ids = [...document.querySelectorAll('input[name=hwS]:checked')].map(x => x.value); const title = g('hwT').trim();
       if (!ids.length || !title) return toast('학생과 제목을 입력해 주세요');
