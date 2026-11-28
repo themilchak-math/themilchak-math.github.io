@@ -14,7 +14,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}' + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.25.0';
+const ADMIN_VERSION = '2.25.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -1089,8 +1089,8 @@ onAuthStateChanged(auth, user => {
 });
 
 /* ---------- 쓰기 ---------- */
-// 원장님 메시지·자동 알림은 30분 안에 안 읽으면 다시 알림(최대 2번)
-const msg = (th, sid, f, t) => addDoc(collection(db, 'msgs'), { th, sid, f, t, at: stamp(), ts: now(), r: false }).then(ref => { if (f !== 'o') remindLater(auth, ref.id); return ref; });
+// 원장님이 직접 보낸 메시지만 30분 안에 안 읽으면 다시 알림(최대 2번) — 자동 알림은 다시 알리지 않아요
+const msg = (th, sid, f, t) => addDoc(collection(db, 'msgs'), { th, sid, f, t, at: stamp(), ts: now(), r: false }).then(ref => { if (f === 't') remindLater(auth, ref.id); return ref; });
 const push = (targets, text, opts) => { sendPush(db, auth, targets, text, Object.assign({ prune: true }, opts || {})); };
 // 자동 알림은 어머님·아버님 대화방에 각각 따로 → 읽음도 각자. 푸시는 '학생id|parent'로 한 번(두 분 기기 모두 받음)
 const PTH = sid => PREL.map(r => sid + '|' + r);

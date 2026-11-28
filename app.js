@@ -13,7 +13,7 @@ import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS, syncTeacherSubs, remindLater, remindCancel } from './push.js';
 
-const APP_VERSION = '2.9.0';
+const APP_VERSION = '2.9.1';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -742,8 +742,8 @@ async function claim(ms){
 }
 
 /* ================= 쓰기 도우미 ================= */
-// 원장님 메시지·자동 알림은 30분 안에 안 읽으면 다시 알림(최대 2번) — 알림 서버가 처리
-const msg=(th,sid,f,t)=>addDoc(collection(db,'msgs'),{th,sid,f,t,at:stamp(),ts:now(),r:false}).then(ref=>{if(f!=='o')remindLater(auth,ref.id);return ref});
+// 원장님이 직접 보낸 메시지만 30분 안에 안 읽으면 다시 알림(30분 간격 최대 2번) — 자동 알림은 다시 알리지 않아요
+const msg=(th,sid,f,t)=>addDoc(collection(db,'msgs'),{th,sid,f,t,at:stamp(),ts:now(),r:false}).then(ref=>{if(f==='t')remindLater(auth,ref.id);return ref});
 const isTeacher=()=>U.role==='teacher'&&(isOwnerMe()||U.isStaff);
 const push=(targets,text,opts)=>{sendPush(db,auth,targets,text,Object.assign({prune:isTeacher()},opts||{}))};
 const famName=()=>{const s=stu(U.me);return U.role==='student'?(s?s.name:'')+' 학생':famLabel(U.me,myRel())};
