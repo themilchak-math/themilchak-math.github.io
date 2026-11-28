@@ -122,10 +122,28 @@ async function runReminders(env) {
   for (const r of due) if (now - r.at < 6 * 3600e3) await sendAll(env, r.subs, r);
   return due.length;
 }
+/* ---------- 안 읽은 메시지·알림 다시 알림 (30분 뒤 · 60분 뒤, 최대 2번 · 밤 10시~아침 8시는 안 보냄) ---------- */
+const FSB = 'https://firestore.googleapis.com/v1/projects/' + PROJECT + '/databases/(default)/documents/';
+const fromFs = v => !v ? null : 'stringValue' in v ? v.stringValue : 'integerValue' in v ? +v.integerValue : 'doubleValue' in v ? v.doubleValue : 'booleanValue' in v ? v.booleanValue
+  : 'mapValue' in v ? Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, fromFs(x)])) : 'arrayValue' in v ? (v.arrayValue.values || []).map(fromFs) : null;
+async function fsDoc(path, tok) { const r = await fetch(FSB + path, { headers: { Authorization: 'Bearer ' + tok } }); if (!r.ok) return null; const j = await r.json(); return Object.fromEntries(Object.entries(j.fields || {}).map(([k, v]) => [k, fromFs(v)])); }
+const RE_GAP = 30 * 60e3, RE_MAX = 2;
+const quietKST = t => { const h = (new Date(t).getUTCHours() + 9) % 24; return h >= 22 || h < 8; };
+async function runMsgReminders(env) {
+  const l = (await env.KV.get('mrems', 'json')) || []; if (!l.length) return 0;
+  const now = Date.now(); const due = l.filter(r => r.at <= now); if (!due.length) return 0;
+  const keep = l.filter(r => r.at > now);
+  for (const r of due) {
+    if (now - r.at > 20 * 60e3 || quietKST(now)) continue; // 너무 늦었거나 밤(10시~8시)이면 건너뜀
+    await sendAll(env, r.subs, { title: r.f === 't' ? '💬 원장님 메시지를 아직 확인하지 않으셨어요' : '🔔 확인하지 않은 알림이 있어요', body: r.body, url: './', tag: 're' + r.id });
+    if (r.n + 1 < RE_MAX) keep.push({ ...r, n: r.n + 1, at: r.at + RE_GAP });
+  }
+  await env.KV.put('mrems', JSON.stringify(keep)); return due.length;
+}
 async function isTeacherReq(req) { try { await requireTeacher(req); return true; } catch (e) { return false; } }
 
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(runReminders(env)); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runReminders(env), runMsgReminders(env)])); },
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
@@ -150,6 +168,31 @@ export default {
         if (!r) return json(req, { ok: true, n: 0 });
         if (r.uid !== u.sub && !(await isTeacherReq(req))) return json(req, { error: 'not allowed' }, 403);
         await env.KV.put('rems', JSON.stringify(rems.filter(x => x.id !== id))); return json(req, { ok: true, n: 1 });
+      }
+      // 메시지·알림을 보낸 기기가 부르면: 받는 사람이 30분 안에 안 읽으면 다시 알림 예약 (보낸 사람이 그 메시지를 읽을 수 있어야 함)
+      if (url.pathname === '/mremind' && req.method === 'POST') {
+        const tok = (req.headers.get('Authorization') || '').replace(/^Bearer /, ''); await verifyIdToken(tok);
+        const { ids } = await req.json(); const add = [];
+        for (const id of (Array.isArray(ids) ? ids : []).slice(0, 10)) {
+          if (!/^[A-Za-z0-9]{10,40}$/.test(String(id))) continue;
+          const m = await fsDoc('msgs/' + id, tok); if (!m || m.f === 'o' || m.r) continue;
+          const pd = await fsDoc('push/' + encodeURIComponent(m.th), tok); const subs = ((pd && pd.subs) || []).filter(x => x && x.endpoint).slice(0, 10);
+          if (!subs.length) continue;
+          add.push({ id, f: m.f, at: Date.now() + RE_GAP, n: 0, subs, body: String(m.t || '').slice(0, 140) });
+        }
+        if (!add.length) return json(req, { ok: true, n: 0 });
+        const l = ((await env.KV.get('mrems', 'json')) || []).filter(r => !add.some(a => a.id === r.id));
+        await env.KV.put('mrems', JSON.stringify(l.concat(add).slice(-300))); return json(req, { ok: true, n: add.length });
+      }
+      // 받는 사람이 읽었거나 원장님이 지우면 다시 알림 취소 (그 메시지를 읽을 수 있는 사람만)
+      if (url.pathname === '/mremind-del' && req.method === 'POST') {
+        const tok = (req.headers.get('Authorization') || '').replace(/^Bearer /, ''); await verifyIdToken(tok);
+        const { ids } = await req.json(); const want = new Set((Array.isArray(ids) ? ids : []).slice(0, 40).map(String));
+        const l = (await env.KV.get('mrems', 'json')) || []; const hit = l.filter(r => want.has(r.id)); if (!hit.length) return json(req, { ok: true, n: 0 });
+        const teacher = await isTeacherReq(req); const ok = new Set();
+        for (const r of hit) { if (teacher || await fsDoc('msgs/' + r.id, tok)) ok.add(r.id); }
+        if (ok.size) await env.KV.put('mrems', JSON.stringify(l.filter(r => !ok.has(r.id))));
+        return json(req, { ok: true, n: ok.size });
       }
       // 원장님·부원장 기기 목록을 KV에 복사 (로그인 없는 상담 화면에서 원장님께 알림을 보내려고)
       if (url.pathname === '/tsubs' && req.method === 'POST') {

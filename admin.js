@@ -4,7 +4,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from
 import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, ACT_UNITS, isAct } from './subjects.js';
-import { pushState, enablePush, sendPush, pushErrorText, announceUpdate, syncTeacherSubs } from './push.js';
+import { pushState, enablePush, sendPush, pushErrorText, announceUpdate, syncTeacherSubs, remindLater, remindCancel } from './push.js';
 import { syncSched } from './sched.js';
 import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { LEAD_SRC, LEAD_ST, LEAD_REACT, stLabel, leadPhone, leadTodo, leadSummary } from './leads.js';
@@ -14,7 +14,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}' + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.24.1';
+const ADMIN_VERSION = '2.25.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -1089,7 +1089,8 @@ onAuthStateChanged(auth, user => {
 });
 
 /* ---------- 쓰기 ---------- */
-const msg = (th, sid, f, t) => addDoc(collection(db, 'msgs'), { th, sid, f, t, at: stamp(), ts: now(), r: false });
+// 원장님 메시지·자동 알림은 30분 안에 안 읽으면 다시 알림(최대 2번)
+const msg = (th, sid, f, t) => addDoc(collection(db, 'msgs'), { th, sid, f, t, at: stamp(), ts: now(), r: false }).then(ref => { if (f !== 'o') remindLater(auth, ref.id); return ref; });
 const push = (targets, text, opts) => { sendPush(db, auth, targets, text, Object.assign({ prune: true }, opts || {})); };
 // 자동 알림은 어머님·아버님 대화방에 각각 따로 → 읽음도 각자. 푸시는 '학생id|parent'로 한 번(두 분 기기 모두 받음)
 const PTH = sid => PREL.map(r => sid + '|' + r);
@@ -1181,7 +1182,7 @@ app.addEventListener('click', async e => {
     if (a === 'stCopy') { const x = D.staff.find(y => y.id === id); try { await navigator.clipboard.writeText(staffInvite(x)); toast('문구를 복사했어요'); } catch (e) { toast('복사하지 못했어요'); } return; }
     if (a === 'schF') { V.schF = v; return render(); }
     if (a === 'exDel') { if (!confirm('이 일정을 삭제할까요?')) return; await deleteDoc(doc(db, 'exams', id)); return toast('일정을 삭제했어요'); }
-    if (a === 'msgDel') { if (!confirm('이 메시지를 삭제할까요?\n학생·학부모님 화면에서도 처음부터 없었던 것처럼 사라져요.')) return; await deleteDoc(doc(db, 'msgs', id)); return toast('메시지를 삭제했어요'); }
+    if (a === 'msgDel') { if (!confirm('이 메시지를 삭제할까요?\n학생·학부모님 화면에서도 처음부터 없었던 것처럼 사라져요.')) return; remindCancel(auth, [id]); await deleteDoc(doc(db, 'msgs', id)); return toast('메시지를 삭제했어요'); }
     if (a === 'noshow') { const s = stu(id); if (!s) return; const ps = D.members.filter(m => m.sid === id && m.rel !== 'student' && m.st === 'ok').map(m => REL[m.rel]); const tx = noshowTxt(s);
       if (!confirm(s.name + ' 학생 부모님께 미등원 안내를 보낼까요?\n\n받는 분: ' + (ps.length ? ps.join('·') : '앱에 가입한 부모님이 아직 없어요 (가입하면 대화에서 볼 수 있어요)') + '\n\n' + tx)) return;
       await sysP(id, tx); push([id + '|parent'], tx, { title: '미등원 안내', tag: 'ns' + id }); return toast(s.name + ' 부모님께 미등원 안내를 보냈어요'); }

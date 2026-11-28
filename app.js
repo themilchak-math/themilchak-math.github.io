@@ -11,9 +11,9 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 import { syncSched, plannedOn } from './sched.js';
 import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
-import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS, syncTeacherSubs } from './push.js';
+import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS, syncTeacherSubs, remindLater, remindCancel } from './push.js';
 
-const APP_VERSION = '2.8.3';
+const APP_VERSION = '2.9.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -742,7 +742,8 @@ async function claim(ms){
 }
 
 /* ================= 쓰기 도우미 ================= */
-const msg=(th,sid,f,t)=>addDoc(collection(db,'msgs'),{th,sid,f,t,at:stamp(),ts:now(),r:false});
+// 원장님 메시지·자동 알림은 30분 안에 안 읽으면 다시 알림(최대 2번) — 알림 서버가 처리
+const msg=(th,sid,f,t)=>addDoc(collection(db,'msgs'),{th,sid,f,t,at:stamp(),ts:now(),r:false}).then(ref=>{if(f!=='o')remindLater(auth,ref.id);return ref});
 const isTeacher=()=>U.role==='teacher'&&(isOwnerMe()||U.isStaff);
 const push=(targets,text,opts)=>{sendPush(db,auth,targets,text,Object.assign({prune:isTeacher()},opts||{}))};
 const famName=()=>{const s=stu(U.me);return U.role==='student'?(s?s.name:'')+' 학생':famLabel(U.me,myRel())};
@@ -818,6 +819,7 @@ function markRead(k){
   if(!seen())return;
   const other=U.role==='teacher'?['o']:['t','s'];const l=fthread(k).filter(m=>other.includes(m.f)&&!m.r&&m.id);
   if(!l.length)return;const b=writeBatch(db);l.forEach(m=>{m.r=true;b.update(doc(db,'msgs',m.id),{r:true})});b.commit().catch(e=>console.warn(e));
+  if(U.role!=='teacher')remindCancel(auth,l.map(m=>m.id));
 }
 const thOf=(sid,rel)=>sid+'|'+(rel==='student'?'student':'parent');
 const thsOf=(sid,rel)=>rel==='student'?[sid+'|student']:[sid+'|parent',sid+'|'+rel];
@@ -917,7 +919,7 @@ app.addEventListener('click',async e=>{
   if(a==='wifiClr'){if(!confirm('등록된 교습소 와이파이 주소를 지울까요?'))return;await updateDoc(doc(db,'config','main'),{wifiIps:[],wifiAuto:false});return toast('지웠어요')}
   if(a==='msgSel'){U.msgSel=U.msgSel===id?null:id;return render()}
   if(a==='msgDel'&&U.role!=='teacher'){const m=Object.values(D.threads).flat().find(x=>x.id===id);if(!m||m.r)return toast('이미 읽은 메시지는 지울 수 없어요');if(!confirm('이 메시지를 삭제할까요?'))return;U.msgSel=null;await updateDoc(doc(db,'msgs',id),{del:true,delAt:now()});return toast('삭제했어요')}
-  if(a==='msgDel'){if(!confirm('이 메시지를 삭제할까요?\n상대방 화면에서도 처음부터 없었던 것처럼 사라져요.'))return;U.msgSel=null;await deleteDoc(doc(db,'msgs',id));return toast('메시지를 삭제했어요')}
+  if(a==='msgDel'){if(!confirm('이 메시지를 삭제할까요?\n상대방 화면에서도 처음부터 없었던 것처럼 사라져요.'))return;U.msgSel=null;remindCancel(auth,[id]);await deleteDoc(doc(db,'msgs',id));return toast('메시지를 삭제했어요')}
   if(a==='noshow'){const s=stu(id);if(!s)return;const ps=(D.members||[]).filter(m=>m.sid===id&&m.rel!=='student'&&m.st==='ok').map(m=>REL[m.rel]);const tx=noshowTxt(s);
     if(!confirm(s.name+' 학생 부모님께 미등원 안내를 보낼까요?\n\n받는 분: '+(ps.length?ps.join('·'):'앱에 가입한 부모님이 아직 없어요')+'\n\n'+tx))return;
     await sysP(id,tx);push([id+'|parent'],tx,{title:'미등원 안내',tag:'ns'+id});return toast(s.name+' 부모님께 미등원 안내를 보냈어요')}

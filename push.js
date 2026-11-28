@@ -104,3 +104,14 @@ export async function syncTeacherSubs(db, auth) {
     await fetch(PUSH_URL + '/tsubs', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ subs }) });
   } catch (e) { console.warn('tsubs', e); }
 }
+
+// 안 읽은 메시지·알림 다시 알림: 보낸 기기가 메시지 id를 모아 알림 서버에 맡겨요 (30분 뒤·60분 뒤, 읽으면 취소)
+let reQ = [], reT = null;
+export function remindLater(auth, id) {
+  if (!id || !auth.currentUser) return; reQ.push(id); clearTimeout(reT);
+  reT = setTimeout(async () => { const ids = reQ.splice(0, 10); try { const tok = await auth.currentUser.getIdToken(); await fetch(PUSH_URL + '/mremind', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ ids }) }); } catch (e) { console.warn('mremind', e); } }, 1500);
+}
+export async function remindCancel(auth, ids) {
+  if (!ids || !ids.length || !auth.currentUser) return;
+  try { const tok = await auth.currentUser.getIdToken(); await fetch(PUSH_URL + '/mremind-del', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ ids: ids.slice(0, 40) }) }); } catch (e) { console.warn('mremind-del', e); }
+}
