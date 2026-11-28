@@ -115,3 +115,13 @@ export async function remindCancel(auth, ids) {
   if (!ids || !ids.length || !auth.currentUser) return;
   try { const tok = await auth.currentUser.getIdToken(); await fetch(PUSH_URL + '/mremind-del', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ ids: ids.slice(0, 40) }) }); } catch (e) { console.warn('mremind-del', e); }
 }
+
+// 원장님 본인 폰·PC의 알림 구독을 알림 서버에 따로 맡겨요 (월~금 저녁 8시 식대 확인 알림용)
+export async function syncOwnerSub(auth) {
+  try {
+    if (!auth.currentUser || !('serviceWorker' in navigator)) return;
+    const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && await reg.pushManager.getSubscription(); if (!sub) return;
+    const tok = await auth.currentUser.getIdToken();
+    await fetch(PUSH_URL + '/osubs', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ sub: sub.toJSON() }) });
+  } catch (e) { console.warn('osubs', e); }
+}

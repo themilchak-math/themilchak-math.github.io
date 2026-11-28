@@ -140,10 +140,20 @@ async function runMsgReminders(env) {
   }
   await env.KV.put('mrems', JSON.stringify(keep)); return due.length;
 }
+/* ---------- 저녁 식대 확인 알림: 월~금 저녁 8시, 원장님 기기에만 ---------- */
+async function mealNudge(env) {
+  const k = new Date(Date.now() + 9 * 3600e3); const w = k.getUTCDay(), h = k.getUTCHours(), m = k.getUTCMinutes();
+  if (w < 1 || w > 5 || h !== 20 || m > 10) return 0;
+  const day = k.toISOString().slice(0, 10); if (await env.KV.get('meal:' + day)) return 0;
+  await env.KV.put('meal:' + day, '1', { expirationTtl: 172800 });
+  const subs = (await env.KV.get('osubs', 'json')) || []; if (!subs.length) return 0;
+  await sendAll(env, subs, { title: '🍚 오늘 저녁 식대 확인', body: '저녁을 안 먹은 사람만 빼고 [저장]을 눌러 주세요 · 나머지는 식사로 체크돼요', url: './?meal=1', tag: 'meal' });
+  return 1;
+}
 async function isTeacherReq(req) { try { await requireTeacher(req); return true; } catch (e) { return false; } }
 
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runReminders(env), runMsgReminders(env)])); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([runReminders(env), runMsgReminders(env), mealNudge(env)])); },
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
@@ -193,6 +203,14 @@ export default {
         for (const r of hit) { if (teacher || await fsDoc('msgs/' + r.id, tok)) ok.add(r.id); }
         if (ok.size) await env.KV.put('mrems', JSON.stringify(l.filter(r => !ok.has(r.id))));
         return json(req, { ok: true, n: ok.size });
+      }
+      // 원장님 본인 기기만 따로 기억 (저녁 식대 알림은 원장님께만)
+      if (url.pathname === '/osubs' && req.method === 'POST') {
+        const tok = (req.headers.get('Authorization') || '').replace(/^Bearer /, ''); const u = await verifyIdToken(tok);
+        const cfg = await fsDoc('config/main', tok); if (!cfg || cfg.owner !== u.sub) return json(req, { error: 'not owner' }, 403);
+        const { sub } = await req.json(); if (!sub || !sub.endpoint || !/^https:\/\//.test(sub.endpoint) || !sub.keys) return json(req, { error: 'bad' }, 400);
+        const l = ((await env.KV.get('osubs', 'json')) || []).filter(x => x.endpoint !== sub.endpoint); l.push({ endpoint: sub.endpoint, keys: sub.keys });
+        await env.KV.put('osubs', JSON.stringify(l.slice(-5))); return json(req, { ok: true, n: l.slice(-5).length });
       }
       // 원장님·부원장 기기 목록을 KV에 복사 (로그인 없는 상담 화면에서 원장님께 알림을 보내려고)
       if (url.pathname === '/tsubs' && req.method === 'POST') {

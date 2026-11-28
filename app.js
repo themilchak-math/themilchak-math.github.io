@@ -10,10 +10,11 @@ import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fm
 {const st=document.createElement('style');st.textContent=BOARD_CSS+TYPING_CSS+'.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}'+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { syncSched, plannedOn } from './sched.js';
 import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
+import { isMealDay, mealPeople, mealDone, mealAte, saveMeal, mealCardHtml } from './meal.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
-import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS, syncTeacherSubs, remindLater, remindCancel } from './push.js';
+import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS, syncTeacherSubs, remindLater, remindCancel, syncOwnerSub } from './push.js';
 
-const APP_VERSION = '2.9.1';
+const APP_VERSION = '2.10.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -246,13 +247,20 @@ function dayPlan(day){
 function dayNav(day){const lbl=day===off(0)||day===ds(new Date())?'오늘':fmtD(day);return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><button class="btn sm ghost" data-act="dayM" data-v="-1">‹</button><b style="flex:1;text-align:center">'+lbl+(lbl==='오늘'?' · '+fmtD(day):'')+'</b><button class="btn sm ghost" data-act="dayM" data-v="1">›</button>'+(U.dayPick?'<button class="btn sm" data-act="dayT">오늘로</button>':'')+'</div>'}
 
 /* ---------- screens ---------- */
+// 저녁 식대 확인 카드: 원장님 · 월~금 · 저녁 7시부터 (영업일 기준 다음 날 새벽 3시까지)
+function mealCardApp(){
+  const day=off(0);if(!isOwnerMe()||!isMealDay(day))return '';const h=hm();if(!(h>='19:00'||h<'0'+DAY_CUT+':00')&&!/[?&]meal=1/.test(location.search))return '';
+  const people=mealPeople(D.students,D.att[day]||{});const fin=D.finYm===day.slice(0,7)?D.finCur:null;const done=mealDone(fin,day);
+  if(U.mealDay!==day){U.mealDay=day;U.mealNo=new Set(done?people.filter(p=>!mealAte(fin,day,p.key)).map(p=>p.key):[])}
+  return mealCardHtml({day,people,no:U.mealNo,done,fin,attr:'data-act',esc,fmtD,busy:U.mealBusy});
+}
 function tHome(){
   const day=curDay();const P=dayPlan(day);const a=P.a;
   const present=D.students.filter(s=>a[s.id]&&a[s.id].st!=='결석').length;const expIn=P.exp.filter(x=>a[x.id]&&a[x.id].st!=='결석').length;
   const notYet=P.exp.filter(x=>!a[x.id]);const rg=notYet.filter(x=>!P.exSet.has(x.id)),sp=notYet.filter(x=>P.exSet.has(x.id));
   const cand=D.students.filter(x=>P.rk(x)<2&&!(a[x.id]&&a[x.id].st!=='결석'));
   const toCheck=D.hw.filter(h=>h.st==='done');
-  return header(TNAME(),'오늘 '+fmtD(TODAY)+(day!==off(0)&&!U.dayPick?' · 모두 하원해서 다음 날 기준':''))+'<div class="body">'+pushCard()+
+  return header(TNAME(),'오늘 '+fmtD(TODAY)+(day!==off(0)&&!U.dayPick?' · 모두 하원해서 다음 날 기준':''))+'<div class="body">'+pushCard()+mealCardApp()+
   ((D.calls||[]).filter(callOpen).length?'<div class="card hl"><h3>📞 전화 상담 요청 '+D.calls.filter(callOpen).length+'</h3>'+callsHtml(D.calls.filter(callOpen),{attr:'data-act',sm:'sm',esc,fmtD,fmtP})+'</div>':'')+
   '<div class="quick"><button data-act="go" data-tab="att">'+ic('att')+'등·하원</button><button data-act="sheet" data-s="hw">'+ic('hw')+'숙제 내기</button><button data-act="sheet" data-s="log">'+ic('log')+'기록 쓰기</button>'+(isOwnerMe()?'<button data-act="sheet" data-s="notice">'+ic('note')+'공지 쓰기</button>':'')+''+(isOwnerMe()?'<button data-act="page" data-v="mng">'+ic('users')+'학생 관리</button><button data-act="page" data-v="exam">'+ic('exam')+'일정 등록</button>':'')+'</div>'+
   (isOwnerMe()&&stPending().length?'<div class="card" style="border-color:var(--warn)"><h3>부원장 가입 승인 <small>'+stPending().length+'건</small></h3>'+staffRows().replace(/<div class="row"/g,'<div class="row"')+'</div>':'')+
@@ -626,7 +634,8 @@ function subTeacher(){
   L(query(collection(db,'abs'),where('date','>=',off(-60))),s=>{D.abs=docs(s);sr()});
   L(query(collection(db,'calls'),where('st','in',['new','ok'])),s=>{D.calls=docs(s);sr()});
   L(doc(db,'config','hid'),d=>{D.hid=d.exists()?d.data():{};sr()});
-  setTimeout(()=>syncTeacherSubs(db,auth),4000);
+  // 4초 뒤(설정 불러온 다음): 알림 서버에 기기 목록 맡기기 + 원장님이면 저녁 식대 확인용 이번 달 정산 문서 지켜보기
+  setTimeout(()=>{syncTeacherSubs(db,auth);if(isOwnerMe()){syncOwnerSub(auth);const ym=off(0).slice(0,7);L(doc(db,'fin','m_'+ym),d=>{D.finCur=d.exists()?d.data():null;D.finYm=ym;sr()})}},4000);
   D.sched=null;L(collection(db,'sched'),s=>{D.sched=Object.fromEntries(s.docs.map(d=>[d.id,d.data()]));schedSoon()});
   L(query(collection(db,'extra'),where('date','>=',off(-60))),s=>{D.extra={};s.docs.forEach(d=>{D.extra[d.id]=d.data()});schedSoon();sr()});
   if(isOwnerMe())L(collection(db,'apply'),s=>{D.apply=docs(s).filter(x=>x.st==='new');sr()});
@@ -846,7 +855,7 @@ app.addEventListener('click',async e=>{
     U.busy=false;return render()}
   if(a==='rsAgain'){U.rsConf=null;try{rcv&&rcv.clear()}catch(_){}rcv=null;return render()}
   if(a==='instX'){U.noInstall=true;try{localStorage.setItem('tmm-noinst','1')}catch(e){}return render()}
-  if(a==='pushOn'){if(U.pushBusy)return;U.pushBusy=true;U.pushErr='';U.pushHint=false;render();const hintT=setTimeout(()=>{if(U.pushBusy){U.pushHint=true;render()}},5000);try{await enablePush(db,ME.uid,U.role==='teacher'?['teacher']:ME.ths);clearTimeout(hintT);U.pushBusy=false;U.pushAutoErr='';U.pushHint=false;toast('알림이 켜졌어요')}catch(e){clearTimeout(hintT);U.pushBusy=false;U.pushErr=pushErrorText(e);U.pushHint=/permission|dismissed|denied/.test(String(e.message));render()}return render()}
+  if(a==='pushOn'){if(U.pushBusy)return;U.pushBusy=true;U.pushErr='';U.pushHint=false;render();const hintT=setTimeout(()=>{if(U.pushBusy){U.pushHint=true;render()}},5000);try{await enablePush(db,ME.uid,U.role==='teacher'?['teacher']:ME.ths);if(U.role==='teacher'){syncTeacherSubs(db,auth);if(isOwnerMe())syncOwnerSub(auth)}clearTimeout(hintT);U.pushBusy=false;U.pushAutoErr='';U.pushHint=false;toast('알림이 켜졌어요')}catch(e){clearTimeout(hintT);U.pushBusy=false;U.pushErr=pushErrorText(e);U.pushHint=/permission|dismissed|denied/.test(String(e.message));render()}return render()}
   if(a==='pushHide'){U.pushHide=true;return render()}
   if(a==='authTab'){U.authTab=v;U.authMsg='';return render()}
   if(a==='logout'){U.famStarted=false;U.claimed=false;U.famSig=null;U.authMsg='';U.authTab='login';await signOut(auth);return}
@@ -859,6 +868,8 @@ app.addEventListener('click',async e=>{
   if(a==='calM'){let [y,m]=U.calM.split('-').map(Number);m+=+v;if(m<1){m=12;y--}if(m>12){m=1;y++}U.calM=y+'-'+pad(m);return render()}
   if(a==='calD'){U.calD=v;return render()}
   if(a==='calS'){U.calS=v;return render()}
+  if(a==='mealT'){const k=el.dataset.k;if(U.mealNo.has(k))U.mealNo.delete(k);else U.mealNo.add(k);return render()}
+  if(a==='mealSave'){const day=off(0);U.mealBusy=true;render();try{const n=await saveMeal(db,day,mealPeople(D.students,D.att[day]||{}),U.mealNo);toast('저녁 식대 '+n+'명 저장했어요')}catch(e){toast('저장하지 못했어요 ('+(e.code||e.message)+')')}U.mealBusy=false;return render()}
   if(a==='hideTh'){const k=el.dataset.k;await setDoc(doc(db,'config','hid'),{[k]:now()},{merge:true});if(U.chat===k)U.chat=null;return toast('목록에서 닫았어요 · [+ 새 대화 시작]에서 다시 열 수 있어요')}
   if(a==='open'){const [sd,rr]=el.dataset.k.split('|');U.chat=rr!=='student'&&U.role==='teacher'?famSids(sd)[0]+'|'+rr:el.dataset.k;markRead(U.chat);return render()}
   if(a==='sheet'){

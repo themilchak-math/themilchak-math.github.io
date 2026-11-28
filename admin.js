@@ -4,9 +4,10 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from
 import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { SUBJS, CUR, BY_SUBJ, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, ACT_UNITS, isAct } from './subjects.js';
-import { pushState, enablePush, sendPush, pushErrorText, announceUpdate, syncTeacherSubs, remindLater, remindCancel } from './push.js';
+import { pushState, enablePush, sendPush, pushErrorText, announceUpdate, syncTeacherSubs, remindLater, remindCancel, syncOwnerSub } from './push.js';
 import { syncSched } from './sched.js';
 import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
+import { isMealDay, mealPeople, mealDone, mealAte, saveMeal, mealCardHtml } from './meal.js';
 import { LEAD_SRC, LEAD_ST, LEAD_REACT, stLabel, leadPhone, leadTodo, leadSummary } from './leads.js';
 import { callOpen, hh, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { readXlsx, writeXlsx, xlDate, download } from './xlsx.js';
@@ -14,7 +15,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}' + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.25.1';
+const ADMIN_VERSION = '2.26.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -214,7 +215,7 @@ function pDash() {
     (isOwnerMe() && D.staff.some(x => x.st === 'pending') ? '<section class="card hl"><h2>부원장 가입 승인</h2><table><tbody>' + D.staff.filter(x => x.st === 'pending').map(x => '<tr><td><b>' + esc(x.name || '') + ' 부원장</b></td><td>' + esc(fmtP(x.phone)) + '</td><td class="r"><button class="btn sm ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn sm" data-a="stOk" data-id="' + x.id + '">승인</button></td></tr>').join('') + '</tbody></table></section>' : '') +
     (() => { const l = st.filter(s => a[s.id] && a[s.id].st !== '결석' && !a[s.id].out && D.logs.some(g => g.sid === s.id && g.date === day));
       return l.length ? '<section class="card hl"><h2>하원 체크 안 한 학생 <span class="sub">학습 기록은 올렸는데 하원을 안 눌렀어요</span></h2><p style="margin:0">' + l.map(s => '<b>' + esc(s.name) + '</b> <span class="sub">등원 ' + esc(a[s.id].at || '') + '</span> <button class="btn xs" data-a="outNow" data-id="' + s.id + '" data-v="' + day + '">하원 처리</button>').join('<span style="margin:0 10px"></span>') + '</p></section>' : ''; })() +
-    bkAlert() + applyCard(false) + absSection() + pushCard() +
+    mealCardAdm(day) + bkAlert() + applyCard(false) + absSection() + pushCard() +
     (pending().length || mPending().length ? '<div class="grid2">' + (pending().length ? '<section class="card hl"><h2>등원 승인 대기</h2>' + reqRows() + '</section>' : '') + (mPending().length ? '<section class="card hl"><h2>가입 승인 대기</h2>' + joinRows() + '</section>' : '') + '</div>' : '') +
     '<section class="card"><h2>' + dayLbl + ' 출결 <span class="sub">' + fmtD(day) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th>' + (exp ? '<th>수업</th>' : '') + '<th>상태</th><th>수업 기록</th></tr></thead><tbody>' +
     order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === day).pop(); const e = expSet.has(s.id); const ab = absT.has(s.id) && !a[s.id] ? absOf(s.id, day) : null; return '<tr' + (exp && !e && !a[s.id] && !ab ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + (exSet.has(s.id) ? (!a[s.id] ? chip('보충 예정', 'pri') : a[s.id].st === '결석' ? chip('결석', 'bad') : a[s.id].out ? chip('완료', 'pri') : chip('학습중', 'ok')) : clsChip(a[s.id], e, ab)) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (ab ? '<span class="sub">결석 사유: ' + esc(ab.reason) + '</span>' : lg ? esc(lg.unit || subjOf(lg) + ' (메모 기록)') + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
@@ -277,6 +278,14 @@ const dueList = () => D.students.filter(isDue);
 const purgeAlert = () => isOwnerMe() && dueList().length ? '<section class="card hl"><h2>개인정보 파기 대상 ' + dueList().length + '명</h2><p class="sub" style="margin:0 0 8px">퇴원 후 1년이 지났어요: ' + dueList().map(s => esc(s.name)).join(', ') + ' · 학생 관리 → 퇴원한 학생에서 [정보 삭제]를 눌러 주세요.</p><button class="btn sm" data-a="goPurge">학생 관리로 가기</button></section>' : '';
 // 백업 알림: 마지막 백업이 30일 넘으면 대시보드에 한 줄
 const bkAlert = () => { if (!isOwnerMe()) return ''; const lb = (D.cfg && D.cfg.lastBackup) || ''; if (lb && lb >= off(-30)) return ''; return '<section class="card" style="padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>💾 백업할 때예요</b><span class="sub" style="flex:1">' + (lb ? '마지막 백업 ' + fmtD(lb) + ' · 한 달에 한 번 받아 두세요' : '아직 한 번도 백업하지 않았어요') + '</span><button class="btn sm" data-a="backup"' + (V.bkBusy ? ' disabled' : '') + '>' + (V.bkBusy || '지금 백업 받기') + '</button></section>'; };
+// 저녁 식대 확인 카드 (원장님 · 월~금). 오늘은 저녁 7시부터, 지난 날짜는 대시보드에서 날짜를 바꾸면 언제든 고칠 수 있어요
+function mealCardAdm(day) {
+  if (!isOwnerMe() || !isMealDay(day)) return ''; const isT = day === off(0); const h = hm();
+  if (isT && !(h >= '19:00' || h < '0' + DAY_CUT + ':00')) return ''; if (day > off(0)) return '';
+  const people = mealPeople(D.students, D.att[day] || {}); const fin = D.fin[day.slice(0, 7)]; const done = mealDone(fin, day);
+  if (V.mealDay !== day) { V.mealDay = day; V.mealNo = new Set(done ? people.filter(p => !mealAte(fin, day, p.key)).map(p => p.key) : []); }
+  return mealCardHtml({ day, people, no: V.mealNo, done, fin, attr: 'data-a', esc, fmtD, busy: V.mealBusy }).replace('<div class="card', '<section class="card').replace(/<\/div>$/, '</section>');
+}
 const BK_COLS = ['leads', 'calls', 'config', 'students', 'sinfo', 'members', 'users', 'staff', 'att', 'abs', 'reqs', 'extra', 'logs', 'hw', 'exams', 'notices', 'msgs', 'fin', 'apply', 'forms', 'push'];
 async function backupAll() {
   const out = { app: '더밀착수학', ver: ADMIN_VERSION, at: new Date().toISOString(), data: {} };
@@ -1041,7 +1050,7 @@ const L = (q, fn) => unsubs.push(onSnapshot(q, fn, e => console.warn('구독 오
 function subscribe() {
   L(doc(db, 'config', 'main'), d => { D.cfg = d.exists() ? d.data() : null; sr(); });
   L(doc(db, 'config', 'hid'), d => { D.hid = d.exists() ? d.data() : {}; sr(); });
-  setTimeout(() => syncTeacherSubs(db, auth), 4000);
+  setTimeout(() => { syncTeacherSubs(db, auth); if (isOwnerMe()) syncOwnerSub(auth); }, 4000);
   L(collection(db, 'students'), s => { D.students = docs(s).sort((a, b) => a.name.localeCompare(b.name, 'ko')); if (isOwnerMe()) { const nl = D.students.filter(x => x.left && !x.leftAt); if (nl.length) { const b = writeBatch(db); nl.forEach(x => b.update(doc(db, 'students', x.id), { leftAt: TODAY })); b.commit().catch(e => console.warn(e)); } } sr(); });
   L(query(collection(db, 'att'), where('date', '>=', off(-400))), s => { D.att = {}; docs(s).forEach(x => { (D.att[x.date] || (D.att[x.date] = {}))[x.sid] = x; }); sr(); });
   L(query(collection(db, 'msgs'), where('ts', '>=', now() - 150 * 864e5)), s => { D.threads = {}; docs(s).forEach(m => (D.threads[m.th] || (D.threads[m.th] = [])).push(m)); Object.values(D.threads).forEach(t => t.sort((a, b) => (a.ts || 0) - (b.ts || 0))); if (V.chat && V.page === 'msg') markRead(V.chat); sr(); });
@@ -1158,7 +1167,7 @@ app.addEventListener('click', async e => {
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v;
   try {
     if (a === 'go') { if (window.innerWidth <= 800) window.scrollTo(0, 0); V.page = v; if (v === 'msg' && V.chat) markRead(V.chat); return render(); }
-    if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(pushErrorText(e)); } return render(); }
+    if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); syncTeacherSubs(db, auth); if (isOwnerMe()) syncOwnerSub(auth); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(pushErrorText(e)); } return render(); }
     if (a === 'pushHide') { V.pushHide = true; try { localStorage.setItem('tmm-adm-pushhide', String(Date.now() + 14 * 864e5)); } catch (e) { } return render(); }
     if (a === 'logout') { await signOut(auth); return; }
     if (a === 'wifiReg') { const ip = await myIp(); if (!ip) return toast('인터넷 주소를 확인하지 못했어요. 잠시 후 다시 눌러 주세요'); const l = [...new Set([...((D.cfg && D.cfg.wifiIps) || []), ip])]; await updateDoc(doc(db, 'config', 'main'), { wifiIps: l, wifiAuto: true }); return toast('교습소 인터넷 주소(' + ip + ')를 등록했어요 · 자동 등원 켜짐'); }
@@ -1226,6 +1235,8 @@ app.addEventListener('click', async e => {
     if (a === 'leadT') { V.leadT = v; return render(); }
     if (a === 'leadLost' || a === 'leadReopen') { const l = D.leads.find(x => x.id === id); if (!l) return; await updateDoc(doc(db, 'leads', id), { st: a === 'leadLost' ? 'lost' : 'done', up: TODAY }); if (a === 'leadLost' && l.tok && D.forms[l.tok] && D.forms[l.tok].st === 'open') await updateDoc(doc(db, 'forms', l.tok), { st: 'closed', up: Date.now() }).catch(() => { }); return toast(l.name + (a === 'leadLost' ? ' · 등록 안 함으로 정리했어요' : ' · 다시 진행 중으로 옮겼어요')); }
     if (a === 'leadDel') { if (V.confirmLeadDel !== id) { V.confirmLeadDel = id; render(); setTimeout(() => { if (V.confirmLeadDel === id) { V.confirmLeadDel = null; render(); } }, 4000); return; } V.confirmLeadDel = null; { const l = D.leads.find(x => x.id === id); if (l && l.tok && l.st !== 'enrolled') await deleteDoc(doc(db, 'forms', l.tok)).catch(() => { }); } await deleteDoc(doc(db, 'leads', id)); V.modal = null; V.editId = null; render(); return toast('진단 기록을 삭제했어요'); }
+    if (a === 'mealT') { const k = el.dataset.k; if (V.mealNo.has(k)) V.mealNo.delete(k); else V.mealNo.add(k); return render(); }
+    if (a === 'mealSave') { const day = curDay(); V.mealBusy = true; render(); try { const n = await saveMeal(db, day, mealPeople(D.students, D.att[day] || {}), V.mealNo); toast(fmtD(day) + ' 저녁 식대 ' + n + '명 저장했어요'); } catch (e) { fail(e); } V.mealBusy = false; return render(); }
     if (a === 'outNow') { const d = el.dataset.v; let t = d === off(0) ? hm() : prompt('하원 시각 (예: 22:00)', '22:00'); if (!t) return; t = t.trim(); if (!/^\d{1,2}:\d\d$/.test(t)) return toast('시각을 22:00 처럼 적어 주세요'); t = t.padStart(5, '0'); await updateDoc(doc(db, 'att', d + '_' + id), { out: t }); return toast((stu(id) || {}).name + ' 하원 처리했어요 (' + t + ')'); }
     if (a === 'leadClean') { const old = D.leads.filter(leadExpired); if (!old.length || !confirm('등록하지 않고 1년이 지난 진단 기록 ' + old.length + '건을 영구 삭제할까요?')) return; const b = writeBatch(db); old.forEach(l => { b.delete(doc(db, 'leads', l.id)); if (l.tok) b.delete(doc(db, 'forms', l.tok)); }); await b.commit(); return toast(old.length + '건을 정리했어요'); }
     if (a === 'formNew') { const l = D.leads.find(x => x.id === id); if (!l) return; const tok = newTok();
