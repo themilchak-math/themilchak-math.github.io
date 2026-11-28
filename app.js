@@ -1,7 +1,7 @@
 // 더밀착수학 앱 - 실제 버전 (Firebase 연결)
 // 개발 노트는 개발노트.md 참고
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser, RecaptchaVerifier, linkWithPhoneNumber } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, deleteUser, RecaptchaVerifier, linkWithPhoneNumber, signInWithPhoneNumber, updatePassword } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, onSnapshot, writeBatch, arrayUnion, arrayRemove, deleteField, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT, isAct } from './subjects.js';
 import { firebaseConfig } from './firebase-config.js';
@@ -13,7 +13,7 @@ import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.7.1';
+const APP_VERSION = '2.8.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -92,7 +92,7 @@ const mLabel=m=>{const s=stu(m.sid);return (s?s.name:(m.name||''))+' '+REL[m.rel
 const mChip=m=>m.st==='ok'?'<span class="chip c-ok">연결됨</span>':m.st==='pending'?'<span class="chip c-warn">승인 대기</span>':m.st==='block'?'<span class="chip c-bad">차단</span>':'<span class="chip">미가입</span>';
 function mReqRows(){const l=mPending();if(!l.length)return '<div class="empty">가입 승인 대기가 없어요</div>';return l.map(m=>'<div class="row" style="flex-wrap:wrap"><div class="av'+(m.rel!=='student'?' p':'')+'">'+(m.rel==='student'?'학생':REL[m.rel].slice(0,2))+'</div><div class="grow"><div class="nm">'+esc(mLabel(m))+'</div><div class="sub">'+esc(maskP(m.phone))+' · 등록 번호 일치</div></div><div style="display:flex;gap:6px"><button class="btn sm ghost" data-act="mRej" data-id="'+m.id+'">거절</button><button class="btn sm" data-act="mOk" data-id="'+m.id+'">승인</button></div></div>').join('')}
 function inviteText(m){const s=stu(m.sid);const nm=s?s.name:(m.name||'');const who=m.rel==='student'?nm+' 학생':nm+' '+REL[m.rel];const tn=(D.cfg&&D.cfg.teacher)||'';
-  return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?'더밀착수학 '+tn+' 원장':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\nhttps://themilchak-math.github.io/install.html\n\n가입할 때 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호를 넣고, 문자로 오는 인증번호 6자리를 입력해 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'+'설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.'}
+  return '[더밀착수학] 안녕하세요, '+who+'. '+(tn?'더밀착수학 '+tn+' 원장':'더밀착수학')+'입니다.\n'+(m.rel==='student'?'출결·숙제·수업 기록':'출결·수업 기록·숙제·공지')+'을 확인하는 교습소 앱 안내드려요.\n\n▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\nhttps://themilchak-math.github.io/install.html\n\n가입할 때 이 번호('+fmtP(m.phone)+')와 원하는 비밀번호를 넣고, 문자로 오는 인증번호 6자리를 입력해 주세요. 인증하면 바로 이용할 수 있어요.\n'+'설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.'}
 const smsHref=m=>'sms:'+m.phone+(pushIOS()?'&':'?')+'body='+encodeURIComponent(inviteText(m));
 /* ===== 일정(시험기간·휴무·특수 일정) ===== */
 const EXAM_T=['1학기 중간고사','1학기 기말고사','2학기 중간고사','2학기 기말고사'];
@@ -377,16 +377,18 @@ function sHome(){
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
   '<div class="card"><h3>소식 <button class="btn sm ghost" style="float:right" data-act="go" data-tab="comm" data-comm="notice">전체</button></h3>'+noticeList(2)+'</div></div>';
 }
-function sHw(){const s=stu(U.me);const l=D.hw.filter(h=>h.sid===s.id).sort((a,b)=>(a.st!=='todo')-(b.st!=='todo')||(a.due>b.due?1:-1));return header('내 숙제','완료하면 선생님께 바로 알려져요')+'<div class="body"><div class="card">'+hwList(l,'student')+'</div></div>'}
+function sHw(){const s=stu(U.me);const l=D.hw.filter(h=>h.sid===s.id).sort((a,b)=>(a.st!=='todo')-(b.st!=='todo')||(a.due>b.due?1:-1));return header('내 숙제','완료하면 원장님께 바로 알려져요')+'<div class="body"><div class="card">'+hwList(l,'student')+'</div></div>'}
 function myLog(){const s=stu(U.me);return header(U.role==='student'?'내 진도':s.name+' 학습기록',nowLabel(s))+'<div class="body">'+progressCard(s)+'<div class="card"><h3>수업 기록</h3>'+logList(s.id,true)+'</div></div>'}
 function pHome(){
   const s=stu(U.me);const fd=famDay(s.id);const a=(D.att[fd]||{})[s.id];
   const hs=D.hw.filter(h=>h.sid===s.id);const doneRate=hs.length?Math.round(hs.filter(h=>h.st!=='todo').length/hs.length*100):0;
   const last=sortLogs(D.logs.filter(x=>x.sid===s.id&&x.sh)).pop();
   return header(s.name+' '+myRel(),s.grade+' · '+nowLabel(s))+'<div class="body">'+pushCard()+examCard(s)+
-  '<div class="card"><h3>오늘 출결 <small>'+fmtD(fd)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(()=>{const pl=plannedOn((D.sched||{})[s.id],fd,(D.exams||[]).some(e=>evKind(e)==='off'&&onDay(e,fd)));return (pl==='extra'?'<span class="chip c-pri">보충</span> ':'')+(a?attChip(a):absOf(s.id,fd)?'<span class="chip c-bad">결석 통보</span>':pl===false?'<span class="chip">오늘은 수업 없는 날</span>':attChip(a))})()+'</div></div>'+absCard(s)+callCard(s)+
-  '<div class="stats"><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
+  '<div class="card"><h3>오늘 출결 <small>'+fmtD(fd)+'</small></h3><div class="row"><div class="grow nm">'+esc(s.name)+'</div>'+(()=>{const pl=plannedOn((D.sched||{})[s.id],fd,(D.exams||[]).some(e=>evKind(e)==='off'&&onDay(e,fd)));return (pl==='extra'?'<span class="chip c-pri">보충</span> ':'')+(a?attChip(a):absOf(s.id,fd)?'<span class="chip c-bad">결석 통보</span>':pl===false?'<span class="chip">오늘은 수업 없는 날</span>':attChip(a))})()+'</div></div>'+
   (last?'<div class="card"><h3>최근 수업</h3><div class="log">'+logBody(last)+'</div></div>':'')+
+  '<div class="stats"><div><b>'+monthLogs(s.id,true).length+'회</b><span>이번 달 수업</span></div><div><b>'+doneRate+'%</b><span>숙제 수행</span></div><div><b>'+unreadMine()+'</b><span>새 메시지</span></div></div>'+
+  (absUp(s.id).length?absCard(s):'')+((D.calls||[]).some(c=>c.sid===s.id&&callOpen(c)&&c.date>=TODAY)?callCard(s):'')+
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px"><button class="btn ghost" data-act="sheet" data-s="abs">결석 알리기</button><button class="btn ghost" data-act="sheet" data-s="call">📞 전화 상담 요청</button></div>'+
   '<div class="card"><h3>숙제 현황'+(hs.length>3?' <button class="btn sm ghost" style="float:right" data-act="go" data-tab="hw">전체 보기</button>':'')+'</h3>'+hwList(hwSort(hs).slice(0,3),'parent')+'</div>'+
   '<div class="card"><h3>소식 <button class="btn sm ghost" style="float:right" data-act="go" data-tab="comm" data-comm="notice">전체</button></h3>'+noticeList(2)+'</div></div>';
 }
@@ -394,7 +396,7 @@ const hwRank=h=>h.st==='todo'?(h.due<TODAY?0:1):h.st==='done'?2:3;
 const hwSort=l=>[...l].sort((a,b)=>hwRank(a)-hwRank(b)||(hwRank(a)<2?(a.due>b.due?1:a.due<b.due?-1:0):(a.due<b.due?1:a.due>b.due?-1:0)));
 function pHw(){const s=stu(U.me);const l=hwSort(D.hw.filter(h=>h.sid===s.id));const todo=l.filter(h=>h.st==='todo'),late=todo.filter(h=>h.due<TODAY),fin=l.filter(h=>h.st!=='todo');
   const rate=l.length?Math.round(fin.length/l.length*100):0;
-  return header(s.name+' 숙제','선생님이 낸 숙제와 완료 여부')+'<div class="body"><div class="stats"><div><b>'+(todo.length-late.length)+'</b><span>진행 중</span></div><div><b'+(late.length?' style="color:var(--bad,#e5484d)"':'')+'>'+late.length+'</b><span>기한 지남</span></div><div><b>'+rate+'%</b><span>수행률</span></div></div>'+
+  return header(s.name+' 숙제','원장님이 낸 숙제와 완료 여부')+'<div class="body"><div class="stats"><div><b>'+(todo.length-late.length)+'</b><span>진행 중</span></div><div><b'+(late.length?' style="color:var(--bad,#e5484d)"':'')+'>'+late.length+'</b><span>기한 지남</span></div><div><b>'+rate+'%</b><span>수행률</span></div></div>'+
   '<div class="card"><h3>해야 할 숙제 <small>'+todo.length+'개</small></h3>'+hwList(todo,'parent')+'</div>'+
   '<div class="card"><h3>완료한 숙제 <small>'+fin.length+'개</small></h3>'+hwList(fin.slice(0,30),'parent')+'</div></div>'}
 function pAtt(){const s=stu(U.me);return header('출결 달력',s.name)+'<div class="body">'+absCard(s)+calCard(s.id,false)+'</div>'}
@@ -402,7 +404,7 @@ function oComm(){
   let inner;
   if(U.comm==='notice')inner=boardPills()+'<div class="card">'+noticeList(0,U.bcat)+'</div>';
   else{const t=fthread(myKey());const last=t[t.length-1];const un=unreadMine();inner='<div class="card"><button class="thr" data-act="open" data-k="'+myKey()+'"><div class="av">'+esc(TNAME().slice(0,1))+'</div><div style="flex:1;min-width:0"><div class="nm">'+esc(TNAME())+'</div><div class="sub ell">'+(last?esc(last.t):'궁금한 점을 보내보세요')+'</div></div>'+(un?'<span class="dot" style="position:static">'+un+'</span>':'')+'</button></div>'}
-  return header('소통','선생님과 메시지·소식')+'<div class="body">'+commTabs()+inner+'</div>';
+  return header('소통','원장님과 메시지·소식')+'<div class="body">'+commTabs()+inner+'</div>';
 }
 
 function sheetHtml(){
@@ -414,7 +416,7 @@ function sheetHtml(){
   if(t==='staff')h='<h3>부원장 등록</h3><label class="f"><span>이름</span><input id="sfN" autocomplete="off" placeholder="예: 홍길동"></label><label class="f"><span>휴대폰 (로그인 아이디)</span><input id="sfP" inputmode="numeric" placeholder="010-0000-0000"></label><p class="sub" style="margin:0 0 10px">부원장님이 이 번호로 가입하면 원장님께 승인 요청이 와요. 승인하면 학생 관리·출결·숙제·기록·메시지를 원장님과 똑같이 쓸 수 있어요. (부원장 등록·앱 설정은 원장님만)</p>';
   if(t==='school'){const s=stu(U.schSid)||{};h='<h3>'+esc(s.name||'')+' 학교</h3><label class="f"><span>학교</span><input id="scIn" list="scInL" value="'+esc(s.school||'')+'" placeholder="예: 동탄중" autocomplete="off"><datalist id="scInL">'+schools().map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></label>'}
   if(t==='call'){const s=stu(U.me)||{};const ho=(id,v)=>'<select id="'+id+'">'+CALL_HOURS.map(x=>'<option value="'+x+'"'+(x===v?' selected':'')+'>'+x+'시</option>').join('')+'</select>';h='<h3>'+esc(s.name||'')+' 전화 상담 요청</h3><label class="f"><span>날짜</span><input type="date" id="clD" min="'+TODAY+'" value="'+TODAY+'"></label><div class="f"><span>통화 가능한 시간대 <small class="sub" style="font-weight:400">정각 기준</small></span><div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center">'+ho('clA',14)+'<span>부터</span>'+ho('clB',17)+'<span>까지</span></div><small class="sub">예: 14시부터 17시 → 14:00~17:00 사이에 통화 가능</small></div><label class="f"><span>상담하고 싶은 내용 (선택)</span><textarea id="clM" maxlength="200" placeholder="예: 기말고사 대비, 진도 상담"></textarea></label><p class="sub" style="margin:0 0 10px">보내면 원장님께 바로 알림이 가요. 원장님이 시간을 정하면 알림으로 알려 드려요.</p>'}
-  if(t==='abs'){const s=stu(U.me)||{};h='<h3>'+esc(s.name||'')+' 결석 알리기</h3><label class="f"><span>결석하는 날</span><input type="date" id="abD" min="'+TODAY+'" value="'+TODAY+'"></label><label class="f"><span>사유</span><textarea id="abR" placeholder="예: 가족 행사, 병원 진료, 학교 행사"></textarea></label><p class="sub" style="margin:0 0 10px">저장하면 원장님과 선생님께 바로 알림이 가요. 날짜가 지나기 전에는 취소할 수 있어요.</p>'}
+  if(t==='abs'){const s=stu(U.me)||{};h='<h3>'+esc(s.name||'')+' 결석 알리기</h3><label class="f"><span>결석하는 날</span><input type="date" id="abD" min="'+TODAY+'" value="'+TODAY+'"></label><label class="f"><span>사유</span><textarea id="abR" placeholder="예: 가족 행사, 병원 진료, 학교 행사"></textarea></label><p class="sub" style="margin:0 0 10px">저장하면 원장님·부원장님께 바로 알림이 가요. 날짜가 지나기 전에는 취소할 수 있어요.</p>'}
   if(t==='notice'){const own=isOwnerMe();const cats=own?CATS:CATS.filter(c=>c[0]!=='notice');const gs=['초4','초5','초6','중1','중2','중3','고1','고2','고3'].filter(g=>D.students.some(x=>x.grade===g));const q=U.bf||[];
     const ed=U.bEdit&&D.notices.find(n=>n.id===U.bEdit);const qk=ed?(U.bKeep||[]):[];const ql=U.bl||[];h='<h3>'+(ed?'✏️ 소식 수정':'소식 글쓰기')+'</h3><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px"><label class="f"><span>말머리</span><select id="bCat">'+cats.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('')+'</select></label><label class="f"><span>보는 사람</span><select id="bTo">'+TO_OPTS.map(o=>'<option value="'+o[0]+'">'+o[1]+'</option>').join('')+'</select></label></div>'+
     '<label class="f"><span>날짜 <small class="sub" style="font-weight:400">비워 두면 오늘</small></span><input type="date" id="bD"></label><label class="f"><span>제목</span><input id="nT"></label><label class="f"><span>내용</span><textarea id="nB"></textarea></label>'+
@@ -500,14 +502,20 @@ function authView(){
   if(t==='setup')return authHeader('원장님 처음 설정','이 화면은 처음 한 번만 사용해요')+'<div class="body">'+msgBox()+
     '<form id="setupF" class="card"><label class="f"><span>원장님 이름</span><input id="sN" placeholder="예: 김동진" autocomplete="name"></label><label class="f"><span>원장님 휴대폰번호 (로그인 아이디)</span><input id="sP" inputmode="numeric" placeholder="010-0000-0000" autocomplete="tel"></label><label class="f"><span>비밀번호 (6자리 이상)</span><input id="sW" type="password" autocomplete="new-password"></label><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>원장님 계정 만들기</button></form>'+
     '<button class="btn ghost" style="width:100%" data-act="authTab" data-v="login">로그인 화면으로</button></div>';
-  if(t==='signup')return authHeader('가입하기','선생님께 등록된 휴대폰번호로 가입해요')+'<div class="body">'+msgBox()+
+  if(t==='reset')return authHeader('비밀번호 다시 만들기','가입한 휴대폰으로 문자 인증 후 새 비밀번호를 정해요')+'<div class="body">'+msgBox()+
+    '<form id="rsF" class="card"><label class="f"><span>휴대폰번호</span><input id="rsP" inputmode="numeric" autocomplete="tel" placeholder="010-0000-0000"'+(U.rsConf?' disabled':'')+' value="'+esc(U.rsPhone?fmtP(U.rsPhone):'')+'"></label>'+
+    (U.rsConf?'<label class="f"><span>문자로 온 인증번호 6자리</span><input id="rsC" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label><label class="f"><span>새 비밀번호 (6자리 이상)</span><input id="rsW" type="password" autocomplete="new-password"></label><label class="f"><span>새 비밀번호 확인</span><input id="rsW2" type="password" autocomplete="new-password"></label><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>비밀번호 바꾸고 로그인</button><p style="text-align:center;margin:10px 0 0"><button type="button" class="lnk" data-act="rsAgain">인증번호 다시 받기</button></p>'
+      :'<button class="btn" style="width:100%" type="button" data-act="rsSend"'+(U.busy?' disabled':'')+'>인증번호 받기</button>')+'</form>'+
+    '<div class="card"><p class="sub" style="margin:0">문자 인증을 한 번도 안 한 예전 계정은 이 방법으로 바꿀 수 없어요. 그때는 원장님께 말씀해 주세요.</p></div>'+
+    '<button class="btn ghost" style="width:100%" data-act="authTab" data-v="login">로그인 화면으로</button></div>';
+  if(t==='signup')return authHeader('가입하기','원장님께 등록된 휴대폰번호로 가입해요')+'<div class="body">'+msgBox()+
     '<form id="signupF" class="card"><label class="f"><span>휴대폰번호</span><input id="jP" inputmode="numeric" autocomplete="tel" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호 (6자리 이상)</span><input id="jW" type="password" autocomplete="new-password"></label><label class="f"><span>비밀번호 확인</span><input id="jW2" type="password" autocomplete="new-password"></label><label class="sw" style="justify-content:flex-start;gap:8px;color:var(--ink)"><input type="checkbox" id="jA">[필수] 개인정보 수집·이용에 동의합니다</label><details class="sub" style="margin:-4px 0 14px"><summary>동의 내용 보기</summary>수집 항목: 이름, 휴대폰번호, 출결·숙제·학습 기록, 메시지 · 목적: 수업 관리와 학부모 안내 · 보관: 퇴원 후 1년까지 보관 뒤 삭제 · 동의하지 않을 수 있으나 앱을 이용할 수 없어요. <a href="./privacy.html" target="_blank" style="color:var(--pri)">처리방침 전문 보기</a></details><p class="sub" style="margin:0 0 12px">가입하기를 누르면 다음 화면에서 이 번호로 <b>문자 인증번호</b>를 보내요.</p><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>가입하기</button></form>'+
     '<button class="btn ghost" style="width:100%" data-act="authTab" data-v="login">이미 가입했어요 · 로그인</button>'+installTip()+'</div>';
   return authHeader('더밀착수학','학생·학부모·선생님 로그인')+'<div class="body">'+msgBox()+
     installTip()+'<form id="loginF" class="card"><label class="f"><span>휴대폰번호</span><input id="lP" inputmode="numeric" autocomplete="username" placeholder="010-0000-0000"></label><label class="f"><span>비밀번호</span><input id="lW" type="password" autocomplete="current-password"></label><button class="btn" style="width:100%" type="submit"'+(U.busy?' disabled':'')+'>로그인</button></form>'+
     '<button class="btn ghost" style="width:100%;margin-bottom:12px" data-act="authTab" data-v="signup">처음이에요 · 가입하기</button>'+
-    '<p class="sub" style="text-align:center;margin:0 0 12px">비밀번호를 잊으셨으면 선생님께 말씀해 주세요.</p>'+
-    '<p style="text-align:center"><button class="lnk" data-act="authTab" data-v="setup">원장님 처음 설정</button></p><p style="text-align:center;margin:0"><a class="sub" href="./privacy.html" target="_blank">개인정보 처리방침</a></p></div>';
+    '<p style="text-align:center;margin:0 0 12px"><button class="lnk" data-act="authTab" data-v="reset">비밀번호를 잊었어요</button></p>'+
+    (/[?&]setup=1/.test(location.search)?'<p style="text-align:center"><button class="lnk" data-act="authTab" data-v="setup">원장님 처음 설정</button></p>':'')+'<p style="text-align:center;margin:0"><a class="sub" href="./privacy.html" target="_blank">개인정보 처리방침</a></p></div>';
 }
 function waitView(){
   const outCard='<div class="card"><p class="sub" style="margin:0 0 10px">번호를 잘못 넣으셨으면 로그아웃 후 다시 가입해 주세요.</p><button class="btn ghost" style="width:100%" data-act="logout">로그아웃</button></div>';
@@ -515,13 +523,13 @@ function waitView(){
     '<div class="card"><p class="sub" style="margin:0 0 10px">본인 확인을 위해 <b>'+esc(fmtP(ME.phone||''))+'</b>로 인증번호 6자리를 보내요. 구글에서 보내는 문자라 <b>[국제발신]</b>으로 올 수 있어요.</p>'+
     '<button class="btn" style="width:100%" data-act="smsSend"'+(U.smsBusy?' disabled':'')+'>'+(U.smsBusy?'보내는 중…':U.smsConf?'인증번호 다시 받기':'인증번호 받기')+'</button>'+
     (U.smsConf?'<form id="smsF" style="margin-top:12px"><label class="f"><span>인증번호 6자리</span><input id="smsC" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="문자로 받은 숫자"></label><button class="btn" style="width:100%" type="submit"'+(U.smsBusy?' disabled':'')+'>확인</button></form>':'')+
-    '</div><div class="card"><p class="sub" style="margin:0">문자가 안 오면 스팸 문자함도 확인해 주세요. 계속 안 오면 선생님께 말씀해 주세요.</p></div>'+outCard+'</div>';
-  if(!U.wait||!U.wait.length)return authHeader('등록된 번호를 찾지 못했어요',fmtP(ME.phone||''))+'<div class="body"><div class="card"><p style="margin:0">이 번호는 아직 선생님께 등록되지 않았어요. 선생님께 번호 등록을 요청한 뒤 앱을 다시 열어 주세요.</p></div>'+outCard+'</div>';
+    '</div><div class="card"><p class="sub" style="margin:0">문자가 안 오면 스팸 문자함도 확인해 주세요. 계속 안 오면 원장님께 말씀해 주세요.</p></div>'+outCard+'</div>';
+  if(!U.wait||!U.wait.length)return authHeader('등록된 번호를 찾지 못했어요',fmtP(ME.phone||''))+'<div class="body"><div class="card"><p style="margin:0">이 번호는 아직 원장님께 등록되지 않았어요. 원장님께 번호 등록을 요청한 뒤 앱을 다시 열어 주세요.</p></div>'+outCard+'</div>';
   const rows=U.wait.map(m=>{const nm=(m.name||'')+' '+REL[m.rel];
-    const st=m.st==='pending'?'<span class="chip c-warn">선생님 승인 대기</span>':m.st==='block'?'<span class="chip c-bad">이용 제한</span>':m.st==='ok'?'<span class="chip c-ok">연결됨</span>':'<button class="btn sm" data-act="reclaim">다시 요청</button>';
+    const st=m.st==='pending'?'<span class="chip c-warn">원장님 승인 대기</span>':m.st==='block'?'<span class="chip c-bad">이용 제한</span>':m.st==='ok'?'<span class="chip c-ok">연결됨</span>':'<button class="btn sm" data-act="reclaim">다시 요청</button>';
     return '<div class="row"><div class="grow nm">'+esc(nm)+'</div>'+st+'</div>'}).join('');
   const needG=false; // 14세 미만 부모님 먼저 가입 조건 해제 (원장님 요청)
-  return authHeader('번호가 확인됐어요',U.wait.some(m=>m.st==='pending')?'선생님 확인 후 이용할 수 있어요':'연결하고 있어요…')+'<div class="body"><div class="card"><h3>'+esc(fmtP(ME.phone))+'</h3>'+(rows||'<div class="empty">확인 중...</div>')+'</div>'+
+  return authHeader('번호가 확인됐어요',U.wait.some(m=>m.st==='pending')?'원장님 확인 후 이용할 수 있어요':'연결하고 있어요…')+'<div class="body"><div class="card"><h3>'+esc(fmtP(ME.phone))+'</h3>'+(rows||'<div class="empty">확인 중...</div>')+'</div>'+
     (needG?'<div class="card"><p style="margin:0" class="sub">만 14세 미만일 수 있어 부모님이 먼저 가입해 승인받으셔야 학생 가입이 열려요. 부모님 승인 뒤 <b>다시 요청</b>을 눌러 주세요.</p></div>':'')+
     (U.wait.some(m=>m.st==='pending')?'<div class="card"><p class="sub" style="margin:0">이 화면을 닫아도 괜찮아요. 확인되면 다음에 열 때 바로 들어가져요.</p></div>':'')+installTip()+
     '<button class="btn ghost" style="width:100%" data-act="logout">로그아웃</button></div>';
@@ -566,9 +574,9 @@ function render(){
     else if(U.screen==='staffWait')html=staffWaitView();
     else{
       html=appView();
-      if(U.role==='teacher'&&!U.sheet)html+=pushBanner();
+      const pb=U.role==='teacher'&&!U.sheet&&!(U.tab==='home'&&!U.chat)?pushBanner():'';html+=pb;
       if(U.sheet==='inst')html+=instSheet();else if(U.sheet)html+=sheetHtml();
-      if(!U.sheet&&!U.chat&&!U.update)html+=installBar();
+      if(!U.sheet&&!U.chat&&!U.update&&!pb)html+=installBar();
     }
   }catch(err){console.error(err);html=authHeader('잠시 문제가 생겼어요','')+'<div class="body"><div class="card"><p>화면을 그리다 오류가 났어요. 새로고침해 주세요.</p><p class="sub">'+esc(err.message)+'</p><button class="btn" data-act="reload">새로고침</button></div></div>'}
   html+=updBar();
@@ -580,6 +588,7 @@ function render(){
   app.querySelectorAll('input[name=hwS]').forEach(el=>{if(el.value in checks)el.checked=checks[el.value]});
   if(focusId){const el=document.getElementById(focusId);if(el){el.focus();try{if(selS!=null)el.setSelectionRange(selS,selE)}catch(e){}}}
   TY.sync(U.chat||null);
+  app.classList.toggle('bar-on',!!app.querySelector('.upd,.push'));
   const nb=app.querySelector('.body');
   if(U.chat){const b=document.getElementById('chatBody');if(b)b.scrollTop=b.scrollHeight}
   else if(nb&&sameView)nb.scrollTop=scroll;
@@ -645,6 +654,7 @@ function famRole(){U.role=ME.rels[U.me]==='student'?'student':'parent'}
 document.addEventListener('click',e=>{const im=e.target.closest&&e.target.closest('[data-lb]');if(im){e.stopPropagation();lightbox(im.dataset.lb,(im.dataset.g||'').split(',').filter(Boolean))}},true);
 setInterval(()=>{if(auth.currentUser)freshToken(auth,true).then(render).catch(()=>{})},40*60e3);
 onAuthStateChanged(auth,user=>{
+  if(U.resetting)return; // 비밀번호 찾기 중: 확인이 끝날 때까지 화면 전환 안 함
   if(user)freshToken(auth).then(render).catch(()=>{});
   stopAll();U.attReady=false;U.wifiState=null;U.staffSub=false;U.isStaff=false;U.staffDoc=null;U.famStarted=false;U.famSig=null;U.claimed=false;U.comm='msg';U.hwF='all';U.calS='all';U.pushX={};U.me=null;U.logS=null;U.ret=null;U.lf=null;ME.uid=null;U.sheet=null;U.chat=null;U.page=null;U.tab='home';
   if(!user){U.screen='auth';render();return}
@@ -696,7 +706,7 @@ function watchMembers(){
 }
 // 문자 인증: 로그인한 계정에 이 번호를 연결해요 (구글이 보내는 인증 문자)
 const phoneOk=()=>{const u=auth.currentUser;return !!(u&&ME.phone&&u.phoneNumber==='+82'+ME.phone.slice(1))};
-const smsErr=c=>({'auth/invalid-verification-code':'인증번호가 맞지 않아요. 다시 확인해 주세요.','auth/code-expired':'인증번호 시간이 지났어요. [인증번호 다시 받기]를 눌러 주세요.','auth/too-many-requests':'요청이 너무 많아요. 잠시 후 다시 해 주세요.','auth/credential-already-in-use':'이 번호는 다른 계정에 이미 인증돼 있어요. 선생님께 말씀해 주세요.','auth/account-exists-with-different-credential':'이 번호는 다른 계정에 이미 인증돼 있어요. 선생님께 말씀해 주세요.','auth/invalid-phone-number':'휴대폰번호 형식이 맞지 않아요.','auth/quota-exceeded':'오늘 보낼 수 있는 문자 수를 넘었어요. 선생님께 말씀해 주세요.','auth/network-request-failed':'인터넷 연결을 확인해 주세요.','auth/captcha-check-failed':'보안 확인에 실패했어요. 앱을 닫았다가 다시 열어 주세요.'}[c]||'문자 인증을 하지 못했어요 ('+c+')');
+const smsErr=c=>({'auth/invalid-verification-code':'인증번호가 맞지 않아요. 다시 확인해 주세요.','auth/code-expired':'인증번호 시간이 지났어요. [인증번호 다시 받기]를 눌러 주세요.','auth/too-many-requests':'요청이 너무 많아요. 잠시 후 다시 해 주세요.','auth/credential-already-in-use':'이 번호는 다른 계정에 이미 인증돼 있어요. 원장님께 말씀해 주세요.','auth/account-exists-with-different-credential':'이 번호는 다른 계정에 이미 인증돼 있어요. 원장님께 말씀해 주세요.','auth/invalid-phone-number':'휴대폰번호 형식이 맞지 않아요.','auth/quota-exceeded':'오늘 보낼 수 있는 문자 수를 넘었어요. 원장님께 말씀해 주세요.','auth/network-request-failed':'인터넷 연결을 확인해 주세요.','auth/captcha-check-failed':'보안 확인에 실패했어요. 앱을 닫았다가 다시 열어 주세요.'}[c]||'문자 인증을 하지 못했어요 ('+c+')');
 let rcv=null;
 function recaptcha(){
   if(rcv)return rcv;let box=document.getElementById('rcBox');
@@ -757,7 +767,7 @@ function pushCard(){
   else inner='<p class="sub" style="margin:0 0 10px">'+(U.role==='teacher'?'등원·가입 요청, 숙제 완료, 메시지가 오면':U.role==='student'?'새 숙제, 메시지·공지가 오면':'등·하원, 수업 기록, 새 숙제, 메시지·공지가 오면')+' 앱이 꺼져 있어도 알려 드려요.</p><button class="btn" style="width:100%" data-act="pushOn"'+(U.pushBusy?' disabled':'')+'>'+(U.pushBusy?'알림 켜는 중... (허용 창이 뜨면 [허용])':'알림 받기')+'</button>'+(U.pushErr?'<p style="margin:10px 0 0;color:var(--acc);font-size:14px;font-weight:700">'+esc(U.pushErr)+'</p>':'')+((U.pushHint||(/Android/i.test(navigator.userAgent)&&isSamsung()))?pushHelp():'')+'';
   let pm='?';try{pm=Notification.permission}catch(e){pm='없음'}
   const ua=navigator.userAgent;const br=/SamsungBrowser\/([\d.]+)/.exec(ua);const ch=/Chrome\/(\d+)/.exec(ua);
-  inner+='<p style="margin:10px 0 0;font-size:12px;color:#888">진단: v'+APP_VERSION+' · 권한 '+pm+' · '+(br?'삼성인터넷 '+br[1]:ch?'크롬 '+ch[1]:'기타')+' · '+(isStandalone()?'설치앱':'브라우저')+(U.pushAutoErr?' · 자동등록 실패: '+esc(U.pushAutoErr):'')+'</p>';
+  if(U.role==='teacher')inner+='<p style="margin:10px 0 0;font-size:12px;color:#888">진단: v'+APP_VERSION+' · 권한 '+pm+' · '+(br?'삼성인터넷 '+br[1]:ch?'크롬 '+ch[1]:'기타')+' · '+(isStandalone()?'설치앱':'브라우저')+(U.pushAutoErr?' · 자동등록 실패: '+esc(U.pushAutoErr):'')+'</p>';
   return '<div class="card" style="border-color:var(--pri)"><h3>알림 받기 <button class="btn sm ghost" data-act="pushHide" aria-label="닫기">나중에</button></h3>'+inner+'</div>';
 }
 // 알림이 허용돼 있으면 버튼 없이 자동 등록 (업데이트·재설치·자녀 추가 후에도 유지)
@@ -827,6 +837,10 @@ app.addEventListener('click',async e=>{
   if(a==='instHow'){U.sheet='inst';return render()}
   if(a==='iosG'){U.iosGuide=true;return render()}
   if(a==='iosX'){U.iosGuide=false;return render()}
+  if(a==='rsSend'){const ph=digits((document.getElementById('rsP')||{}).value);if(!/^01\d{8,9}$/.test(ph))return toast('휴대폰번호를 정확히 입력해 주세요');U.rsPhone=ph;U.busy=true;U.authMsg='';render();
+    try{U.rsConf=await signInWithPhoneNumber(auth,'+82'+ph.slice(1),recaptcha());toast('인증번호를 보냈어요')}catch(e){U.authMsg=smsErr(e.code)||'문자를 보내지 못했어요. 잠시 후 다시 해 주세요.';try{rcv&&rcv.clear()}catch(_){}rcv=null}
+    U.busy=false;return render()}
+  if(a==='rsAgain'){U.rsConf=null;try{rcv&&rcv.clear()}catch(_){}rcv=null;return render()}
   if(a==='instX'){U.noInstall=true;try{localStorage.setItem('tmm-noinst','1')}catch(e){}return render()}
   if(a==='pushOn'){if(U.pushBusy)return;U.pushBusy=true;U.pushErr='';U.pushHint=false;render();const hintT=setTimeout(()=>{if(U.pushBusy){U.pushHint=true;render()}},5000);try{await enablePush(db,ME.uid,U.role==='teacher'?['teacher']:ME.ths);clearTimeout(hintT);U.pushBusy=false;U.pushAutoErr='';U.pushHint=false;toast('알림이 켜졌어요')}catch(e){clearTimeout(hintT);U.pushBusy=false;U.pushErr=pushErrorText(e);U.pushHint=/permission|dismissed|denied/.test(String(e.message));render()}return render()}
   if(a==='pushHide'){U.pushHide=true;return render()}
@@ -888,7 +902,7 @@ app.addEventListener('click',async e=>{
   // 등원
   if(a==='ok'||a==='rej'){
     const q=D.req.find(x=>x.id===id);if(!q)return;const s=stu(q.sid);
-    if(a==='rej'){await updateDoc(doc(db,'reqs',q.id),{st:'rej'});await msg(q.sid+'|student',q.sid,'s','[등원 요청 반려] 선생님께 직접 말씀드려 주세요.');push([q.sid+'|student'],'[등원 요청 반려] 선생님께 직접 말씀드려 주세요.');return toast(s.name+' 등원 요청을 거절했어요')}
+    if(a==='rej'){await updateDoc(doc(db,'reqs',q.id),{st:'rej'});await msg(q.sid+'|student',q.sid,'s','[등원 요청 반려] 원장님께 직접 말씀드려 주세요.');push([q.sid+'|student'],'[등원 요청 반려] 원장님께 직접 말씀드려 주세요.');return toast(s.name+' 등원 요청을 거절했어요')}
     const st='출석';const b=writeBatch(db);
     b.update(doc(db,'reqs',q.id),{st:'ok'});
     b.set(doc(db,'att',TODAY+'_'+q.sid),{sid:q.sid,date:TODAY,st,at:q.at,by:'app',logged:loggedOn(q.sid,TODAY)});
@@ -934,7 +948,7 @@ app.addEventListener('click',async e=>{
   // 숙제·기록·공지
   if(a==='hwCheck'){await updateDoc(doc(db,'hw',id),{st:'checked'});return toast('숙제 확인 완료')}
   if(a==='hwDel'){await deleteDoc(doc(db,'hw',id));return toast('숙제를 삭제했어요')}
-  if(a==='hwDone'){const h=D.hw.find(x=>x.id===id);await updateDoc(doc(db,'hw',id),{st:'done'});await msg(h.sid+'|student',h.sid,'o','[숙제 완료] '+h.title);push(['teacher'],'[숙제 완료] '+(stu(h.sid)||{}).name+': '+h.title);return toast('선생님께 완료를 알렸어요')}
+  if(a==='hwDone'){const h=D.hw.find(x=>x.id===id);await updateDoc(doc(db,'hw',id),{st:'done'});await msg(h.sid+'|student',h.sid,'o','[숙제 완료] '+h.title);push(['teacher'],'[숙제 완료] '+(stu(h.sid)||{}).name+': '+h.title);return toast('원장님께 완료를 알렸어요')}
   if(a==='togSh'){const x=D.logs.find(l=>l.id===id);await updateDoc(doc(db,'logs',id),{sh:!x.sh});return toast(x.sh?'비공개로 바꿨어요':'공유했어요')}
   if(a==='delLog'){await deleteDoc(doc(db,'logs',id));return toast('기록을 삭제했어요')}
   if(a==='readN'){await updateDoc(doc(db,'notices',id),{reads:arrayUnion(ME.uid)});return}
@@ -979,6 +993,12 @@ app.addEventListener('submit',async e=>{
   try{
   if(fid==='loginF'){const ph=digits(g('lP'));if(ph.length<10)return toast('휴대폰번호를 정확히 입력해 주세요');U.busy=true;U.authMsg='';render();
     try{await signInWithEmailAndPassword(auth,ph+MAIL,g('lW'))}catch(err){U.authMsg=authErr(err.code)}U.busy=false;return render()}
+  if(fid==='rsF'){const c=digits(g('rsC')),w=g('rsW'),w2=g('rsW2');if(c.length!==6)return toast('인증번호 6자리를 넣어 주세요');if(w.length<6)return toast('비밀번호는 6자리 이상이에요');if(w!==w2)return toast('새 비밀번호가 서로 달라요');
+    U.busy=true;U.authMsg='';render();U.resetting=true;
+    try{const cr=await U.rsConf.confirm(c);const u=cr.user;
+      if(!u.email||u.email!==U.rsPhone+MAIL){if(!u.email){try{await deleteUser(u)}catch(e){}}else{await signOut(auth)}U.resetting=false;U.busy=false;U.rsConf=null;U.authMsg='이 번호로 문자 인증을 마친 계정이 없어요. 원장님께 말씀해 주세요.';U.screen='auth';return render()}
+      await updatePassword(u,w);U.resetting=false;U.busy=false;U.rsConf=null;U.authTab='login';toast('비밀번호를 바꿨어요');location.reload();return}
+    catch(e){U.resetting=false;U.busy=false;U.authMsg=smsErr(e.code)||'바꾸지 못했어요. 다시 해 주세요.';return render()}}
   if(fid==='smsF'){const c=digits(g('smsC'));if(c.length!==6)return toast('인증번호 6자리를 넣어 주세요');return smsCheck(c)}
   if(fid==='signupF'){const ph=digits(g('jP'));
     if(ph.length<10)return toast('휴대폰번호를 정확히 입력해 주세요');

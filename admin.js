@@ -14,7 +14,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + TYPING_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.21.1';
+const ADMIN_VERSION = '2.22.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -97,7 +97,7 @@ function inviteText(m) {
   const tn = (D.cfg && D.cfg.teacher) || '';
   return '[더밀착수학] 안녕하세요, ' + who + '. ' + (tn ? '더밀착수학 ' + tn + ' 원장' : '더밀착수학') + '입니다.\n' + (m.rel === 'student' ? '출결·숙제·수업 기록' : '출결·수업 기록·숙제·공지') + '을 확인하는 교습소 앱 안내드려요.\n\n'
     + '▶ 설치 안내 (아이폰·갤럭시 따로 정리돼 있어요)\n' + APP_URL + '/install.html\n\n'
-    + '가입할 때 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호를 넣고, 문자로 오는 인증번호 6자리를 입력해 주세요. 선생님 승인 후 바로 이용할 수 있어요.\n'
+    + '가입할 때 이 번호(' + fmtP(m.phone) + ')와 원하는 비밀번호를 넣고, 문자로 오는 인증번호 6자리를 입력해 주세요. 인증하면 바로 이용할 수 있어요.\n'
     + '설치 후 앱에서 [알림 받기]를 꼭 눌러 주세요.';
 }
 const shortInvite = m => '[더밀착수학] ' + mLabel(m) + ' 앱 안내\n설치: https://themilchak-math.github.io/install.html\n가입 번호: ' + fmtP(m.phone) + ' (가입할 때 문자 인증 · 비밀번호는 원하는 걸로)';
@@ -206,14 +206,14 @@ function pDash() {
   const rk = x => exSet.has(x.id) ? 2 : expSet.has(x.id) ? 3 : absT.has(x.id) ? 1 : 0; const order = exp ? [...st].sort((x, y) => (rk(y) - rk(x)) || (exSet.has(x.id) && exSet.has(y.id) ? ex.indexOf(x.id) - ex.indexOf(y.id) : x.name.localeCompare(y.name, 'ko'))) : st;
   return '<h1>' + esc(TNAME()) + ' </h1>' + purgeAlert() + leadDash() + (D.calls.filter(callOpen).length ? '<section class="card hl"><h2>📞 전화 상담 요청 ' + D.calls.filter(callOpen).length + '</h2>' + callsHtml(D.calls.filter(callOpen), { attr: 'data-a', sm: 'xs', esc, fmtD, fmtP }) + '</section>' : '') +
     dayBar(day, isT) + (() => { const l = D.exams.filter(e => onDay(e, day)); return l.length ? '<section class="card' + (l.some(e => evKind(e) === 'off') ? ' hl' : '') + '"><h2>' + dayLbl + ' 일정</h2><p>' + l.map(e => kindChip(e) + ' <b>' + esc((evKind(e) !== 'off' && e.school ? e.school + ' ' : '') + e.title) + '</b>' + (e.memo ? ' <span class="sub">' + esc(e.memo) + '</span>' : '')).join(' &nbsp; ') + '</p></section>' : ''; })() +
-    pushCard() + '<div class="kpis">' + kpi + '<div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
+    '<div class="kpis">' + kpi + '<div><b>' + (mPending().length + pending().length) + '</b><span>승인 대기</span></div><div><b>' + toCheck.length + '</b><span>확인할 숙제</span></div><div><b>' + unreadAll() + '</b><span>새 메시지</span></div></div>' +
     (() => { const cand = st.filter(x => !expSet.has(x.id) && !(exB || []).includes(x.id) && !(a[x.id] && a[x.id].st !== '결석'));
       return '<section class="card' + (notYet.length ? ' hl' : '') + '"><h2>' + (day < off(0) ? '오지 않은 학생' : '아직 안 온 학생') + ' <span class="sub">' + dayLbl + ' 수업 예정' + (ex.length ? ' · 보충 ' + ex.length + '명' : '') + '</span></h2>' +
         '<p>' + (notYet.length ? (() => { const rg = notYet.filter(x => !exSet.has(x.id)), sp = notYet.filter(x => exSet.has(x.id)); return rg.map(x => '<b>' + esc(x.name) + '</b>' + noshowBtn(x, day)).join(' · ') + (sp.length ? (rg.length ? '<span style="margin:0 10px"></span>' : '') + chip('보충', 'pri') + ' ' + sp.map(x => '<b>' + esc(x.name) + '</b>' + noshowBtn(x, day) + ' <button class="btn xs ghost" data-a="exDel" data-id="' + x.id + '" title="보충 취소">×</button>').join(' · ') : ''); })() : '<span class="sub">' + (exp ? (D.exams.some(e => evKind(e) === 'off' && onDay(e, day)) ? '교습소 휴무일이에요' : '예정된 학생이 모두 왔어요') : '정산 메뉴에 등원 요일을 넣으면 예정 학생이 보여요') + '</span>') + '</p>' +
         (cand.length ? '<div class="bar" style="margin:10px 0 0"><select id="exSel" style="width:auto"><option value="">보충 올 학생 선택</option>' + cand.map(x => '<option value="' + x.id + '">' + esc(x.name) + ' (' + esc(x.grade) + ')</option>').join('') + '</select><button class="btn sm" data-a="exAdd">+ 보충 학생 추가</button></div>' : '') + '</section>'; })() +
     (isOwnerMe() && D.staff.some(x => x.st === 'pending') ? '<section class="card hl"><h2>부원장 가입 승인</h2><table><tbody>' + D.staff.filter(x => x.st === 'pending').map(x => '<tr><td><b>' + esc(x.name || '') + ' 부원장</b></td><td>' + esc(fmtP(x.phone)) + '</td><td class="r"><button class="btn sm ghost" data-a="stRej" data-id="' + x.id + '">거절</button> <button class="btn sm" data-a="stOk" data-id="' + x.id + '">승인</button></td></tr>').join('') + '</tbody></table></section>' : '') +
-    applyCard(false) + absSection() +
-    '<div class="grid2"><section class="card"><h2>등원 승인 대기</h2>' + reqRows() + '</section><section class="card"><h2>가입 승인 대기</h2>' + joinRows() + '</section></div>' +
+    applyCard(false) + absSection() + pushCard() +
+    (pending().length || mPending().length ? '<div class="grid2">' + (pending().length ? '<section class="card hl"><h2>등원 승인 대기</h2>' + reqRows() + '</section>' : '') + (mPending().length ? '<section class="card hl"><h2>가입 승인 대기</h2>' + joinRows() + '</section>' : '') + '</div>' : '') +
     '<section class="card"><h2>' + dayLbl + ' 출결 <span class="sub">' + fmtD(day) + '</span></h2><table><thead><tr><th>학생</th><th>학년</th>' + (exp ? '<th>수업</th>' : '') + '<th>상태</th><th>수업 기록</th></tr></thead><tbody>' +
     order.map(s => { const lg = D.logs.filter(l => l.sid === s.id && l.date === day).pop(); const e = expSet.has(s.id); const ab = absT.has(s.id) && !a[s.id] ? absOf(s.id, day) : null; return '<tr' + (exp && !e && !a[s.id] && !ab ? ' style="opacity:.5"' : '') + '><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.grade) + '</td>' + (exp ? '<td>' + (exSet.has(s.id) ? (!a[s.id] ? chip('보충 예정', 'pri') : a[s.id].st === '결석' ? chip('결석', 'bad') : a[s.id].out ? chip('완료', 'pri') : chip('학습중', 'ok')) : clsChip(a[s.id], e, ab)) + '</td>' : '') + '<td>' + attChip(a[s.id]) + '</td><td>' + (ab ? '<span class="sub">결석 사유: ' + esc(ab.reason) + '</span>' : lg ? esc(lg.unit || subjOf(lg) + ' (메모 기록)') + ' · 개념 ' + lg.c + '% · 문제 ' + lg.p + '%' : '<span class="sub">없음</span>') + '</td></tr>'; }).join('') + '</tbody></table></section>' +
     '<section class="card"><h2>확인할 숙제</h2>' + hwTable(toCheck) + '</section>';
@@ -224,7 +224,7 @@ function memCell(s, rel) {
   if (!m) return '<span class="sub">-</span>';
   let act = '';
   if (m.st === 'pending') act = '<button class="btn xs" data-a="mOk" data-id="' + m.id + '">승인</button>';
-  else if (m.st === 'ok') act = '<button class="btn xs ghost" data-a="mReset" data-id="' + m.id + '" title="비밀번호 분실 시 재가입 허용">비번분실</button><button class="btn xs ghost" data-a="mBlock" data-id="' + m.id + '">차단</button>';
+  else if (m.st === 'ok') { const cf = k => V.confirmM === k + m.id; act = '<button class="btn xs ghost" data-a="mReset" data-id="' + m.id + '" title="가입을 풀어서 처음부터 다시 가입하게 해요"' + (cf('mReset') ? ' style="background:var(--acc);color:#fff"' : '') + '>' + (cf('mReset') ? '한 번 더 누르면 가입 해제' : '가입 해제') + '</button><button class="btn xs ghost" data-a="mBlock" data-id="' + m.id + '"' + (cf('mBlock') ? ' style="background:var(--acc);color:#fff"' : '') + '>' + (cf('mBlock') ? '한 번 더 누르면 차단' : '차단') + '</button>'; }
   else if (m.st === 'block') act = '<button class="btn xs ghost" data-a="mUnblock" data-id="' + m.id + '">해제</button>';
   return '<div class="mem"><div class="ph">' + esc(fmtP(m.phone)) + '</div><div class="st">' + memChip(m) + (act ? '<span class="acts">' + act + '</span>' : '') + '</div></div>';
 }
@@ -263,7 +263,7 @@ function pPeople() {
   const tabs = [['list', '연락처·앱 연결'], ['roster', '학생명부 (상세)'], ['school', '재학 학교' + (noSc ? ' · 미입력 ' + noSc : '')]];
   return '<h1>학생 관리 <span class="sub">재원 ' + active().length + '명' + (D.students.length - active().length ? ' · 퇴원 ' + (D.students.length - active().length) + '명' : '') + '</span></h1>' +
     '<div class="bar"><button class="btn" data-a="modal" data-v="stu">+ 학생 등록</button><button class="btn ghost" data-a="modal" data-v="bulk">여러 명 붙여넣기</button><span style="flex:1"></span><label class="btn ghost" style="cursor:pointer">엑셀 불러오기<input type="file" id="xlIn" accept=".xlsx" hidden></label> <button class="btn ghost" data-a="xlOut">엑셀로 내보내기</button></div>' +
-    applyCard(true) + (mPending().length ? '<section class="card hl"><h2>가입 승인 대기</h2>' + joinRows() + '</section>' : '') +
+    applyCard(false) + (mPending().length ? '<section class="card hl"><h2>가입 승인 대기</h2>' + joinRows() + '</section>' : '') +
     '<div class="bar" style="margin:4px 0 12px">' + tabs.map(([k, l]) => '<button class="btn sm ' + (v === k ? '' : 'ghost') + '" data-a="stuV" data-v="' + k + '">' + l + '</button>').join(' ') + '</div>' +
     (v === 'roster' ? pRoster() : v === 'school' ? pSchool() : pStudents());
 }
@@ -1055,9 +1055,9 @@ document.addEventListener('input', e => { if (e.target && e.target.id === 'msgIn
 document.addEventListener('focusout', e => { if (e.target && e.target.id === 'msgIn') setTimeout(() => { const x = document.activeElement; if (!x || x.id !== 'msgIn') TY.stop(); }, 300); });
 const notifyParent = (sid, t) => { if (D.cfg && D.cfg.autoNotify === false) return Promise.resolve(); push([sid + '|parent'], t); return sysP(sid, t).catch(e => console.warn(e)); };
 function pushCard() {
-  const st = pushState(auth.currentUser && auth.currentUser.uid); if (st === 'off' || st === 'on' || V.pushHide) return '';
+  const st = pushState(auth.currentUser && auth.currentUser.uid); let hid = 0; try { hid = +localStorage.getItem('tmm-adm-pushhide') || 0; } catch (e) { } if (st === 'off' || st === 'on' || V.pushHide || Date.now() < hid) return '';
   const inner = st === 'denied' ? '<p class="sub">이 PC 브라우저에서 알림이 차단돼 있어요. 주소창 왼쪽 자물쇠 → 사이트 설정 → 알림 → 허용으로 바꿔 주세요.</p>' : st === 'unsupported' ? '<p class="sub">이 브라우저는 알림을 지원하지 않아요. 크롬이나 엣지에서 열어 주세요.</p>' : '<p class="sub">등원·가입 요청, 숙제 완료, 학생·학부모 메시지가 오면 이 PC에도 알림이 떠요. (폰 앱에서도 따로 켜 주세요)</p><button class="btn" data-a="pushOn">이 PC에서 알림 받기</button>';
-  return '<section class="card hl"><h2>알림 받기 <button class="btn xs ghost" data-a="pushHide">나중에</button></h2>' + inner + '</section>';
+  return '<section class="card" style="padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="white-space:nowrap">🔔 이 PC 알림</b><div style="flex:1;min-width:240px">' + inner.replace(/<p class="sub">/, '<p class="sub" style="margin:0">').replace('<button class="btn" data-a="pushOn">', '</div><button class="btn sm" data-a="pushOn">') + '<button class="btn xs ghost" data-a="pushHide">2주간 숨기기</button></section>';
 }
 function markRead(k) { if (document.visibilityState !== 'visible') return; const l = fthread(k).filter(m => m.f === 'o' && !m.r); if (!l.length) return; const b = writeBatch(db); l.forEach(m => { m.r = true; b.update(doc(db, 'msgs', m.id), { r: true }); }); b.commit().catch(e => console.warn(e)); }
 function linkUser(b, m) {
@@ -1113,7 +1113,7 @@ app.addEventListener('click', async e => {
   try {
     if (a === 'go') { if (window.innerWidth <= 800) window.scrollTo(0, 0); V.page = v; if (v === 'msg' && V.chat) markRead(V.chat); return render(); }
     if (a === 'pushOn') { try { await enablePush(db, auth.currentUser.uid, ['teacher']); toast('이 PC에서 알림이 켜졌어요'); } catch (e) { toast(pushErrorText(e)); } return render(); }
-    if (a === 'pushHide') { V.pushHide = true; return render(); }
+    if (a === 'pushHide') { V.pushHide = true; try { localStorage.setItem('tmm-adm-pushhide', String(Date.now() + 14 * 864e5)); } catch (e) { } return render(); }
     if (a === 'logout') { await signOut(auth); return; }
     if (a === 'wifiReg') { const ip = await myIp(); if (!ip) return toast('인터넷 주소를 확인하지 못했어요. 잠시 후 다시 눌러 주세요'); const l = [...new Set([...((D.cfg && D.cfg.wifiIps) || []), ip])]; await updateDoc(doc(db, 'config', 'main'), { wifiIps: l, wifiAuto: true }); return toast('교습소 인터넷 주소(' + ip + ')를 등록했어요 · 자동 등원 켜짐'); }
     if (a === 'wifiTog') { const on = !(D.cfg && D.cfg.wifiAuto); await updateDoc(doc(db, 'config', 'main'), { wifiAuto: on }); return toast('와이파이 자동 등원 ' + (on ? '켬' : '끔')); }
@@ -1161,7 +1161,7 @@ app.addEventListener('click', async e => {
     if (a === 'bulkCheck') { V.bulk = parseBulk(document.getElementById('bulkIn').value); return render(); }
     if (a === 'mOk') { const m = D.members.find(x => x.id === id); if (!m || !m.uid) return; const all = D.members.filter(x => x.uid === m.uid && x.st === 'pending'); const b = writeBatch(db); all.forEach(x => linkUser(b, x)); await b.commit(); for (const x of all) if (x.rel !== 'student') await msg(thsOf(x.sid, x.rel).pop(), x.sid, 's', '[가입 승인] ' + mLabel(x) + '으로 연결되었어요. 환영합니다!'); push([...new Set(all.flatMap(x => thsOf(x.sid, x.rel)))], '[가입 승인] 더밀착수학 앱 이용이 승인됐어요. 앱을 열어 주세요.'); return toast(all.map(mLabel).join(', ') + ' 승인 완료'); }
     if (a === 'mRej') { const m = D.members.find(x => x.id === id); const all = D.members.filter(x => x.uid && x.uid === m.uid && x.st === 'pending'); const b = writeBatch(db); all.forEach(x => b.update(doc(db, 'members', x.id), { st: 'none', uid: deleteField() })); await b.commit(); return toast(mLabel(m) + ' 가입을 거절했어요'); }
-    if (a === 'mBlock' || a === 'mReset') { const m = D.members.find(x => x.id === id); const b = writeBatch(db); b.update(doc(db, 'members', m.id), a === 'mBlock' ? { st: 'block' } : { st: 'none', uid: deleteField() }); if (m.uid) b.set(doc(db, 'users', m.uid), { sids: arrayRemove(m.sid), ths: arrayRemove(...thsOf(m.sid, m.rel)) }, { merge: true }); await b.commit(); return toast(a === 'mBlock' ? mLabel(m) + ' 접속을 차단했어요' : '재가입 가능 상태예요. Firebase 콘솔 Authentication에서 ' + fmtP(m.phone) + ' 계정을 삭제해 주세요.'); }
+    if (a === 'mBlock' || a === 'mReset') { if (V.confirmM !== a + id) { V.confirmM = a + id; render(); setTimeout(() => { if (V.confirmM === a + id) { V.confirmM = null; render(); } }, 4000); return; } V.confirmM = null; const m = D.members.find(x => x.id === id); const b = writeBatch(db); b.update(doc(db, 'members', m.id), a === 'mBlock' ? { st: 'block' } : { st: 'none', uid: deleteField() }); if (m.uid) b.set(doc(db, 'users', m.uid), { sids: arrayRemove(m.sid), ths: arrayRemove(...thsOf(m.sid, m.rel)) }, { merge: true }); await b.commit(); return toast(a === 'mBlock' ? mLabel(m) + ' 접속을 차단했어요' : '재가입 가능 상태예요. Firebase 콘솔 Authentication에서 ' + fmtP(m.phone) + ' 계정을 삭제해 주세요.'); }
     if (a === 'mUnblock') { const m = D.members.find(x => x.id === id); if (!m.uid) return; const b = writeBatch(db); linkUser(b, m); await b.commit(); return toast('차단을 해제했어요'); }
     if (a === 'leave') {
       const s = stu(id); if (V.confirmLeave !== id) { V.confirmLeave = id; el.textContent = '한 번 더 누르면 퇴원 처리'; setTimeout(() => { V.confirmLeave = null; }, 4000); return; }
@@ -1230,7 +1230,7 @@ app.addEventListener('click', async e => {
     if (a === 'absOk') { const x = D.abs.find(y => y.id === id); if (!x) return; const s = stu(x.sid) || { name: '' }; await updateDoc(doc(db, 'abs', id), { ok: true, okBy: TNAME() }); const tx = '[결석 확인] ' + s.name + ' 학생 ' + fmtD(x.date) + ' 결석 통보를 확인했어요.'; push([x.sid + '|parent'], tx, { tag: 'abs' }); await sysP(x.sid, tx).catch(() => { }); return toast(s.name + ' 결석 확인 · 학부모님께 알렸어요'); }
     if (a === 'ok' || a === 'rej') {
       const q = D.req.find(x => x.id === id); if (!q) return; const s = stu(q.sid);
-      if (a === 'rej') { await updateDoc(doc(db, 'reqs', q.id), { st: 'rej' }); await msg(q.sid + '|student', q.sid, 's', '[등원 요청 반려] 선생님께 직접 말씀드려 주세요.'); push([q.sid + '|student'], '[등원 요청 반려] 선생님께 직접 말씀드려 주세요.'); return toast(s.name + ' 등원 요청을 거절했어요'); }
+      if (a === 'rej') { await updateDoc(doc(db, 'reqs', q.id), { st: 'rej' }); await msg(q.sid + '|student', q.sid, 's', '[등원 요청 반려] 원장님께 직접 말씀드려 주세요.'); push([q.sid + '|student'], '[등원 요청 반려] 원장님께 직접 말씀드려 주세요.'); return toast(s.name + ' 등원 요청을 거절했어요'); }
       const st = '출석'; const b = writeBatch(db);
       b.update(doc(db, 'reqs', q.id), { st: 'ok' });
       b.set(doc(db, 'att', TODAY + '_' + q.sid), { sid: q.sid, date: TODAY, st, at: q.at, by: 'app', logged: D.logs.some(l => l.sid === q.sid && l.date === TODAY) });

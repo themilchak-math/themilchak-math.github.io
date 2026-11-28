@@ -271,6 +271,12 @@ html.ios-pwa.chat-open:not(.kb) .send{padding-bottom:10px}
 .iosbar{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:15px}.iosbar .ib1{width:34px;height:34px;border-radius:50%;background:var(--soft);display:grid;place-items:center}
 .iosbar .ib2{flex:1;display:flex;align-items:center;gap:8px;height:34px;border-radius:17px;background:var(--soft);padding:0 10px;font-size:12px;min-width:0;overflow:hidden;white-space:nowrap}
 .iosbar .hit{font-size:16px;font-weight:700;color:var(--acc);box-shadow:0 0 0 2px var(--acc);border-radius:50%;width:24px;height:24px;display:grid;place-items:center;flex:none}
+
+/* 아래 떠 있는 안내 띠(설치·업데이트·승인)가 마지막 카드를 가리지 않게 */
+#app.bar-on .body{padding-bottom:96px}
+.push{top:auto;bottom:calc(66px + env(safe-area-inset-bottom))}
+@media (orientation:landscape) and (max-height:500px){.push{bottom:calc(54px + env(safe-area-inset-bottom))}}
+@keyframes dn{from{opacity:0;transform:translateY(10px)}}
 </style>
 <script>
 /* 아이폰 홈 화면 앱: 화면 실제 높이로 맞추기 */
