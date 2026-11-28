@@ -22,6 +22,18 @@ service cloud.firestore {
     function myPhone() { return request.auth.token.email.split('@')[0]; }
     // 문자 인증을 마친 계정: 로그인 번호와 인증한 휴대폰 번호가 같아요
     function phoneOk() { return signedIn() && request.auth.token.get('phone_number', '') == '+82' + myPhone().replace('^0', ''); }
+    // 문자 인증 가입: 내 번호로 등록된 가족 1명을 원장님 승인 없이 바로 연결 (members 문서와 users 문서를 한 번에 저장할 때만)
+    function selfLink(uid) {
+      let d = request.resource.data;
+      let m = getAfter(/databases/$(database)/documents/members/$(d.via)).data;
+      let old = resource == null ? {'sids': [], 'rels': {}, 'ths': []} : resource.data;
+      let th = m.rel == 'student' ? [m.sid + '|student'] : [m.sid + '|parent', m.sid + '|' + m.rel];
+      return d.keys().hasOnly(['phone', 'sids', 'rels', 'ths', 'via']) && d.via is string && d.phone == myPhone()
+        && m.uid == uid && m.phone == myPhone() && m.st == 'ok'
+        && d.sids.toSet().difference(old.sids.toSet()).hasOnly([m.sid]) && old.sids.toSet().difference(d.sids.toSet()).size() == 0
+        && d.rels.diff(old.rels).affectedKeys().hasOnly([m.sid]) && d.rels[m.sid] == m.rel
+        && d.ths.toSet().difference(old.ths.toSet()).hasOnly(th) && old.ths.toSet().difference(d.ths.toSet()).size() == 0;
+    }
     function onlyKeys(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
     function qr() { return get(/databases/$(database)/documents/config/qr).data; }
 
@@ -37,6 +49,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isTeacher() || (signedIn() && request.auth.uid == uid);
       allow write: if isTeacher();
+      allow create, update: if signedIn() && request.auth.uid == uid && phoneOk() && selfLink(uid);
     }
     match /members/{id} {
       // 번호 등록·삭제는 원장님만, 가입 승인은 부원장도 가능
@@ -45,7 +58,12 @@ service cloud.firestore {
       allow create, delete: if isOwner();
       allow update: if isTeacher() || (phoneOk() && resource.data.phone == myPhone()
         && resource.data.st == 'none' && request.resource.data.st == 'pending'
-        && request.resource.data.uid == request.auth.uid && onlyKeys(['st', 'uid', 'at']));
+        && request.resource.data.uid == request.auth.uid && onlyKeys(['st', 'uid', 'at']))
+        // 문자 인증했으면 승인 없이 바로 연결: 내 users 문서도 같은 저장에서 이 등록(via)으로 연결될 때만
+        || (phoneOk() && resource.data.phone == myPhone()
+        && (resource.data.st == 'none' || (resource.data.st == 'pending' && resource.data.uid == request.auth.uid))
+        && request.resource.data.st == 'ok' && request.resource.data.uid == request.auth.uid && onlyKeys(['st', 'uid', 'at'])
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.via == id);
     }
     match /inv/{code} {
       // 예전 가입 코드(지금은 안 씀). 원장님만 정리할 수 있어요
@@ -114,11 +132,14 @@ service cloud.firestore {
       allow delete: if isTeacher();
     }
     match /staff/{phone} {
-      // 부원장: 원장님이 이름·번호 등록 → 부원장이 그 번호로 가입하면 승인 요청 → 원장님 승인
+      // 부원장: 원장님이 이름·번호 등록 → 부원장이 그 번호로 가입·문자 인증하면 바로 사용
       allow read: if isTeacher() || (signedIn() && phone == myPhone());
       allow create, delete: if isOwner();
       allow update: if isOwner() || (phoneOk() && phone == myPhone() && resource.data.st == 'none'
-        && request.resource.data.st == 'pending' && request.resource.data.uid == request.auth.uid && onlyKeys(['st', 'uid', 'at']));
+        && request.resource.data.st == 'pending' && request.resource.data.uid == request.auth.uid && onlyKeys(['st', 'uid', 'at']))
+        // 원장님이 등록한 번호로 문자 인증까지 마치면 승인 없이 바로 사용
+        || (phoneOk() && phone == myPhone() && (resource.data.st == 'none' || (resource.data.st == 'pending' && resource.data.uid == request.auth.uid))
+        && request.resource.data.st == 'ok' && request.resource.data.uid == request.auth.uid && onlyKeys(['st', 'uid', 'at']));
     }
     match /exams/{id} {
       // 일정(시험기간·휴무·특수 일정): 원장님만 등록, 가입한 가족·부원장은 볼 수 있어요

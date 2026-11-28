@@ -12,7 +12,7 @@ import { syncSched, plannedOn } from './sched.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.5.1';
+const APP_VERSION = '2.6.0';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -513,9 +513,9 @@ function waitView(){
     const st=m.st==='pending'?'<span class="chip c-warn">선생님 승인 대기</span>':m.st==='block'?'<span class="chip c-bad">이용 제한</span>':m.st==='ok'?'<span class="chip c-ok">연결됨</span>':'<button class="btn sm" data-act="reclaim">다시 요청</button>';
     return '<div class="row"><div class="grow nm">'+esc(nm)+'</div>'+st+'</div>'}).join('');
   const needG=false; // 14세 미만 부모님 먼저 가입 조건 해제 (원장님 요청)
-  return authHeader('번호가 확인됐어요','선생님이 승인하면 바로 이용할 수 있어요')+'<div class="body"><div class="card"><h3>'+esc(fmtP(ME.phone))+'</h3>'+(rows||'<div class="empty">확인 중...</div>')+'</div>'+
+  return authHeader('번호가 확인됐어요',U.wait.some(m=>m.st==='pending')?'선생님 확인 후 이용할 수 있어요':'연결하고 있어요…')+'<div class="body"><div class="card"><h3>'+esc(fmtP(ME.phone))+'</h3>'+(rows||'<div class="empty">확인 중...</div>')+'</div>'+
     (needG?'<div class="card"><p style="margin:0" class="sub">만 14세 미만일 수 있어 부모님이 먼저 가입해 승인받으셔야 학생 가입이 열려요. 부모님 승인 뒤 <b>다시 요청</b>을 눌러 주세요.</p></div>':'')+
-    '<div class="card"><p class="sub" style="margin:0">이 화면을 닫아도 괜찮아요. 승인되면 다음에 열 때 바로 들어가져요.</p></div>'+installTip()+
+    (U.wait.some(m=>m.st==='pending')?'<div class="card"><p class="sub" style="margin:0">이 화면을 닫아도 괜찮아요. 확인되면 다음에 열 때 바로 들어가져요.</p></div>':'')+installTip()+
     '<button class="btn ghost" style="width:100%" data-act="logout">로그아웃</button></div>';
 }
 
@@ -656,6 +656,7 @@ function checkStaff(){
     if(U.isStaff){U.isStaff=false;U.authMsg='부원장 권한이 해제됐어요. 원장님께 문의해 주세요.';U.authTab='login';await signOut(auth);return}
     if(sd&&sd.st==='none'&&!phoneOk()){U.wait=[];U.screen='wait';sr();return}
     if(sd&&(sd.st==='none'||(sd.st==='pending'&&sd.uid===ME.uid))){
+      if(phoneOk()&&!U.staffTry){U.staffTry=true;try{await updateDoc(doc(db,'staff',ME.phone),{st:'ok',uid:ME.uid,at:stamp()});push(['teacher'],'[부원장 가입 완료] '+(sd.name||'')+' 부원장님이 앱에 가입했어요.',{tag:'join'});return}catch(e){console.warn('staff self',e.code||e)}}
       if(sd.st==='none'){try{await updateDoc(doc(db,'staff',ME.phone),{st:'pending',uid:ME.uid,at:stamp()});push(['teacher'],'[부원장 가입 요청] '+(sd.name||'')+' 부원장님 가입을 승인해 주세요.',{tag:'join'})}catch(e){console.warn(e)}}
       U.screen='staffWait';sr();return}
     goFam();sr();
@@ -678,7 +679,7 @@ function watchMembers(){
   const ok=phoneOk();
   memUnsub=onSnapshot(ok?query(collection(db,'members'),where('phone','==',ME.phone)):query(collection(db,'members'),where('phone','==',ME.phone),where('st','in',['pending','ok','block'])),async s=>{
     const ms=docs(s);U.wait=ms;
-    if(ok&&ms.some(m=>m.st==='none')&&!U.claimed){U.claimed=true;await claim(ms)}
+    if(ok&&ms.some(m=>m.st==='none'||(m.st==='pending'&&m.uid===ME.uid))&&!U.claimed){U.claimed=true;await claim(ms)}
     sr();
   },e=>console.warn(e));
   baseUnsubs.push(()=>{if(memUnsub){memUnsub();memUnsub=null}});
@@ -704,10 +705,18 @@ async function smsCheck(code){
   catch(e){U.smsErr=smsErr(e.code)}
   U.smsBusy=false;render();
 }
+// 문자 인증으로 본인 번호가 확인됐으니 원장님 승인 없이 바로 연결해요 (규칙: 내 번호로 등록된 가족 1명씩, members 문서와 내 users 문서를 함께 저장할 때만)
+// 혹시 바로 연결이 안 되면 예전처럼 승인 요청으로 남겨요
 async function claim(ms){
-  const go=ms.filter(m=>m.st==='none');
-  const done=[];for(const m of go){try{await updateDoc(doc(db,'members',m.id),{st:'pending',uid:ME.uid,at:hm()});done.push(m)}catch(e){console.warn(e)}}
-  if(done.length)push(['teacher'],'[가입 요청] '+done.map(m=>(m.name||'')+' '+REL[m.rel]).join(', ')+' 가입을 승인해 주세요.',{tag:'join'});
+  const go=ms.filter(m=>m.st==='none'||(m.st==='pending'&&m.uid===ME.uid));
+  const linked=[],asked=[];
+  for(const m of go){
+    try{const b=writeBatch(db);b.update(doc(db,'members',m.id),{st:'ok',uid:ME.uid,at:hm()});
+      b.set(doc(db,'users',ME.uid),{phone:ME.phone,sids:arrayUnion(m.sid),rels:{[m.sid]:m.rel},ths:arrayUnion(...thsOf(m.sid,m.rel)),via:m.id},{merge:true});await b.commit();linked.push(m)}
+    catch(e){console.warn('self-link',e.code||e);if(m.st==='none'){try{await updateDoc(doc(db,'members',m.id),{st:'pending',uid:ME.uid,at:hm()});asked.push(m)}catch(e2){console.warn(e2)}}}
+  }
+  if(linked.length)push(['teacher'],'[가입 완료] '+linked.map(m=>(m.name||'')+' '+REL[m.rel]).join(', ')+' 앱에 가입했어요.',{tag:'join'});
+  if(asked.length)push(['teacher'],'[가입 요청] '+asked.map(m=>(m.name||'')+' '+REL[m.rel]).join(', ')+' 가입을 승인해 주세요.',{tag:'join'});
 }
 
 /* ================= 쓰기 도우미 ================= */
