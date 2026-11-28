@@ -13,7 +13,7 @@ import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, storageUsage, fmtSize, filesHtml, lightbox, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
 { const st = document.createElement('style'); st.textContent = BOARD_CSS + '#bF .bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}#bF .bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:8px}#bF .bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bF.drag{outline:3px dashed var(--pri);outline-offset:6px}.notice p{white-space:pre-wrap}'; document.head.appendChild(st); }
 
-const ADMIN_VERSION = '2.20.5';
+const ADMIN_VERSION = '2.20.6';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -858,7 +858,7 @@ function pMsg() {
   // 닫은 대화: 목록에서만 숨김(내용 그대로). [+ 새 대화 시작]에서 다시 열거나, 상대가 새 메시지를 보내면 다시 나타나요
   const hidT = k => (D.hid || {})[k] || 0; const isHid = i => hidT(i.k) && i.k !== V.chat && !fthread(i.k).some(m => m.f === 'o' && (m.ts || 0) > hidT(i.k));
   const empty = items.filter(i => (!i.last || isHid(i)) && i.k !== V.chat);
-  const isP = i => i.k.split('|')[1] !== 'student'; const og = (lab, l) => l.length ? '<optgroup label="' + lab + '">' + l.map(i => '<option value="' + esc(i.k) + '">' + esc(nameK(i.k)) + (i.last ? ' (닫은 대화)' : '') + '</option>').join('') + '</optgroup>' : '';
+  const isP = i => i.k.split('|')[1] !== 'student'; const og = (lab, l) => l.length ? '<optgroup label="' + lab + '">' + l.map(i => '<option value="' + esc(i.k) + '">' + esc(nameK(i.k)) + '</option>').join('') + '</optgroup>' : '';
   const newSel = empty.length ? '<select id="newChat" style="width:100%;margin-bottom:6px"><option value="">+ 새 대화 시작…</option>' + og('학부모', empty.filter(isP)) + og('학생', empty.filter(i => !isP(i))) + '</select>' : '';
   // 학부모 / 학생 나눠 보기 (전체에서는 두 묶음으로)
   const mf = V.mf || 'all'; const shownAll = items.filter(i => (i.last && !isHid(i)) || i.k === V.chat); const unOf = l => l.reduce((a, i) => a + i.un, 0);
