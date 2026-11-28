@@ -138,7 +138,10 @@ service cloud.firestore {
         || (hasProfile() && request.resource.data.f == 's' && request.resource.data.sid in me().sids
             && request.resource.data.th in [request.resource.data.sid + '|parent', request.resource.data.sid + '|mother', request.resource.data.sid + '|father']);
       allow update: if (isTeacher() && onlyKeys(['r']))
-        || (myThread(resource.data.th) && resource.data.f != 'o' && onlyKeys(['r']));
+        || (myThread(resource.data.th) && resource.data.f != 'o' && onlyKeys(['r']))
+        // 학생·학부모: 원장님이 읽기 전인 내 메시지만 '삭제'(숨김) 표시 가능. 공용 학부모 방(|parent)은 제외
+        || (myThread(resource.data.th) && resource.data.f == 'o' && resource.data.get('r', false) == false
+            && !resource.data.th.matches('.*[|]parent') && onlyKeys(['del', 'delAt']) && request.resource.data.del == true);
       allow delete: if isTeacher();
     }
     match /staff/{phone} {

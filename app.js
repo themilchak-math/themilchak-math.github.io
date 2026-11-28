@@ -7,13 +7,13 @@ import { SUBJS, CUR, GROUPS, subjOf, defCourse, courseLabel, lessonSummary, ACT,
 import { firebaseConfig } from './firebase-config.js';
 import { buildItems, calHtml } from './calendar.js';
 import { CATS, catOf, catLabel, catPush, freshToken, uploadFile, deleteFiles, fmtSize, filesHtml, lightbox, visibleTo, toLabel, TO_OPTS, parseTo, pushKeys, okLink, BOARD_CSS } from './board.js';
-{const st=document.createElement('style');st.textContent=BOARD_CSS+TYPING_CSS+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
+{const st=document.createElement('style');st.textContent=BOARD_CSS+TYPING_CSS+'.msg.deld,.m.deld{border:1.5px dashed #f0a3a5!important;background:#fff7f7!important;color:#6b6f86!important}.delt{display:block;font-size:11px;color:#e5484d;font-weight:700;margin-bottom:3px}'+'.notice p{white-space:pre-wrap}.bq{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}.bq li{display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}.bq li span.n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';document.head.appendChild(st)}
 import { syncSched, plannedOn } from './sched.js';
 import { createTyping, TYPING_CSS, typingHtml } from './typing.js';
 import { CALL_HOURS, callOpen, hh, rangeTxt, callsHtml, scheduleRemind, cancelRemind } from './calls.js';
 import { PUSH_URL, pushState, enablePush, sendPush, pushErrorText, announceUpdate, isIOS as pushIOS } from './push.js';
 
-const APP_VERSION = '2.8.1';
+const APP_VERSION = '2.8.2';
 const fb = initializeApp(firebaseConfig);
 const auth = getAuth(fb);
 const db = getFirestore(fb);
@@ -49,7 +49,8 @@ const famKeys=k=>{const [sid,r]=k.split('|');return PREL.includes(r)?famSids(sid
 const joinedM=m=>m&&m.uid&&(m.st==='ok'||m.st==='pending');
 const parKeys=sid=>{const f=famSids(sid);return PREL.filter(r=>(D.members||[]).some(m=>f.includes(m.sid)&&m.rel===r&&joinedM(m))).map(r=>sid+'|'+r)};
 const stuKey=sid=>joinedM((D.members||[]).find(m=>m.sid===sid&&m.rel==='student'))?[sid+'|student']:[];
-const fthread=k=>famKeys(k).flatMap(x=>thread(x)).sort((a,b)=>(a.ts||0)-(b.ts||0));
+// 학생·학부모가 지운 메시지(del)는 가족 화면에선 완전히 안 보이고, 원장님·부원장 화면에만 '삭제한 메시지'로 남아요
+const fthread=k=>famKeys(k).flatMap(x=>thread(x)).filter(m=>U.role==='teacher'||!m.del).sort((a,b)=>(a.ts||0)-(b.ts||0));
 const myKey=()=>U.me+'|'+(U.role==='parent'&&ME&&ME.rels&&PREL.includes(ME.rels[U.me])?ME.rels[U.me]:U.role);
 
 const IC={
@@ -348,7 +349,7 @@ function tComm(){
     // 닫은 대화: 목록에서만 숨겨요(내용은 그대로). [+ 새 대화 시작]에서 다시 열거나, 상대가 새 메시지를 보내면 다시 나타나요
     const hidT=k=>(D.hid||{})[k]||0;const isHid=i=>hidT(i.k)&&!fthread(i.k).some(m=>m.f==='o'&&(m.ts||0)>hidT(i.k));
     const nameK=k=>{const [sd,rr]=k.split('|');return rr!=='student'?famLabel(sd,REL[rr]):stu(sd).name+' 학생'};const empty=items.filter(i=>!i.last||isHid(i));const isP=i=>i.k.split('|')[1]!=='student';const mf=U.mf||'all';const allS=items.filter(i=>i.last&&!isHid(i));const pL=allS.filter(isP),sL=allS.filter(i=>!isP(i));const shown=mf==='parent'?pL:mf==='student'?sL:allS;const unOf=l=>l.reduce((a,i)=>a+i.un,0);const og=(lab,l)=>l.length?'<optgroup label="'+lab+'">'+l.map(i=>'<option value="'+esc(i.k)+'">'+esc(nameK(i.k))+'</option>').join('')+'</optgroup>':'';
-    inner=(empty.length?'<select id="newChat" style="width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--ink);font-size:15px"><option value="">+ 새 대화 시작…</option>'+og('학부모',empty.filter(isP))+og('학생',empty.filter(i=>!isP(i)))+'</select>':'')+(allS.length?'<div class="pills">'+[['all','전체',allS],['parent','👪 학부모',pL],['student','🎒 학생',sL]].map(([v,lab,l])=>'<button data-act="mf" data-v="'+v+'" class="'+(mf===v?'on':'')+'">'+lab+' '+l.length+(unOf(l)?' · '+unOf(l):'')+'</button>').join('')+'</div>':'')+(shown.length?'':'<div class="empty">'+(allS.length?'이쪽 대화가 없어요':'아직 대화가 없어요')+'</div>')+'<div class="card"'+(shown.length?'':' hidden')+'>'+shown.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r!=='student'?' p':'')+'">'+(r!=='student'?esc(REL[r]?REL[r].slice(0,2):'학부'):esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r!=='student'?famLabel(sid,REL[r]):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc(i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'<span data-act="hideTh" data-k="'+i.k+'" title="목록에서 닫기 (대화 내용은 남아요)" style="padding:6px 4px 6px 8px;color:var(--mut);font-size:18px;line-height:1">×</span></button>'}).join('')+'</div>';
+    inner=(empty.length?'<select id="newChat" style="width:100%;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--ink);font-size:15px"><option value="">+ 새 대화 시작…</option>'+og('학부모',empty.filter(isP))+og('학생',empty.filter(i=>!isP(i)))+'</select>':'')+(allS.length?'<div class="pills">'+[['all','전체',allS],['parent','👪 학부모',pL],['student','🎒 학생',sL]].map(([v,lab,l])=>'<button data-act="mf" data-v="'+v+'" class="'+(mf===v?'on':'')+'">'+lab+' '+l.length+(unOf(l)?' · '+unOf(l):'')+'</button>').join('')+'</div>':'')+(shown.length?'':'<div class="empty">'+(allS.length?'이쪽 대화가 없어요':'아직 대화가 없어요')+'</div>')+'<div class="card"'+(shown.length?'':' hidden')+'>'+shown.map(i=>{const [sid,r]=i.k.split('|');const s=stu(sid);return '<button class="thr" data-act="open" data-k="'+i.k+'"><div class="av'+(r!=='student'?' p':'')+'">'+(r!=='student'?esc(REL[r]?REL[r].slice(0,2):'학부'):esc(s.name.slice(-2)))+'</div><div class="grow" style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><span class="nm">'+esc(r!=='student'?famLabel(sid,REL[r]):s.name+' 학생')+'</span><span class="sub">'+(i.last?esc(i.last.at.slice(5)):'')+'</span></div><div class="sub ell">'+(i.last?esc((i.last.del?'(삭제됨) ':'')+i.last.t):'대화를 시작해 보세요')+'</div></div>'+(i.un?'<span class="dot" style="position:static">'+i.un+'</span>':'')+'<span data-act="hideTh" data-k="'+i.k+'" title="목록에서 닫기 (대화 내용은 남아요)" style="padding:6px 4px 6px 8px;color:var(--mut);font-size:18px;line-height:1">×</span></button>'}).join('')+'</div>';
   }
   return header('소통','학생·학부모 메시지와 소식')+'<div class="body">'+commTabs()+inner+'</div>';
 }
@@ -362,8 +363,8 @@ function chatView(){
   const t=fthread(U.chat);
   const mine=U.role==='teacher'?'t':'o';
   const title=U.role==='teacher'?(r!=='student'?famLabel(sid,REL[r]):s.name+' 학생'):TNAME();
-  const T=U.role==='teacher';const sel=m=>T&&m.id?' data-act="msgSel" data-id="'+m.id+'"':'';const delB=m=>T&&U.msgSel===m.id?'<button class="btn sm ghost" style="align-self:'+(m.f===mine?'flex-end':'flex-start')+';color:var(--acc);margin-top:-4px" data-act="msgDel" data-id="'+m.id+'">이 메시지 삭제</button>':'';
-  const body=(T&&t.length?'<div style="text-align:right;margin-bottom:6px"><button class="btn sm ghost" style="color:var(--acc)" data-act="chatDel">대화 전체 삭제</button></div><p class="sub" style="margin:0 0 8px;text-align:center;font-size:12px">메시지를 누르면 하나씩 지울 수 있어요 · 지우면 상대방 화면에서도 사라져요</p>':'')+(t.length?t.map(m=>(m.f==='s'?sysHtml(m,T).replace('<div class="msg sys">','<div class="msg sys"'+sel(m)+'>'):'<div class="msg '+(m.f===mine?'me':'you')+'"'+sel(m)+'>'+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine?rdTag(m):'')+'</div>')+delB(m)).join(''):'<div class="empty">첫 메시지를 보내보세요</div>');
+  const T=U.role==='teacher';const canDel=m=>T||(m.f===mine&&!m.r&&!/[|]parent$/.test(m.th||''));const sel=m=>canDel(m)&&m.id?' data-act="msgSel" data-id="'+m.id+'"':'';const delB=m=>canDel(m)&&U.msgSel===m.id?'<button class="btn sm ghost" style="align-self:'+(m.f===mine?'flex-end':'flex-start')+';color:var(--acc);margin-top:-4px" data-act="msgDel" data-id="'+m.id+'">'+(T?'이 메시지 삭제':'삭제')+'</button>':'';
+  const body=(T&&t.length?'<div style="text-align:right;margin-bottom:6px"><button class="btn sm ghost" style="color:var(--acc)" data-act="chatDel">대화 전체 삭제</button></div><p class="sub" style="margin:0 0 8px;text-align:center;font-size:12px">메시지를 누르면 하나씩 지울 수 있어요 · 지우면 상대방 화면에서도 사라져요</p>':'')+(t.length?t.map(m=>(m.f==='s'?sysHtml(m,T).replace('<div class="msg sys">','<div class="msg sys"'+sel(m)+'>'):'<div class="msg '+(m.f===mine?'me':'you')+(T&&m.del?' deld':'')+'"'+sel(m)+'>'+(T&&m.del?'<span class="delt">🗑 보낸 사람이 삭제한 메시지</span>':'')+esc(m.t)+'</div><div class="mt'+(m.f===mine?'':' l')+'">'+esc(m.at.slice(5))+(m.f===mine?rdTag(m):'')+'</div>')+delB(m)).join(''):'<div class="empty">첫 메시지를 보내보세요</div>');
   return header(title,r!=='student'?(U.role==='teacher'?REL[r]+'과 1:1 대화 (다른 보호자는 못 봐요)':'원장님과 1:1 대화'):'학생 질문·안내',true)+'<div class="body" id="chatBody"><div class="chat">'+body+typingHtml('msg')+'</div></div><form class="send" id="sendF"><input id="msgIn" placeholder="메시지 입력" autocomplete="off" aria-label="메시지"><button class="btn" type="submit">전송</button></form>';
 }
 
@@ -914,6 +915,7 @@ app.addEventListener('click',async e=>{
   if(a==='wifiTog'){await updateDoc(doc(db,'config','main'),{wifiAuto:!(D.cfg&&D.cfg.wifiAuto)});return toast(D.cfg&&D.cfg.wifiAuto?'와이파이 자동 등원을 껐어요':'와이파이 자동 등원을 켰어요')}
   if(a==='wifiClr'){if(!confirm('등록된 교습소 와이파이 주소를 지울까요?'))return;await updateDoc(doc(db,'config','main'),{wifiIps:[],wifiAuto:false});return toast('지웠어요')}
   if(a==='msgSel'){U.msgSel=U.msgSel===id?null:id;return render()}
+  if(a==='msgDel'&&U.role!=='teacher'){const m=Object.values(D.threads).flat().find(x=>x.id===id);if(!m||m.r)return toast('이미 읽은 메시지는 지울 수 없어요');if(!confirm('이 메시지를 삭제할까요?'))return;U.msgSel=null;await updateDoc(doc(db,'msgs',id),{del:true,delAt:now()});return toast('삭제했어요')}
   if(a==='msgDel'){if(!confirm('이 메시지를 삭제할까요?\n상대방 화면에서도 처음부터 없었던 것처럼 사라져요.'))return;U.msgSel=null;await deleteDoc(doc(db,'msgs',id));return toast('메시지를 삭제했어요')}
   if(a==='noshow'){const s=stu(id);if(!s)return;const ps=(D.members||[]).filter(m=>m.sid===id&&m.rel!=='student'&&m.st==='ok').map(m=>REL[m.rel]);const tx=noshowTxt(s);
     if(!confirm(s.name+' 학생 부모님께 미등원 안내를 보낼까요?\n\n받는 분: '+(ps.length?ps.join('·'):'앱에 가입한 부모님이 아직 없어요')+'\n\n'+tx))return;
